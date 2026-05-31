@@ -1,0 +1,21 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: jemaw-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: jemaw
+      POSTGRES_PASSWORD: jemaw
+      POSTGRES_DB: jemaw
+    ports:
+      - "5432:5432"
+    volumes:
+      - jemaw_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U jemaw -d jemaw"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  jemaw_pgdata:
