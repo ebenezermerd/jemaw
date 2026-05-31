@@ -1,0 +1,11 @@
+node_modules
+**/node_modules
+**/dist
+**/dist-types
+.git
+.env
+.env.*
+*.log
+docs
+**/*.test.ts
+**/*.test.tsx
