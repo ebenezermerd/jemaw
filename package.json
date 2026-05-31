@@ -1,0 +1,27 @@
+{
+  "name": "jemaw",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "typecheck": "pnpm -r typecheck",
+    "test": "pnpm -r test",
+    "build": "pnpm -r build",
+    "db:push": "pnpm --filter @jemaw/shared db:push",
+    "db:generate": "pnpm --filter @jemaw/shared db:generate",
+    "db:migrate": "pnpm --filter @jemaw/shared db:migrate",
+    "dev:bot": "pnpm --filter @jemaw/bot dev",
+    "dev:app": "pnpm --filter @jemaw/app dev"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.3"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "esbuild"
+    ]
+  }
+}
