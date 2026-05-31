@@ -1,0 +1,37 @@
+import { z } from "zod";
+
+/**
+ * Environment contract for the bot. Validated at startup — the process
+ * refuses to boot on missing/invalid vars. Future-phase vars (Gemini, Redis,
+ * Sentry) are intentionally optional here.
+ */
+const schema = z
+  .object({
+    DATABASE_URL: z.string().url(),
+    TELEGRAM_BOT_TOKEN: z.string().min(1, "TELEGRAM_BOT_TOKEN is required"),
+    BOT_MODE: z.enum(["polling", "webhook"]).default("polling"),
+    WEBHOOK_URL: z.string().url().optional(),
+    PORT: z.coerce.number().int().positive().default(8080),
+    NODE_ENV: z
+      .enum(["development", "production", "test"])
+      .default("development"),
+    MINI_APP_URL: z.string().url().optional(),
+  })
+  .refine((e) => e.BOT_MODE !== "webhook" || !!e.WEBHOOK_URL, {
+    message: "WEBHOOK_URL is required when BOT_MODE=webhook",
+    path: ["WEBHOOK_URL"],
+  });
+
+export type Env = z.infer<typeof schema>;
+
+/** Parse and validate env. Throws a readable error on failure. */
+export function loadEnv(source: NodeJS.ProcessEnv = process.env): Env {
+  const result = schema.safeParse(source);
+  if (!result.success) {
+    const issues = result.error.issues
+      .map((i) => `  - ${i.path.join(".") || "(root)"}: ${i.message}`)
+      .join("\n");
+    throw new Error(`Invalid environment:\n${issues}`);
+  }
+  return result.data;
+}
