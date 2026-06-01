@@ -14,6 +14,7 @@ import type {
   SettlePlanResponse,
   SettlementDto,
   SuggestionsResponse,
+  MeSummaryDto,
 } from "@jemaw/shared/types";
 import { api, getGroupId } from "./api.js";
 
@@ -34,6 +35,25 @@ export function useBalances() {
   return useQuery({
     queryKey: ["balances"],
     queryFn: () => api.get<BalanceDto[]>(`/api/groups/${gid()}/balances`),
+  });
+}
+
+export function useMeSummary() {
+  return useQuery({
+    queryKey: ["me-summary"],
+    queryFn: () => api.get<MeSummaryDto>(`/api/groups/${gid()}/me/summary`),
+  });
+}
+
+export function useUpdateGroup() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (input: { defaultCurrency?: string }) =>
+      api.patch<GroupDto>(`/api/groups/${gid()}`, input),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["group"] });
+      qc.invalidateQueries({ queryKey: ["me-summary"] });
+    },
   });
 }
 
@@ -119,7 +139,7 @@ export function useMarkPaid() {
 }
 
 function invalidateLedger(qc: ReturnType<typeof useQueryClient>) {
-  for (const key of ["balances", "expenses", "history", "settle", "group", "suggestions"]) {
+  for (const key of ["balances", "expenses", "history", "settle", "group", "suggestions", "me-summary"]) {
     qc.invalidateQueries({ queryKey: [key] });
   }
 }

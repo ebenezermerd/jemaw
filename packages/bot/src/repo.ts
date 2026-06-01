@@ -63,6 +63,19 @@ export async function setPinnedMessageId(
     .where(eq(groups.id, groupId));
 }
 
+export async function updateGroupCurrency(
+  db: Db,
+  groupId: string,
+  defaultCurrency: string,
+): Promise<Group | null> {
+  const rows = await db
+    .update(groups)
+    .set({ defaultCurrency })
+    .where(eq(groups.id, groupId))
+    .returning();
+  return rows[0] ?? null;
+}
+
 // ─── Members ──────────────────────────────────────────────────────────
 export async function upsertMember(
   db: Db,

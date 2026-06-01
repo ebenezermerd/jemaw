@@ -81,6 +81,12 @@ body {
   font-variant-numeric: tabular-nums;
 }
 
+/* Skeleton shimmer (used app-wide). */
+@keyframes jemaw-shimmer {
+  from { background-position: 200% 0 }
+  to { background-position: -200% 0 }
+}
+
 /* Type scale (§12.3) */
 .t-display { font-size: 40px; line-height: 44px; font-weight: 600; letter-spacing: -0.02em; }
 .t-title { font-size: 28px; line-height: 32px; font-weight: 600; letter-spacing: -0.015em; }

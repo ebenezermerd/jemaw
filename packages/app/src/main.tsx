@@ -3,7 +3,7 @@ import { createRoot } from "react-dom/client";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { MotionConfig } from "framer-motion";
 import { App } from "./App.js";
-import { applyTheme } from "./telegram.js";
+import { applyTheme } from "./lib/theme.js";
 import "./styles/tokens.css";
 
 applyTheme();

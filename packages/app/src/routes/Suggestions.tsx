@@ -84,7 +84,6 @@ function Card({
   busy: boolean;
 }) {
   const reduced = useReducedMotion();
-  const strip = s.tier === "normal" ? "var(--accent-soft)" : "var(--warn-soft)";
 
   // Swipe-left to dismiss (§12.9): commit past 40% width or high velocity.
   function onDragEnd(_e: unknown, info: PanInfo) {
@@ -111,33 +110,44 @@ function Card({
         border: "1px solid var(--border)",
         borderRadius: "var(--r-lg)",
         padding: 16,
-        paddingLeft: 20,
         overflow: "hidden",
       }}
     >
-      <span style={{ position: "absolute", left: 0, top: 0, bottom: 0, width: 4, background: strip }} />
+      {/* confidence pill, top-right corner */}
+      <span style={{ position: "absolute", top: 12, right: 12 }}>
+        <Pill variant={s.tier === "normal" ? "accent" : "warn"}>
+          {s.tier === "normal" ? "AI" : "low"}
+        </Pill>
+      </span>
 
-      <div style={{ display: "flex", justifyContent: "space-between", gap: 12 }}>
+      <div style={{ display: "flex", flexDirection: "column", gap: 2, paddingRight: 56 }}>
         <span className="t-body-strong">{s.description}</span>
-        <Money value={s.amount} currency={currency} />
+        <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
+          <span className="t-heading">
+            <Money value={s.amount} currency={currency} />
+          </span>
+          <span className="t-caption" style={{ color: "var(--text-muted)" }}>
+            {payerName} paid · split {s.splitWith.length}{" "}
+            {s.splitWith.length === 1 ? "way" : "ways"}
+          </span>
+        </div>
       </div>
 
-      <div className="t-caption" style={{ color: "var(--text-muted)", marginTop: 4 }}>
-        {payerName} paid · split {s.splitWith.length}{" "}
-        {s.splitWith.length === 1 ? "way" : "ways"}
-        {s.tier === "low" && (
-          <>
-            {" · "}
-            <Pill variant="warn">low confidence</Pill>
-          </>
-        )}
-      </div>
-
-      <div className="t-caption" style={{ color: "var(--text-faint)", marginTop: 8, fontStyle: "italic" }}>
+      {/* evidence / reasoning as a quoted block */}
+      <div
+        className="t-caption"
+        style={{
+          color: "var(--text-muted)",
+          marginTop: 12,
+          paddingLeft: 10,
+          borderLeft: "2px solid var(--border-strong)",
+          fontStyle: "italic",
+        }}
+      >
         {s.reasoning}
       </div>
 
-      <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
+      <div style={{ display: "flex", gap: 8, marginTop: 14 }}>
         <Button variant="ghost" onClick={onDismiss} disabled={busy} style={{ flex: 1 }}>
           Dismiss
         </Button>
