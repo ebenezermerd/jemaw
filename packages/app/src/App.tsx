@@ -42,12 +42,13 @@ function HeaderBar() {
     if (isRoot) hideTelegramBack();
   }, [isRoot]);
   if (!isRoot) return null; // internal pages bring their own PageHeader
+  // Just the safe-area clearance (+ a small gap). No fixed-height block on top —
+  // that's what was over-spacing the main pages once the real inset arrived.
   return (
     <header
       style={{
-        height: 44,
-        paddingTop: "calc(12px + var(--jemaw-top-inset))",
-        boxSizing: "content-box",
+        height: "calc(8px + var(--jemaw-top-inset))",
+        flexShrink: 0,
       }}
     />
   );
@@ -71,27 +72,38 @@ function Shell() {
   );
 }
 
-/** Routes wrapped in pull-to-refresh; scans on Home/Suggestions. */
+/** Routes. Pull-to-refresh wraps only the root tab pages (where new data
+ *  appears); forms/details aren't refreshable. */
 function RefreshableMain() {
   const { pathname } = useLocation();
   const refresh = useRefresh();
+  const isRoot = ROOT_PATHS.has(pathname);
   const scanHere = pathname === "/" || pathname === "/suggestions";
+
+  const routes = (
+    <Routes>
+      <Route path="/" element={<Home />} />
+      <Route path="/suggestions" element={<Suggestions />} />
+      <Route path="/balances" element={<Balances />} />
+      <Route path="/settle" element={<Settle />} />
+      <Route path="/settle/new" element={<SettleForm />} />
+      <Route path="/history" element={<History />} />
+      <Route path="/add" element={<Add />} />
+      <Route path="/expense/:id" element={<ExpenseDetail />} />
+      <Route path="/settings" element={<Settings />} />
+      <Route path="*" element={<Navigate to="/" replace />} />
+    </Routes>
+  );
+
   return (
     <main style={{ flex: 1 }}>
-      <PullToRefresh onRefresh={() => refresh({ scan: scanHere })}>
-        <Routes>
-          <Route path="/" element={<Home />} />
-          <Route path="/suggestions" element={<Suggestions />} />
-          <Route path="/balances" element={<Balances />} />
-          <Route path="/settle" element={<Settle />} />
-          <Route path="/settle/new" element={<SettleForm />} />
-          <Route path="/history" element={<History />} />
-          <Route path="/add" element={<Add />} />
-          <Route path="/expense/:id" element={<ExpenseDetail />} />
-          <Route path="/settings" element={<Settings />} />
-          <Route path="*" element={<Navigate to="/" replace />} />
-        </Routes>
-      </PullToRefresh>
+      {isRoot ? (
+        <PullToRefresh onRefresh={() => refresh({ scan: scanHere })}>
+          {routes}
+        </PullToRefresh>
+      ) : (
+        routes
+      )}
     </main>
   );
 }
