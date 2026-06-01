@@ -16,6 +16,7 @@ import {
 } from "../lib/hooks.js";
 import { MemberAvatar } from "../ui/MemberAvatar.js";
 import { Button } from "../ui/primitives.js";
+import { PageHeader } from "../ui/PageHeader.js";
 import { PageLoader } from "../motion/Loader.js";
 import { Centered } from "./Balances.js";
 import { decimalToCents, centsToDecimal } from "@jemaw/shared/types";
@@ -134,11 +135,9 @@ export function SettleForm() {
   }
 
   return (
-    <div style={{ padding: 16, display: "grid", gap: 16 }}>
-      <h1 className="t-screen-title" style={{ margin: "8px 0 0" }}>
-        Settle up
-      </h1>
-
+    <div>
+      <PageHeader title="Settle up" fallback="/settle" />
+      <div style={{ padding: "0 16px 16px", display: "grid", gap: 16 }}>
       <Group>
         <Field label="Paid by" icon="◎">
           <MemberPicker members={members} value={from} onChange={setFrom} />
@@ -267,6 +266,7 @@ export function SettleForm() {
       <Button disabled={!valid || create.isPending} onClick={submit}>
         {create.isPending ? "Recording…" : "Record settlement"}
       </Button>
+      </div>
     </div>
   );
 }

@@ -7,6 +7,7 @@ import {
 } from "../lib/hooks.js";
 import { Button } from "../ui/primitives.js";
 import { MemberAvatar } from "../ui/MemberAvatar.js";
+import { PageHeader } from "../ui/PageHeader.js";
 import { PageLoader } from "../motion/Loader.js";
 import { Centered } from "./Balances.js";
 import { getThemePref, setThemePref, type ThemePref } from "../lib/theme.js";
@@ -31,11 +32,9 @@ export function Settings() {
   }
 
   return (
-    <div style={{ padding: 16, display: "grid", gap: 28 }}>
-      <h1 className="t-screen-title" style={{ margin: "8px 0 0" }}>
-        Settings
-      </h1>
-
+    <div>
+      <PageHeader title="Settings" fallback="/" />
+      <div style={{ padding: "0 16px 16px", display: "grid", gap: 28 }}>
       {/* Appearance */}
       <Section title="Appearance">
         <Row label="Theme">
@@ -128,6 +127,7 @@ export function Settings() {
           </Button>
         </div>
       </Section>
+      </div>
     </div>
   );
 }

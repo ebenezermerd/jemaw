@@ -4,7 +4,7 @@
  * cardholder is a name badge (no avatar). Reduced height + tighter type.
  */
 import { AnimatedNumber } from "../motion/AnimatedNumber.js";
-import { currencyAffix, formatMoney } from "../lib/money.js";
+import { currencyAffix, formatMoney, formatNumber } from "../lib/money.js";
 import type { MeSummaryDto } from "@jemaw/shared/types";
 
 export function SummaryCard({ s }: { s: MeSummaryDto }) {
@@ -12,7 +12,8 @@ export function SummaryCard({ s }: { s: MeSummaryDto }) {
   const standing =
     net > 0 ? "you're owed" : net < 0 ? "you owe" : "you're all square";
   const { symbol, suffix } = currencyAffix(s.currency);
-  const focal = net > 0 ? `+${s.net}` : s.net;
+  // Group thousands on the focal number (4,565.49) + keep the sign.
+  const focal = net > 0 ? `+${formatNumber(s.net)}` : formatNumber(s.net);
 
   return (
     <div

@@ -8,6 +8,13 @@ interface TelegramUser {
   photo_url?: string;
 }
 
+interface TelegramBackButton {
+  show: () => void;
+  hide: () => void;
+  onClick: (cb: () => void) => void;
+  offClick: (cb: () => void) => void;
+}
+
 interface TelegramWebApp {
   initData: string;
   initDataUnsafe?: { start_param?: string; user?: TelegramUser };
@@ -16,6 +23,7 @@ interface TelegramWebApp {
   expand?: () => void;
   requestFullscreen?: () => void;
   disableVerticalSwipes?: () => void;
+  BackButton?: TelegramBackButton;
 }
 
 declare global {
@@ -61,4 +69,21 @@ export function currentTelegramId(): string | null {
 /** The current viewer's Telegram photo URL, if Telegram provided one. */
 export function currentPhotoUrl(): string | undefined {
   return window.Telegram?.WebApp?.initDataUnsafe?.user?.photo_url;
+}
+
+/** Show/hide Telegram's native BackButton and bind its click. Returns a cleanup. */
+export function bindTelegramBack(handler: () => void): () => void {
+  const bb = window.Telegram?.WebApp?.BackButton;
+  if (!bb) return () => {};
+  bb.onClick(handler);
+  bb.show();
+  return () => {
+    bb.offClick(handler);
+    bb.hide();
+  };
+}
+
+/** Hide Telegram's BackButton (root pages). */
+export function hideTelegramBack(): void {
+  window.Telegram?.WebApp?.BackButton?.hide();
 }

@@ -5,7 +5,9 @@ import {
   Navigate,
   useLocation,
 } from "react-router-dom";
+import { useEffect } from "react";
 import { getGroupId } from "./lib/api.js";
+import { hideTelegramBack } from "./telegram.js";
 import { useRefresh, useGroup } from "./lib/hooks.js";
 import { TabBar } from "./ui/TabBar.js";
 import { PullToRefresh } from "./ui/PullToRefresh.js";
@@ -20,8 +22,26 @@ import { Suggestions } from "./routes/Suggestions.js";
 import { ExpenseDetail } from "./routes/ExpenseDetail.js";
 import { Settings } from "./routes/Settings.js";
 
-/** Empty top spacer bar. Settings now opens via long-press of the + button. */
+const ROOT_PATHS = new Set([
+  "/",
+  "/suggestions",
+  "/balances",
+  "/settle",
+  "/history",
+]);
+
+/**
+ * Empty top spacer on root tabs (settings via long-press of +). On root pages we
+ * also hide Telegram's BackButton so the OS back gesture minimizes the app as
+ * expected; internal pages render their own PageHeader which shows it.
+ */
 function HeaderBar() {
+  const { pathname } = useLocation();
+  const isRoot = ROOT_PATHS.has(pathname);
+  useEffect(() => {
+    if (isRoot) hideTelegramBack();
+  }, [isRoot]);
+  if (!isRoot) return null; // internal pages bring their own PageHeader
   return (
     <header
       style={{
