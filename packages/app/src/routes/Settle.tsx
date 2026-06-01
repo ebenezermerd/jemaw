@@ -7,6 +7,24 @@ import { SkeletonList } from "../motion/Skeleton.js";
 import { Centered } from "./Balances.js";
 import type { TransferDto } from "@jemaw/shared/types";
 
+const ellip: React.CSSProperties = {
+  overflow: "hidden",
+  textOverflow: "ellipsis",
+  whiteSpace: "nowrap",
+};
+
+/** Two small avatars overlapped into one compact pill (payer over payee). */
+function DuoAvatar({ from, to }: { from: string; to: string }) {
+  return (
+    <span style={{ display: "inline-flex", alignItems: "center", flexShrink: 0 }}>
+      <span style={{ marginRight: -8, zIndex: 1, borderRadius: "var(--r-full)", outline: "2px solid var(--surface)" }}>
+        <Avatar name={from} size={26} />
+      </span>
+      <Avatar name={to} size={26} />
+    </span>
+  );
+}
+
 export function Settle() {
   const group = useGroup();
   const plan = useSettlePlan();
@@ -43,7 +61,7 @@ export function Settle() {
 
   return (
     <div style={{ padding: 16 }}>
-      <h1 className="t-title" style={{ margin: "8px 0 4px" }}>
+      <h1 className="t-screen-title" style={{ margin: "8px 0 4px" }}>
         Settle up
       </h1>
       <p className="t-body" style={{ color: "var(--text-muted)", marginTop: 0 }}>
@@ -72,23 +90,31 @@ export function Settle() {
                 background: "var(--surface)",
               }}
             >
-              <Avatar name={nameOf(t.fromMemberId)} size={28} />
-              <span style={{ color: "var(--text-muted)" }}>→</span>
-              <Avatar name={nameOf(t.toMemberId)} size={28} />
+              {/* compact: overlapped avatars in a single pill */}
+              <DuoAvatar
+                from={nameOf(t.fromMemberId)}
+                to={nameOf(t.toMemberId)}
+              />
               <div style={{ flex: 1, minWidth: 0 }}>
-                <div className="t-body-strong">
-                  {nameOf(t.fromMemberId)} → {nameOf(t.toMemberId)}
+                <div className="t-label" style={ellip}>
+                  {nameOf(t.fromMemberId)}{" "}
+                  <span style={{ color: "var(--text-faint)" }}>→</span>{" "}
+                  {nameOf(t.toMemberId)}
                 </div>
-                <Money value={t.amount} currency={currency} animate />
+                <div className="t-body-strong">
+                  <Money value={t.amount} currency={currency} animate />
+                </div>
               </div>
               {mine ? (
-                <Button onClick={() => setConfirming(t)}>Mark as paid</Button>
+                <Button onClick={() => setConfirming(t)} style={{ flexShrink: 0 }}>
+                  Pay
+                </Button>
               ) : (
                 <span
                   className="t-caption"
-                  style={{ color: "var(--text-faint)", maxWidth: 96, textAlign: "right" }}
+                  style={{ color: "var(--text-faint)", maxWidth: 84, textAlign: "right", flexShrink: 0 }}
                 >
-                  only {nameOf(t.fromMemberId)} can mark this
+                  {nameOf(t.fromMemberId)} pays
                 </span>
               )}
             </div>

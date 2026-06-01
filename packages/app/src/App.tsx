@@ -3,15 +3,15 @@ import {
   Routes,
   Route,
   Navigate,
-  useNavigate,
   useLocation,
 } from "react-router-dom";
 import { getGroupId } from "./lib/api.js";
-import { useRefresh } from "./lib/hooks.js";
+import { useRefresh, useGroup } from "./lib/hooks.js";
 import { TabBar } from "./ui/TabBar.js";
 import { PullToRefresh } from "./ui/PullToRefresh.js";
+import { Splash } from "./ui/Splash.js";
 import { Home } from "./routes/Home.js";
-import { Balances, Centered } from "./routes/Balances.js";
+import { Balances } from "./routes/Balances.js";
 import { History } from "./routes/History.js";
 import { Add } from "./routes/Add.js";
 import { Settle } from "./routes/Settle.js";
@@ -19,41 +19,16 @@ import { Suggestions } from "./routes/Suggestions.js";
 import { ExpenseDetail } from "./routes/ExpenseDetail.js";
 import { Settings } from "./routes/Settings.js";
 
-/** Empty top bar (no name/count) holding only the settings gear, right-aligned. */
+/** Empty top spacer bar. Settings now opens via long-press of the + button. */
 function HeaderBar() {
-  const nav = useNavigate();
-  const { pathname } = useLocation();
   return (
     <header
       style={{
-        display: "flex",
-        justifyContent: "flex-end",
-        alignItems: "center",
         height: 56,
-        padding: "12px 16px",
         paddingTop: "calc(12px + env(safe-area-inset-top))",
         boxSizing: "content-box",
       }}
-    >
-      {pathname !== "/settings" && (
-        <button
-          aria-label="Settings"
-          onClick={() => nav("/settings")}
-          style={{
-            width: 38,
-            height: 38,
-            borderRadius: "var(--r-full)",
-            border: "none",
-            background: "transparent",
-            color: "var(--text-muted)",
-            cursor: "pointer",
-            fontSize: 18,
-          }}
-        >
-          ⚙
-        </button>
-      )}
-    </header>
+    />
   );
 }
 
@@ -103,14 +78,24 @@ export function App() {
   // Without a group context, the Mini App can't scope any data.
   if (!getGroupId()) {
     return (
-      <Centered>
-        Open Jemaw from your group's pinned message.
-      </Centered>
+      <Splash
+        subtitle="open from your group"
+        hint="Tap the pinned “Open Jemaw” button in your group chat to get started."
+      />
     );
   }
   return (
     <BrowserRouter>
-      <Shell />
+      <Booting>
+        <Shell />
+      </Booting>
     </BrowserRouter>
   );
+}
+
+/** Show the splash until the group context has loaded once. */
+function Booting({ children }: { children: React.ReactNode }) {
+  const group = useGroup();
+  if (group.isLoading && !group.data) return <Splash />;
+  return <>{children}</>;
 }

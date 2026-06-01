@@ -95,7 +95,7 @@ export function History() {
                     </div>
                     {/* amount on its own line, right-aligned — never clipped */}
                     <div
-                      className="t-heading"
+                      className="t-body-strong"
                       style={{ textAlign: "right", marginTop: 8 }}
                     >
                       <Money value={item.expense.amount} currency={currency} />
@@ -123,7 +123,7 @@ export function History() {
                       <span className="t-caption" style={{ color: "var(--accent)" }}>
                         settled
                       </span>
-                      <span className="t-heading">
+                      <span className="t-body-strong">
                         <Money value={item.settlement.amount} currency={currency} />
                       </span>
                     </div>

@@ -7,6 +7,7 @@ import {
 } from "../lib/hooks.js";
 import { Button } from "../ui/primitives.js";
 import { MemberAvatar } from "../ui/MemberAvatar.js";
+import { PageLoader } from "../motion/Loader.js";
 import { Centered } from "./Balances.js";
 import { getThemePref, setThemePref, type ThemePref } from "../lib/theme.js";
 
@@ -20,7 +21,7 @@ export function Settings() {
   const [newName, setNewName] = useState("");
   const [theme, setTheme] = useState<ThemePref>(getThemePref());
 
-  if (group.isLoading) return <Centered>Loading…</Centered>;
+  if (group.isLoading) return <PageLoader />;
   const g = group.data;
   if (!g) return <Centered>Couldn't load settings.</Centered>;
 
