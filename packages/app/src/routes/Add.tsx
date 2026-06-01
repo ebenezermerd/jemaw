@@ -48,7 +48,7 @@ export function Add() {
   useEffect(() => {
     if (!source) return;
     setDescription(source.description);
-    setAmount(source.amount);
+    setAmount(source.amount ?? "");
     if (source.payerMemberId) setPayer(source.payerMemberId);
     setSplitType(source.splitType);
     setSplitWith(new Set(source.splitWith));
@@ -140,13 +140,32 @@ export function Add() {
         </Field>
 
         <Field label="When" icon="◷">
-          <input
-            type="date"
-            value={date}
-            max={todayISO()}
-            onChange={(e) => setDate(e.target.value)}
-            style={inputStyle}
-          />
+          {/* Friendly label ("May 22 2026") over a transparent native picker. */}
+          <div style={{ position: "relative" }}>
+            <div
+              style={{
+                ...inputStyle,
+                display: "flex",
+                alignItems: "center",
+                pointerEvents: "none",
+              }}
+            >
+              {formatFriendlyDate(date)}
+            </div>
+            <input
+              type="date"
+              value={date}
+              max={todayISO()}
+              onChange={(e) => setDate(e.target.value)}
+              style={{
+                ...inputStyle,
+                position: "absolute",
+                inset: 0,
+                opacity: 0,
+                cursor: "pointer",
+              }}
+            />
+          </div>
         </Field>
       </Group>
 
@@ -468,4 +487,16 @@ function todayISO(): string {
 /** A YYYY-MM-DD date string → ISO at local noon (avoids TZ day-shift). */
 function dateToISO(ymd: string): string {
   return new Date(`${ymd}T12:00:00`).toISOString();
+}
+
+const MONTHS = [
+  "Jan", "Feb", "Mar", "Apr", "May", "Jun",
+  "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
+];
+
+/** "2026-05-22" → "May 22 2026". */
+function formatFriendlyDate(ymd: string): string {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(ymd);
+  if (!m) return ymd;
+  return `${MONTHS[Number(m[2]) - 1]} ${Number(m[3])} ${m[1]}`;
 }

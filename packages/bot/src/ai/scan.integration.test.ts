@@ -158,6 +158,36 @@ d("scanGroup (mocked Gemini)", () => {
     expect(res.written).toBe(0);
   });
 
+  it("detects a settlement mention as a settlement suggestion", async () => {
+    await db.update(groups).set({ lastScanMessageId: null }).where(eq(groups.id, group.id));
+    await db.delete(suggestions).where(eq(suggestions.groupId, group.id));
+    const g = (await getGroupById(db, group.id))!;
+    const res = await scanGroup(
+      { db, gemini: mockGemini({
+        suggestions: [],
+        settlements: [
+          {
+            confidence: 0.9,
+            from_telegram_id: tomTg,
+            to_telegram_id: saraTg,
+            amount: 25,
+            currency: "EUR",
+            evidence_message_ids: [1001],
+            reasoning: "Tom paid Sara back 25 for the cab",
+          },
+        ],
+        scan_window: { from_message_id: 1001, to_message_id: 1002 },
+      }), now },
+      g,
+      null,
+      "keyword",
+    );
+    expect(res.written).toBe(1);
+    const rows = await db.select().from(suggestions).where(eq(suggestions.groupId, group.id));
+    expect(rows[0]!.kind).toBe("settlement");
+    expect(rows[0]!.amount).toBe("25.00");
+  });
+
   it("returns no_messages only when the group has no messages at all", async () => {
     // The pointer no longer gates the window; emptiness does. Temporarily clear.
     await db.delete(messages).where(eq(messages.groupId, group.id));

@@ -623,7 +623,7 @@ export async function registerApi(
     },
   );
 
-  // POST confirm a suggestion → create an expense from it.
+  // POST confirm a suggestion → create an expense (or record a settlement).
   app.post(
     "/api/groups/:groupId/suggestions/:suggestionId/confirm",
     { preHandler: auth },
@@ -635,8 +635,52 @@ export async function registerApi(
       if (s.status !== "pending") {
         return reply.code(409).send({ error: "already resolved" });
       }
+
+      // ── settlement suggestion → record a settlement, clamped to the debt ──
+      if (s.kind === "settlement") {
+        if (!s.fromMemberId || !s.toMemberId) {
+          return reply.code(400).send({ error: "settlement is missing parties" });
+        }
+        const body = (req.body ?? {}) as { amount?: string };
+        const statedDecimal = body.amount ?? s.amount;
+        if (!statedDecimal) {
+          return reply
+            .code(400)
+            .send({ error: "amount required for this settlement; edit it" });
+        }
+        const statedCents = decimalToCents(statedDecimal);
+
+        // Clamp to the current debt from→to (same as manual mark-as-paid).
+        const { nets } = await loadBalances(db, group.id);
+        const plan = computeSettlement(nets);
+        const transfer = plan.find(
+          (t) => t.fromMemberId === s.fromMemberId && t.toMemberId === s.toMemberId,
+        );
+        if (!transfer) {
+          return reply.code(409).send({
+            error: "no current debt between these members",
+          });
+        }
+        const amountCents = Math.min(statedCents, transfer.amountCents);
+        const created = await createSettlement(db, {
+          groupId: group.id,
+          fromMemberId: s.fromMemberId,
+          toMemberId: s.toMemberId,
+          amount: centsToDecimal(amountCents),
+          currency: group.defaultCurrency,
+          markedPaidAt: new Date(),
+          markedPaidByMemberId: member.id,
+        });
+        await resolveSuggestion(db, s.id, "confirmed", member.id, new Date());
+        return reply.code(201).send(toSettlementDto(created));
+      }
+
+      // ── expense suggestion → create an expense ──
       if (!s.payerMemberId) {
         return reply.code(400).send({ error: "suggestion has no payer; edit it" });
+      }
+      if (!s.amount) {
+        return reply.code(400).send({ error: "suggestion has no amount; edit it" });
       }
 
       const splitWith = (s.splitWith as string[]) ?? [];

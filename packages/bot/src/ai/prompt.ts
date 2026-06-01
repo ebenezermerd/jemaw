@@ -31,14 +31,20 @@ export interface ScanData {
 }
 
 export const SYSTEM_PROMPT = [
-  "You are Jemaw, an assistant that extracts expense events from a Telegram",
-  "group chat. Members share meals, rides, tickets, and small purchases. From",
-  "the messages provided, identify only the expenses that clearly happened, who",
-  "paid, and who shares the cost. You must never invent amounts not present in",
-  "the messages. Cite the message ids that justify each suggestion. If a message",
-  "mentions money but is hypothetical, joking, or not a group expense, ignore",
-  "it. If the split is unclear, default to equal among all members present in",
-  "the conversation. If you are unsure who paid, set payer_telegram_id to null.",
+  "You are Jemaw, an assistant that reads a Telegram group chat and extracts two",
+  "kinds of money events:",
+  "(1) EXPENSES — a shared cost someone incurred (a meal, ride, ticket, purchase)",
+  "that should be split. Put these in `suggestions`.",
+  "(2) SETTLEMENTS — one member paying ANOTHER member back (squaring up a debt),",
+  "e.g. 'I paid Sara back 200 for the cab', 'sent you the 50 I owed', 'we settled",
+  "dinner'. Put these in `settlements` with from_telegram_id (who paid) and",
+  "to_telegram_id (who received).",
+  "Rules: never invent amounts not present in the messages — if a settlement's",
+  "amount isn't stated, set amount to null. Cite evidence_message_ids for every",
+  "item. Ignore hypothetical, joking, or non-group money talk. For expenses, if",
+  "the split is unclear default to equal among members present; if unsure who",
+  "paid set payer_telegram_id null. Distinguish carefully: 'I paid 300 for",
+  "breakfast' is an EXPENSE; 'I paid you back 300' is a SETTLEMENT.",
   "Output strict JSON matching the schema. No prose outside the JSON.",
 ].join(" ");
 
@@ -78,10 +84,13 @@ export function buildUserPrompt(input: ScanData): string {
     "Conversation (most recent last):",
     messages,
     "",
-    "Return JSON: { suggestions: [...], scan_window: { from_message_id, to_message_id } }.",
-    "Each suggestion: { confidence (0-1), description, amount (number), currency,",
-    "payer_telegram_id (number|null), split_type ('equal'|'shares'|'exact'),",
+    "Return JSON: { suggestions: [...], settlements: [...], scan_window: { from_message_id, to_message_id } }.",
+    "Each EXPENSE suggestion: { confidence (0-1), description, amount (number),",
+    "currency, payer_telegram_id (number|null), split_type ('equal'|'shares'|'exact'),",
     "split_with (array of member telegram ids), shares (object id->count|null),",
     "evidence_message_ids (array of message ids), reasoning (<=200 chars) }.",
+    "Each SETTLEMENT: { confidence (0-1), from_telegram_id (number, who paid),",
+    "to_telegram_id (number, who received), amount (number|null if unstated),",
+    "currency, evidence_message_ids (array), reasoning (<=200 chars) }.",
   ].join("\n");
 }

@@ -39,6 +39,11 @@ export const suggestionStatus = pgEnum("suggestion_status", [
   "dismissed",
 ]);
 
+export const suggestionKind = pgEnum("suggestion_kind", [
+  "expense",
+  "settlement",
+]);
+
 export const aiTriggerType = pgEnum("ai_trigger_type", [
   "keyword",
   "command",
@@ -118,10 +123,15 @@ export const suggestions = pgTable("suggestions", {
   aiRunId: uuid("ai_run_id")
     .notNull()
     .references(() => aiRuns.id),
+  kind: suggestionKind("kind").notNull().default("expense"),
   confidence: numeric("confidence", { precision: 3, scale: 2 }).notNull(),
   description: text("description").notNull(),
-  amount: numeric("amount", { precision: 12, scale: 2 }).notNull(),
+  // Nullable: a vague settlement mention may not state an amount until edited.
+  amount: numeric("amount", { precision: 12, scale: 2 }),
   payerMemberId: uuid("payer_member_id").references(() => members.id),
+  // Settlement parties (kind = 'settlement').
+  fromMemberId: uuid("from_member_id").references(() => members.id),
+  toMemberId: uuid("to_member_id").references(() => members.id),
   splitType: splitType("split_type").notNull(),
   splitWith: jsonb("split_with").notNull(), // array of member ids
   shares: jsonb("shares"),
