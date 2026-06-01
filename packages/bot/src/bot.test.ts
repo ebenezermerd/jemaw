@@ -22,6 +22,8 @@ describe("createBot", () => {
       db: {} as never,
       defaultCurrency: "EUR",
       miniAppUrl: undefined,
+      botUsername: undefined,
+      miniAppShortName: undefined,
     });
     expect(bot).toBeDefined();
     expect(bot.token).toBe("123:abc");

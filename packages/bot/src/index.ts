@@ -25,6 +25,8 @@ async function main(): Promise<void> {
     db,
     defaultCurrency,
     miniAppUrl: env.MINI_APP_URL,
+    botUsername: env.BOT_USERNAME,
+    miniAppShortName: env.MINI_APP_SHORT_NAME,
     gemini,
   });
 
