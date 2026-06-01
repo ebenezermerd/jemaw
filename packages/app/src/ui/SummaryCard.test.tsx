@@ -14,11 +14,12 @@ const base: MeSummaryDto = {
 };
 
 describe("SummaryCard", () => {
-  it("renders the standing and cardholder", () => {
+  it("renders the standing, cardholder and stats", () => {
     const { container } = render(<SummaryCard s={base} />);
     expect(container.textContent).toContain("you're owed");
     expect(container.textContent).toContain("Sara");
-    expect(container.textContent).toContain("JEMAW");
+    expect(container.textContent).toContain("Paid");
+    expect(container.textContent).toContain("Expenses");
   });
 
   it("shows 'you owe' for a negative net", () => {
