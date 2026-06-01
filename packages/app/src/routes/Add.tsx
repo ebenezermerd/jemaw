@@ -8,7 +8,8 @@ import {
 } from "../lib/hooks.js";
 import type { SplitType, CreateExpenseInput } from "@jemaw/shared/types";
 import { decimalToCents, centsToDecimal } from "@jemaw/shared/types";
-import { Button, Avatar } from "../ui/primitives.js";
+import { Button } from "../ui/primitives.js";
+import { MemberAvatar } from "../ui/MemberAvatar.js";
 import { Centered } from "./Balances.js";
 
 export function Add() {
@@ -106,55 +107,59 @@ export function Add() {
   }
 
   return (
-    <div style={{ padding: 16, display: "grid", gap: 20 }}>
-      <h1 className="t-title" style={{ margin: "8px 0 0" }}>
+    <div style={{ padding: 16, display: "grid", gap: 16 }}>
+      <h1 className="t-screen-title" style={{ margin: "8px 0 0" }}>
         {fromSuggestionId ? "Edit suggestion" : "Add expense"}
       </h1>
 
-      <Field label="Description">
-        <input
-          value={description}
-          onChange={(e) => setDescription(e.target.value)}
-          placeholder="Dinner at Trattoria"
-          style={inputStyle}
-        />
-      </Field>
+      <Group>
+        <Field label="Description">
+          <input
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
+            placeholder="Dinner at Trattoria"
+            style={inputStyle}
+          />
+        </Field>
 
-      <Field label="Amount">
-        <input
-          value={amount}
-          onChange={(e) => setAmount(e.target.value.replace(/[^\d.]/g, ""))}
-          inputMode="decimal"
-          placeholder="0.00"
-          className="tnum t-display"
-          style={{ ...inputStyle, fontVariantNumeric: "tabular-nums" }}
-        />
-      </Field>
+        <Field label="Amount">
+          <input
+            value={amount}
+            onChange={(e) => setAmount(e.target.value.replace(/[^\d.]/g, ""))}
+            inputMode="decimal"
+            placeholder="0.00"
+            className="tnum"
+            style={{ ...inputStyle, fontSize: 28, height: 56, fontVariantNumeric: "tabular-nums" }}
+          />
+        </Field>
 
-      <Field label="When">
-        <input
-          type="date"
-          value={date}
-          max={todayISO()}
-          onChange={(e) => setDate(e.target.value)}
-          style={inputStyle}
-        />
-      </Field>
+        <Field label="When">
+          <input
+            type="date"
+            value={date}
+            max={todayISO()}
+            onChange={(e) => setDate(e.target.value)}
+            style={inputStyle}
+          />
+        </Field>
+      </Group>
 
-      <Field label="Paid by">
-        <ChipRow>
-          {members.map((m) => (
-            <Chip
-              key={m.id}
-              active={payer === m.id}
-              onClick={() => setPayer(m.id)}
-              name={m.displayName}
-            />
-          ))}
-        </ChipRow>
-      </Field>
+      <Group>
+        <Field label="Paid by">
+          <ChipRow>
+            {members.map((m) => (
+              <Chip
+                key={m.id}
+                active={payer === m.id}
+                onClick={() => setPayer(m.id)}
+                name={m.displayName}
+                telegramUserId={m.telegramUserId}
+              />
+            ))}
+          </ChipRow>
+        </Field>
 
-      <Field label="Split">
+        <Field label="Split">
         <Segmented
           value={splitType}
           onChange={setSplitType}
@@ -194,7 +199,11 @@ export function Add() {
                     cursor: "pointer",
                   }}
                 >
-                  <Avatar name={m.displayName} size={28} />
+                  <MemberAvatar
+                    name={m.displayName}
+                    telegramUserId={m.telegramUserId}
+                    size={28}
+                  />
                   <span className="t-body-strong">{m.displayName}</span>
                 </button>
 
@@ -237,7 +246,8 @@ export function Add() {
               : `Remainder: ${centsToDecimal(exactRemainder)}`}
           </p>
         )}
-      </Field>
+        </Field>
+      </Group>
 
       <Button
         disabled={!valid || create.isPending || editSuggestion.isPending}
@@ -260,6 +270,23 @@ const inputStyle: React.CSSProperties = {
   fontSize: 16,
   fontFamily: "inherit",
 };
+
+function Group({ children }: { children: React.ReactNode }) {
+  return (
+    <div
+      style={{
+        background: "var(--surface)",
+        border: "1px solid var(--border)",
+        borderRadius: "var(--r-lg)",
+        padding: 16,
+        display: "grid",
+        gap: 18,
+      }}
+    >
+      {children}
+    </div>
+  );
+}
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
@@ -284,10 +311,12 @@ function Chip({
   active,
   onClick,
   name,
+  telegramUserId,
 }: {
   active: boolean;
   onClick: () => void;
   name: string;
+  telegramUserId?: string;
 }) {
   return (
     <button
@@ -306,7 +335,7 @@ function Chip({
         cursor: "pointer",
       }}
     >
-      <Avatar name={name} size={24} />
+      <MemberAvatar name={name} telegramUserId={telegramUserId} size={24} />
       <span className="t-label">{name}</span>
     </button>
   );

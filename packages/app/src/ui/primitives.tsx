@@ -6,6 +6,7 @@
  */
 import type { ButtonHTMLAttributes, ReactNode } from "react";
 import { AnimatedNumber } from "../motion/AnimatedNumber.js";
+import { currencyAffix, formatMoney } from "../lib/money.js";
 
 // ─── Button ───────────────────────────────────────────────────────────
 type ButtonVariant = "primary" | "ghost" | "danger";
@@ -97,8 +98,34 @@ export function Card({
 }
 
 // ─── Avatar ───────────────────────────────────────────────────────────
-export function Avatar({ name, size = 32 }: { name: string; size?: number }) {
+export function Avatar({
+  name,
+  size = 32,
+  photoUrl,
+}: {
+  name: string;
+  size?: number;
+  /** Telegram photo (only available for the current viewer); else initial. */
+  photoUrl?: string;
+}) {
   const initial = (name.trim()[0] ?? "?").toUpperCase();
+  if (photoUrl) {
+    return (
+      <img
+        src={photoUrl}
+        alt={name}
+        width={size}
+        height={size}
+        style={{
+          width: size,
+          height: size,
+          borderRadius: "var(--r-full)",
+          objectFit: "cover",
+          flexShrink: 0,
+        }}
+      />
+    );
+  }
   return (
     <span
       aria-hidden
@@ -174,25 +201,21 @@ export function Money({
         ? "var(--warn)"
         : "var(--text-muted)";
   const display = signed && n > 0 ? `+${value}` : value;
+  const { symbol, suffix } = currencyAffix(currency);
 
   if (animate) {
     return (
       <AnimatedNumber
         value={display}
-        prefix={symbolFor(currency)}
+        prefix={suffix ? "" : symbol}
+        suffix={suffix ? symbol : ""}
         color={color}
       />
     );
   }
   return (
     <span className="tnum" style={{ color, fontWeight: 500 }}>
-      {symbolFor(currency)}
-      {display}
+      {formatMoney(display, currency)}
     </span>
   );
-}
-
-function symbolFor(currency: string): string {
-  const map: Record<string, string> = { EUR: "€", USD: "$", GBP: "£" };
-  return map[currency] ?? `${currency} `;
 }

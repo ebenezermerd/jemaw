@@ -90,6 +90,7 @@ body {
 /* Type scale (§12.3) */
 .t-display { font-size: 40px; line-height: 44px; font-weight: 600; letter-spacing: -0.02em; }
 .t-title { font-size: 28px; line-height: 32px; font-weight: 600; letter-spacing: -0.015em; }
+.t-screen-title { font-size: 22px; line-height: 28px; font-weight: 600; letter-spacing: -0.015em; }
 .t-heading { font-size: 20px; line-height: 26px; font-weight: 600; letter-spacing: -0.01em; }
 .t-body { font-size: 16px; line-height: 22px; font-weight: 400; }
 .t-body-strong { font-size: 16px; line-height: 22px; font-weight: 500; }
@@ -99,6 +100,36 @@ body {
 :focus-visible {
   outline: 2px solid var(--focus-ring);
   outline-offset: 2px;
+}
+
+/* Native date input: tidy the picker indicator + align to our padding. */
+input[type="date"] {
+  appearance: none;
+  -webkit-appearance: none;
+  position: relative;
+}
+input[type="date"]::-webkit-calendar-picker-indicator {
+  position: absolute;
+  right: 12px;
+  width: 20px;
+  height: 20px;
+  cursor: pointer;
+  opacity: 0.6;
+  filter: invert(var(--icon-invert, 1));
+}
+:root { --icon-invert: 1; }            /* dark: invert the dark glyph to light */
+:root[data-theme="light"] { --icon-invert: 0; }
+
+/* Native select: align caret, remove default chrome. */
+select {
+  appearance: none;
+  -webkit-appearance: none;
+  background-image: linear-gradient(45deg, transparent 50%, var(--text-muted) 50%),
+    linear-gradient(135deg, var(--text-muted) 50%, transparent 50%);
+  background-position: calc(100% - 16px) center, calc(100% - 11px) center;
+  background-size: 5px 5px, 5px 5px;
+  background-repeat: no-repeat;
+  padding-right: 28px;
 }
 
 /* §12.8 #5 — reduced motion collapses durations, kills springs. */

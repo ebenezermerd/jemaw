@@ -1,59 +1,52 @@
 /**
- * Personal summary card for Home — a credit-card-style surface showing the
- * member's net standing as the focal number, with paid/share/count stats.
- * On-brand (Jemaw green) gradient; no fake card number.
+ * Personal summary card for Home — a refined credit-card surface. Focal: the
+ * member's net standing. Stats (paid/share/items) live on the Balances screen,
+ * not here, to keep the card clean and premium.
  */
 import { AnimatedNumber } from "../motion/AnimatedNumber.js";
+import { currencyAffix } from "../lib/money.js";
+import { currentPhotoUrl } from "../telegram.js";
 import type { MeSummaryDto } from "@jemaw/shared/types";
-
-function symbolFor(currency: string): string {
-  const map: Record<string, string> = {
-    EUR: "€",
-    USD: "$",
-    GBP: "£",
-    JPY: "¥",
-    ETB: "Br ",
-  };
-  return map[currency] ?? `${currency} `;
-}
 
 export function SummaryCard({ s }: { s: MeSummaryDto }) {
   const net = Number(s.net);
   const standing =
-    net > 0 ? "you're owed" : net < 0 ? "you owe" : "you're even";
-  const sym = symbolFor(s.currency);
+    net > 0 ? "you're owed" : net < 0 ? "you owe" : "you're all square";
+  const { symbol, suffix } = currencyAffix(s.currency);
   const focal = net > 0 ? `+${s.net}` : s.net;
+  const photo = currentPhotoUrl();
 
   return (
     <div
       style={{
         position: "relative",
         borderRadius: "var(--r-xl)",
-        padding: 20,
-        minHeight: 184,
+        padding: 22,
+        minHeight: 196,
         overflow: "hidden",
-        color: "#F5F5F4",
+        color: "#F7F7F5",
         background:
-          "linear-gradient(135deg, color-mix(in srgb, var(--accent) 92%, #000) 0%, color-mix(in srgb, var(--accent) 42%, var(--surface)) 48%, var(--surface) 100%)",
+          "linear-gradient(135deg, color-mix(in srgb, var(--accent) 88%, #000) 0%, color-mix(in srgb, var(--accent) 38%, #0B0B0C) 52%, #101012 100%)",
         border: "1px solid var(--border-strong)",
         display: "flex",
         flexDirection: "column",
         justifyContent: "space-between",
+        boxShadow: "0 12px 32px rgba(0,0,0,0.28)",
       }}
     >
-      {/* soft scrim for focal-number legibility on the lighter end */}
+      {/* legibility scrim + subtle sheen */}
       <div
         aria-hidden
         style={{
           position: "absolute",
           inset: 0,
           background:
-            "radial-gradient(120% 80% at 0% 0%, rgba(0,0,0,0.28) 0%, transparent 60%)",
+            "radial-gradient(130% 90% at 100% 0%, rgba(255,255,255,0.10) 0%, transparent 45%), radial-gradient(120% 80% at 0% 100%, rgba(0,0,0,0.32) 0%, transparent 55%)",
           pointerEvents: "none",
         }}
       />
 
-      {/* top row: issuer + chip */}
+      {/* top: issuer + chip */}
       <div
         style={{
           position: "relative",
@@ -62,9 +55,17 @@ export function SummaryCard({ s }: { s: MeSummaryDto }) {
           alignItems: "flex-start",
         }}
       >
-        <span className="t-label" style={{ opacity: 0.85 }}>
-          Jemaw
-        </span>
+        <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+          <span
+            className="t-label"
+            style={{ letterSpacing: "0.12em", opacity: 0.9 }}
+          >
+            JEMAW
+          </span>
+          <span className="t-caption" style={{ opacity: 0.7 }}>
+            group balance
+          </span>
+        </div>
         <Chip />
       </div>
 
@@ -72,36 +73,58 @@ export function SummaryCard({ s }: { s: MeSummaryDto }) {
       <div style={{ position: "relative" }}>
         <div
           className="t-caption"
-          style={{ opacity: 0.8, marginBottom: 2, letterSpacing: "0.04em", textTransform: "uppercase" }}
+          style={{
+            opacity: 0.82,
+            marginBottom: 2,
+            letterSpacing: "0.06em",
+            textTransform: "uppercase",
+          }}
         >
           {standing}
         </div>
         <div className="t-display" style={{ lineHeight: 1 }}>
-          <AnimatedNumber value={focal} prefix={sym} />
+          <AnimatedNumber
+            value={focal}
+            prefix={suffix ? "" : symbol}
+            suffix={suffix ? symbol : ""}
+          />
         </div>
       </div>
 
-      {/* bottom: cardholder + stats */}
+      {/* bottom: cardholder (with photo if available) */}
       <div
         style={{
           position: "relative",
           display: "flex",
-          justifyContent: "space-between",
-          alignItems: "flex-end",
-          gap: 12,
+          alignItems: "center",
+          gap: 10,
         }}
       >
+        {photo ? (
+          <img
+            src={photo}
+            alt=""
+            width={28}
+            height={28}
+            style={{
+              width: 28,
+              height: 28,
+              borderRadius: "var(--r-full)",
+              objectFit: "cover",
+              border: "1px solid rgba(255,255,255,0.4)",
+            }}
+          />
+        ) : null}
         <span
           className="t-label"
-          style={{ textTransform: "uppercase", letterSpacing: "0.08em", opacity: 0.92 }}
+          style={{
+            textTransform: "uppercase",
+            letterSpacing: "0.1em",
+            opacity: 0.95,
+          }}
         >
           {s.displayName}
         </span>
-        <div style={{ display: "flex", gap: 16 }}>
-          <Stat label="Paid" value={`${sym}${s.totalPaid}`} />
-          <Stat label="Share" value={`${sym}${s.totalShare}`} />
-          <Stat label="Items" value={String(s.expenseCount)} />
-        </div>
       </div>
     </div>
   );
@@ -112,35 +135,32 @@ function Chip() {
     <div
       aria-hidden
       style={{
-        width: 34,
-        height: 26,
-        borderRadius: 5,
-        background: "linear-gradient(135deg, #E8D27A, #C9A227)",
+        width: 36,
+        height: 27,
+        borderRadius: 6,
+        background: "linear-gradient(135deg, #EBD98C, #C9A227)",
         position: "relative",
-        opacity: 0.95,
+        boxShadow: "inset 0 1px 1px rgba(255,255,255,0.4)",
       }}
     >
       <div
         style={{
           position: "absolute",
-          inset: "6px 8px",
+          inset: "6px 9px",
           borderRadius: 2,
-          border: "1px solid rgba(0,0,0,0.25)",
+          border: "1px solid rgba(0,0,0,0.28)",
         }}
       />
-    </div>
-  );
-}
-
-function Stat({ label, value }: { label: string; value: string }) {
-  return (
-    <div style={{ textAlign: "right" }}>
-      <div className="tnum t-label" style={{ fontVariantNumeric: "tabular-nums" }}>
-        {value}
-      </div>
-      <div className="t-caption" style={{ opacity: 0.75 }}>
-        {label}
-      </div>
+      <div
+        style={{
+          position: "absolute",
+          left: 9,
+          right: 9,
+          top: "50%",
+          height: 1,
+          background: "rgba(0,0,0,0.28)",
+        }}
+      />
     </div>
   );
 }
