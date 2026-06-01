@@ -157,6 +157,8 @@ export interface ApiDeps {
   db: Db;
   botToken: string;
   now: () => number;
+  /** Present when GEMINI_API_KEY is set — enables the manual re-scan endpoint. */
+  gemini?: import("../ai/geminiClient.js").GeminiClient;
 }
 
 export async function registerApi(
@@ -598,6 +600,26 @@ export async function registerApi(
         scanning: false,
       };
       return res;
+    },
+  );
+
+  // POST manual re-scan: run a Gemini scan on demand (the app's "Re-scan").
+  app.post(
+    "/api/groups/:groupId/scan",
+    { preHandler: auth },
+    async (req, reply) => {
+      const { group, member } = req.jemaw!;
+      if (!deps.gemini) {
+        return reply.code(503).send({ error: "AI scanning is not configured" });
+      }
+      const { scanGroup } = await import("../ai/scan.js");
+      const result = await scanGroup(
+        { db, gemini: deps.gemini, now: () => Date.now() },
+        group,
+        member.id,
+        "manual",
+      );
+      return reply.send(result);
     },
   );
 

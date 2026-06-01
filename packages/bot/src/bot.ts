@@ -91,7 +91,8 @@ export function createBot(token: string, deps: BotDeps): Bot {
 
   /**
    * Kick a Gemini scan if allowed (key present + not rate-limited). Fire and
-   * forget: errors are recorded in ai_runs, never thrown to the handler.
+   * forget: errors are recorded in ai_runs, never thrown to the handler. Logs
+   * every branch so a silent skip/failure is visible in Cloud Run logs.
    */
   function maybeScan(
     api: Context["api"],
@@ -99,14 +100,34 @@ export function createBot(token: string, deps: BotDeps): Bot {
     triggeredByMemberId: string | null,
     triggerType: "keyword" | "command",
   ): void {
-    if (!gemini) return;
-    if (!rateLimiter.tryAcquire(group.id)) return;
+    if (!gemini) {
+      console.log(`[scan] skipped: GEMINI_API_KEY not configured`);
+      return;
+    }
+    if (!rateLimiter.tryAcquire(group.id)) {
+      console.log(`[scan] rate-limited for group ${group.id}`);
+      return;
+    }
+    console.log(`[scan] triggered (${triggerType}) for group ${group.id}`);
     void (async () => {
       const g = await getGroupById(db, group.id);
-      if (!g) return;
-      await scanGroup({ db, gemini, now: () => Date.now() }, g, triggeredByMemberId, triggerType);
+      if (!g) {
+        console.log(`[scan] group ${group.id} not found`);
+        return;
+      }
+      const res = await scanGroup(
+        { db, gemini: gemini!, now: () => Date.now() },
+        g,
+        triggeredByMemberId,
+        triggerType,
+      );
+      console.log(
+        `[scan] done: status=${res.status} written=${res.written} pending=${res.pendingCount}`,
+      );
       await refreshPinned(api, group.id, Number(group.telegramChatId));
-    })().catch(() => {});
+    })().catch((err) =>
+      console.error(`[scan] failed:`, err?.message ?? err),
+    );
   }
 
   async function ensureGroup(ctx: Context): Promise<string | null> {

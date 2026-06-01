@@ -7,7 +7,9 @@ import {
   useLocation,
 } from "react-router-dom";
 import { getGroupId } from "./lib/api.js";
+import { useRefresh } from "./lib/hooks.js";
 import { TabBar } from "./ui/TabBar.js";
+import { PullToRefresh } from "./ui/PullToRefresh.js";
 import { Home } from "./routes/Home.js";
 import { Balances, Centered } from "./routes/Balances.js";
 import { History } from "./routes/History.js";
@@ -27,9 +29,9 @@ function HeaderBar() {
         display: "flex",
         justifyContent: "flex-end",
         alignItems: "center",
-        height: 44,
-        padding: "0 12px",
-        paddingTop: "env(safe-area-inset-top)",
+        height: 56,
+        padding: "12px 16px",
+        paddingTop: "calc(12px + env(safe-area-inset-top))",
         boxSizing: "content-box",
       }}
     >
@@ -67,7 +69,20 @@ function Shell() {
       }}
     >
       <HeaderBar />
-      <main style={{ flex: 1 }}>
+      <RefreshableMain />
+      <TabBar />
+    </div>
+  );
+}
+
+/** Routes wrapped in pull-to-refresh; scans on Home/Suggestions. */
+function RefreshableMain() {
+  const { pathname } = useLocation();
+  const refresh = useRefresh();
+  const scanHere = pathname === "/" || pathname === "/suggestions";
+  return (
+    <main style={{ flex: 1 }}>
+      <PullToRefresh onRefresh={() => refresh({ scan: scanHere })}>
         <Routes>
           <Route path="/" element={<Home />} />
           <Route path="/suggestions" element={<Suggestions />} />
@@ -79,9 +94,8 @@ function Shell() {
           <Route path="/settings" element={<Settings />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
-      </main>
-      <TabBar />
-    </div>
+      </PullToRefresh>
+    </main>
   );
 }
 
