@@ -11,7 +11,7 @@ import { scanResponseSchema, tierFor } from "./scanSchema.js";
 import { centsToDecimal, decimalToCents } from "@jemaw/shared/types";
 import {
   listMembers,
-  recentMessages,
+  lastNMessages,
   listLiveExpenses,
   createAiRun,
   insertSuggestions,
@@ -42,12 +42,9 @@ export async function scanGroup(
 ): Promise<ScanResult> {
   const { db, gemini } = deps;
   const members = await listMembers(db, group.id);
-  const msgs = await recentMessages(
-    db,
-    group.id,
-    group.lastScanMessageId,
-    MAX_MESSAGES,
-  );
+  // Trailing window of the last N messages, so every "jemaw" re-examines recent
+  // context (a since-last-scan window of one message finds nothing).
+  const msgs = await lastNMessages(db, group.id, MAX_MESSAGES);
 
   if (msgs.length === 0) {
     return {

@@ -350,6 +350,26 @@ export async function recentMessages(
   return rows.reverse();
 }
 
+/**
+ * Trailing window: the last `limit` messages regardless of last-scan pointer.
+ * Used by scans so every "jemaw" re-examines recent context (a one-message
+ * window finds nothing). De-duplication of already-known expenses is handled by
+ * the prompt's "recently confirmed expenses" list, not by truncating the window.
+ */
+export async function lastNMessages(
+  db: Db,
+  groupId: string,
+  limit: number,
+): Promise<Message[]> {
+  const rows = await db
+    .select()
+    .from(messages)
+    .where(eq(messages.groupId, groupId))
+    .orderBy(desc(messages.telegramMessageId))
+    .limit(limit);
+  return rows.reverse();
+}
+
 export async function setLastScanMessageId(
   db: Db,
   groupId: string,

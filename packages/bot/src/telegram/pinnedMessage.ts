@@ -33,10 +33,14 @@ export async function ensurePinnedMessage(
   suggestionCount = 0,
 ): Promise<void> {
   const text = "Jemaw — your group's quiet bookkeeper.";
+  // NOTE: `web_app` inline buttons are rejected in GROUPS (BUTTON_TYPE_INVALID);
+  // they only work in private chats and the menu button. In groups we use a
+  // plain `url` button — it opens the Mini App when the URL is a registered
+  // Web App (BotFather /newapp or menu button).
   const replyMarkup = state.miniAppUrl
     ? {
         inline_keyboard: [
-          [{ text: buttonText(suggestionCount), web_app: { url: state.miniAppUrl } }],
+          [{ text: buttonText(suggestionCount), url: state.miniAppUrl }],
         ],
       }
     : {
