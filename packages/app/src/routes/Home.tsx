@@ -1,9 +1,9 @@
 /**
- * Home: the personal summary card, then collapsible "things Jemaw noticed" —
- * AI-suggested expenses to add and ready-to-settle transfers — as a tidy
- * expandable list. Empty groups stay quiet.
+ * Home: the personal summary card, then a tab switcher between two clean lists —
+ * "Suggested" (AI expenses to add) and "Ready to settle" (transfers you owe).
+ * Each list row is collapsible: tap to expand details + action buttons.
  */
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { AnimatePresence, motion } from "framer-motion";
 import {
@@ -13,13 +13,16 @@ import {
   useSettlePlan,
   useConfirmSuggestion,
   useDismissSuggestion,
-  useMarkPaid,
 } from "../lib/hooks.js";
 import { SummaryCard } from "../ui/SummaryCard.js";
 import { MemberAvatar } from "../ui/MemberAvatar.js";
-import { Money, Pill } from "../ui/primitives.js";
+import { Money, Pill, Button } from "../ui/primitives.js";
+import { EmptyState } from "../ui/EmptyState.js";
 import { Skeleton } from "../motion/Skeleton.js";
 import { useReducedMotion } from "../motion/useReducedMotion.js";
+import type { SuggestionDto, TransferDto } from "@jemaw/shared/types";
+
+type Tab = "suggested" | "settle";
 
 export function Home() {
   const summary = useMeSummary();
@@ -28,7 +31,6 @@ export function Home() {
   const settle = useSettlePlan();
   const confirm = useConfirmSuggestion();
   const dismiss = useDismissSuggestion();
-  const markPaid = useMarkPaid();
   const nav = useNavigate();
 
   const currency = group.data?.defaultCurrency ?? "EUR";
@@ -43,97 +45,148 @@ export function Home() {
     (t) => me != null && t.fromMemberId === me,
   );
 
+  // Default to whichever tab has items (prefer Suggested).
+  const [tab, setTab] = useState<Tab>("suggested");
+  useEffect(() => {
+    if (sugg.length === 0 && transfers.length > 0) setTab("settle");
+    else if (sugg.length > 0) setTab("suggested");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sugg.length, transfers.length]);
+
   return (
-    <div style={{ paddingBottom: 8 }}>
+    <div style={{ paddingBottom: 8, overflowX: "hidden" }}>
       <div style={{ padding: 16, paddingBottom: 8 }}>
         {summary.isLoading || !summary.data ? (
-          <Skeleton height={196} radius="var(--r-xl)" />
+          <Skeleton height={210} radius="var(--r-xl)" />
         ) : (
           <SummaryCard s={summary.data} />
         )}
       </div>
 
       <div style={{ padding: "0 16px", display: "grid", gap: 12 }}>
-        <Accordion
-          title="Suggested expenses"
-          count={sugg.length}
-          emptyText="No new suggestions. Say “jemaw” in the group."
-          defaultOpen={sugg.length > 0}
-        >
-          {sugg.map((s) => (
-            <ActionRow
-              key={s.id}
-              title={s.description}
-              subtitle={`${nameOf(s.payerMemberId)} paid · split ${s.splitWith.length}`}
-              right={<Money value={s.amount} currency={currency} />}
-              badge={
-                <Pill variant={s.tier === "normal" ? "accent" : "warn"}>
-                  {s.tier === "normal" ? "AI" : "low"}
-                </Pill>
-              }
-              actionLabel="Add"
-              onAction={() => confirm.mutate(s.id)}
-              onSecondary={() => dismiss.mutate(s.id)}
-              secondaryLabel="Dismiss"
-              onTap={() => nav(`/add?from=${s.id}`)}
-              busy={confirm.isPending || dismiss.isPending}
-            />
-          ))}
-        </Accordion>
+        <Tabs
+          tab={tab}
+          onTab={setTab}
+          suggestedCount={sugg.length}
+          settleCount={transfers.length}
+        />
 
-        <Accordion
-          title="Ready to settle"
-          count={transfers.length}
-          emptyText="Nothing for you to pay right now."
-          defaultOpen={false}
-        >
-          {transfers.map((t, i) => (
-            <ActionRow
-              key={`${t.toMemberId}-${i}`}
-              avatar={
-                <MemberAvatar name={nameOf(t.toMemberId)} telegramUserId={tgId(t.toMemberId)} size={32} />
-              }
-              title={`Pay ${nameOf(t.toMemberId)}`}
-              subtitle="tap Settle to confirm"
-              right={<Money value={t.amount} currency={currency} />}
-              actionLabel="Settle"
-              onAction={() => nav("/settle")}
-              busy={markPaid.isPending}
+        {tab === "suggested" ? (
+          sugg.length === 0 ? (
+            <EmptyState
+              compact
+              icon="✦"
+              title="No suggestions yet"
+              hint="Say “jemaw” in your group chat and Jemaw will draft expenses here."
             />
-          ))}
-        </Accordion>
+          ) : (
+            <div style={{ display: "grid", gap: 8 }}>
+              {sugg.map((s) => (
+                <SuggestionRow
+                  key={s.id}
+                  s={s}
+                  currency={currency}
+                  payerName={nameOf(s.payerMemberId)}
+                  onAdd={() => confirm.mutate(s.id)}
+                  onDismiss={() => dismiss.mutate(s.id)}
+                  onEdit={() => nav(`/add?from=${s.id}`)}
+                  busy={confirm.isPending || dismiss.isPending}
+                />
+              ))}
+            </div>
+          )
+        ) : transfers.length === 0 ? (
+          <EmptyState
+            compact
+            icon="⇄"
+            title="Nothing to settle"
+            hint="When you owe someone, the transfer shows up here."
+          />
+        ) : (
+          <div style={{ display: "grid", gap: 8 }}>
+            {transfers.map((t, i) => (
+              <SettleRow
+                key={`${t.toMemberId}-${i}`}
+                t={t}
+                currency={currency}
+                toName={nameOf(t.toMemberId)}
+                toTgId={tgId(t.toMemberId)}
+                onSettle={() => nav("/settle")}
+              />
+            ))}
+          </div>
+        )}
       </div>
-
-      {sugg.length === 0 && transfers.length === 0 && !summary.isLoading && (
-        <p
-          className="t-caption"
-          style={{ color: "var(--text-faint)", textAlign: "center", marginTop: 16 }}
-        >
-          All caught up.
-        </p>
-      )}
     </div>
   );
 }
 
-function Accordion({
-  title,
-  count,
-  emptyText,
-  defaultOpen,
+// ─── Tabs ─────────────────────────────────────────────────────────────
+function Tabs({
+  tab,
+  onTab,
+  suggestedCount,
+  settleCount,
+}: {
+  tab: Tab;
+  onTab: (t: Tab) => void;
+  suggestedCount: number;
+  settleCount: number;
+}) {
+  const item = (key: Tab, label: string, count: number) => {
+    const active = tab === key;
+    return (
+      <button
+        onClick={() => onTab(key)}
+        className="t-label"
+        style={{
+          flex: 1,
+          height: 38,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          gap: 6,
+          borderRadius: "var(--r-md)",
+          border: "none",
+          cursor: "pointer",
+          background: active ? "var(--accent-soft)" : "transparent",
+          color: active ? "var(--accent)" : "var(--text-muted)",
+        }}
+      >
+        {label}
+        {count > 0 && <Pill variant={active ? "accent" : "neutral"}>{count}</Pill>}
+      </button>
+    );
+  };
+  return (
+    <div
+      style={{
+        display: "flex",
+        gap: 4,
+        padding: 4,
+        background: "var(--surface)",
+        border: "1px solid var(--border)",
+        borderRadius: "var(--r-lg)",
+      }}
+    >
+      {item("suggested", "Suggested", suggestedCount)}
+      {item("settle", "Ready to settle", settleCount)}
+    </div>
+  );
+}
+
+// ─── Collapsible row shell ────────────────────────────────────────────
+function Row({
+  header,
   children,
 }: {
-  title: string;
-  count: number;
-  emptyText: string;
-  defaultOpen: boolean;
+  header: (open: boolean) => React.ReactNode;
   children: React.ReactNode;
 }) {
-  const [open, setOpen] = useState(defaultOpen);
+  const [open, setOpen] = useState(false);
   const reduced = useReducedMotion();
-
   return (
-    <section
+    <div
       style={{
         background: "var(--surface)",
         border: "1px solid var(--border)",
@@ -145,130 +198,158 @@ function Accordion({
         onClick={() => setOpen((o) => !o)}
         style={{
           width: "100%",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          gap: 8,
-          padding: "14px 16px",
           border: "none",
           background: "transparent",
           color: "var(--text)",
           cursor: "pointer",
+          padding: "12px 14px",
+          textAlign: "left",
         }}
       >
-        <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <span className="t-body-strong">{title}</span>
-          {count > 0 && <Pill variant="accent">{count}</Pill>}
-        </span>
-        <span
-          style={{
-            color: "var(--text-muted)",
-            transform: open ? "rotate(180deg)" : "none",
-            transition: "transform var(--dur-base) var(--ease-standard)",
-          }}
-        >
-          ⌄
-        </span>
+        {header(open)}
       </button>
-
       <AnimatePresence initial={false}>
         {open && (
           <motion.div
             initial={reduced ? false : { height: 0, opacity: 0 }}
             animate={{ height: "auto", opacity: 1 }}
             exit={reduced ? { opacity: 0 } : { height: 0, opacity: 0 }}
-            transition={{ duration: reduced ? 0.08 : 0.24 }}
+            transition={{ duration: reduced ? 0.08 : 0.22 }}
             style={{ overflow: "hidden" }}
           >
-            <div style={{ padding: "0 12px 8px" }}>
-              {count === 0 ? (
-                <p
-                  className="t-caption"
-                  style={{ color: "var(--text-faint)", padding: "4px 4px 8px" }}
-                >
-                  {emptyText}
-                </p>
-              ) : (
-                <div style={{ display: "grid", gap: 4 }}>{children}</div>
-              )}
-            </div>
+            <div style={{ padding: "0 14px 14px" }}>{children}</div>
           </motion.div>
         )}
       </AnimatePresence>
-    </section>
+    </div>
   );
 }
 
-function ActionRow({
-  title,
-  subtitle,
-  right,
-  badge,
-  avatar,
-  actionLabel,
-  onAction,
-  secondaryLabel,
-  onSecondary,
-  onTap,
+function Chevron({ open }: { open: boolean }) {
+  return (
+    <span
+      style={{
+        color: "var(--text-faint)",
+        transform: open ? "rotate(180deg)" : "none",
+        transition: "transform var(--dur-base) var(--ease-standard)",
+        flexShrink: 0,
+      }}
+    >
+      ⌄
+    </span>
+  );
+}
+
+// ─── Suggestion row ───────────────────────────────────────────────────
+function SuggestionRow({
+  s,
+  currency,
+  payerName,
+  onAdd,
+  onDismiss,
+  onEdit,
   busy,
 }: {
-  title: string;
-  subtitle: string;
-  right: React.ReactNode;
-  badge?: React.ReactNode;
-  avatar?: React.ReactNode;
-  actionLabel: string;
-  onAction: () => void;
-  secondaryLabel?: string;
-  onSecondary?: () => void;
-  onTap?: () => void;
+  s: SuggestionDto;
+  currency: string;
+  payerName: string;
+  onAdd: () => void;
+  onDismiss: () => void;
+  onEdit: () => void;
   busy: boolean;
 }) {
   return (
-    <div
-      style={{
-        display: "flex",
-        alignItems: "center",
-        gap: 10,
-        padding: "8px 8px",
-        borderRadius: "var(--r-md)",
-      }}
+    <Row
+      header={(open) => (
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div className="t-body-strong" style={ellip}>
+              {s.description}
+            </div>
+            <div className="t-caption" style={{ color: "var(--text-muted)" }}>
+              {payerName} paid
+            </div>
+          </div>
+          <Pill variant={s.tier === "normal" ? "accent" : "warn"}>
+            {s.tier === "normal" ? "AI" : "low"}
+          </Pill>
+          <span className="t-body-strong">
+            <Money value={s.amount} currency={currency} />
+          </span>
+          <Chevron open={open} />
+        </div>
+      )}
     >
-      {avatar}
-      <button
-        onClick={onTap}
-        disabled={!onTap}
+      <div
+        className="t-caption"
         style={{
-          flex: 1,
-          minWidth: 0,
-          textAlign: "left",
-          border: "none",
-          background: "transparent",
-          color: "var(--text)",
-          cursor: onTap ? "pointer" : "default",
-          padding: 0,
+          color: "var(--text-muted)",
+          marginBottom: 12,
+          paddingLeft: 10,
+          borderLeft: "2px solid var(--border-strong)",
+          fontStyle: "italic",
         }}
       >
-        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-          <span className="t-body-strong" style={ellip}>
-            {title}
+        {s.reasoning} · split {s.splitWith.length}{" "}
+        {s.splitWith.length === 1 ? "way" : "ways"}
+      </div>
+      <div style={{ display: "flex", gap: 8 }}>
+        <Button variant="ghost" onClick={onDismiss} disabled={busy} style={{ flex: 1 }}>
+          Dismiss
+        </Button>
+        <Button variant="ghost" onClick={onEdit} disabled={busy} style={{ flex: 1 }}>
+          Edit
+        </Button>
+        <Button onClick={onAdd} disabled={busy} style={{ flex: 1 }}>
+          ✓ Add
+        </Button>
+      </div>
+    </Row>
+  );
+}
+
+// ─── Settle row ───────────────────────────────────────────────────────
+function SettleRow({
+  t,
+  currency,
+  toName,
+  toTgId,
+  onSettle,
+}: {
+  t: TransferDto;
+  currency: string;
+  toName: string;
+  toTgId?: string;
+  onSettle: () => void;
+}) {
+  return (
+    <Row
+      header={(open) => (
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <MemberAvatar name={toName} telegramUserId={toTgId} size={32} />
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div className="t-body-strong" style={ellip}>
+              Pay {toName}
+            </div>
+            <div className="t-caption" style={{ color: "var(--text-muted)" }}>
+              you owe
+            </div>
+          </div>
+          <span className="t-body-strong">
+            <Money value={t.amount} currency={currency} />
           </span>
-          {badge}
+          <Chevron open={open} />
         </div>
-        <div className="t-caption" style={{ color: "var(--text-muted)" }}>
-          {subtitle}
-        </div>
-      </button>
-      <span className="t-label">{right}</span>
-      {secondaryLabel && onSecondary && (
-        <button onClick={onSecondary} disabled={busy} style={ghostBtn}>
-          {secondaryLabel}
-        </button>
       )}
-      <button onClick={onAction} disabled={busy} style={primaryBtn}>
-        {actionLabel}
-      </button>
-    </div>
+    >
+      <p className="t-caption" style={{ color: "var(--text-muted)", marginTop: 0 }}>
+        Send {toName} <Money value={t.amount} currency={currency} /> off-platform,
+        then confirm on the Settle screen.
+      </p>
+      <Button onClick={onSettle} style={{ width: "100%" }}>
+        Go to Settle
+      </Button>
+    </Row>
   );
 }
 
@@ -276,31 +357,6 @@ const ellip: React.CSSProperties = {
   overflow: "hidden",
   textOverflow: "ellipsis",
   whiteSpace: "nowrap",
-};
-
-const primaryBtn: React.CSSProperties = {
-  height: 32,
-  padding: "0 12px",
-  borderRadius: "var(--r-sm)",
-  border: "none",
-  background: "var(--accent)",
-  color: "#0B0B0C",
-  fontSize: 13,
-  fontWeight: 600,
-  cursor: "pointer",
-  flexShrink: 0,
-};
-
-const ghostBtn: React.CSSProperties = {
-  height: 32,
-  padding: "0 10px",
-  borderRadius: "var(--r-sm)",
-  border: "1px solid var(--border-strong)",
-  background: "transparent",
-  color: "var(--text-muted)",
-  fontSize: 13,
-  cursor: "pointer",
-  flexShrink: 0,
 };
 
 /** Current viewer's member id (matches the Settle screen logic). */

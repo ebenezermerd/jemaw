@@ -8,9 +8,9 @@ import {
 } from "../lib/hooks.js";
 import { Button, Money, Pill } from "../ui/primitives.js";
 import { SkeletonList } from "../motion/Skeleton.js";
+import { EmptyState } from "../ui/EmptyState.js";
 import { useReducedMotion } from "../motion/useReducedMotion.js";
 import { spring } from "../motion/tokens.js";
-import { Centered } from "./Balances.js";
 import type { SuggestionDto } from "@jemaw/shared/types";
 
 export function Suggestions() {
@@ -29,14 +29,11 @@ export function Suggestions() {
 
   if (list.length === 0) {
     return (
-      <Centered>
-        <div style={{ textAlign: "center" }}>
-          <div>Caught up.</div>
-          <div className="t-caption" style={{ color: "var(--text-faint)", marginTop: 8 }}>
-            Say "jemaw" in the group to scan the chat.
-          </div>
-        </div>
-      </Centered>
+      <EmptyState
+        icon="✦"
+        title="Caught up"
+        hint="Say “jemaw” in your group chat and Jemaw will draft expenses here."
+      />
     );
   }
 

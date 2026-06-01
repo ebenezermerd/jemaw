@@ -2,7 +2,7 @@ import { useSearchParams, useNavigate } from "react-router-dom";
 import { useGroup, useHistory } from "../lib/hooks.js";
 import { Avatar, Money } from "../ui/primitives.js";
 import { SkeletonList } from "../motion/Skeleton.js";
-import { Centered } from "./Balances.js";
+import { EmptyState } from "../ui/EmptyState.js";
 
 const rowButtonStyle: React.CSSProperties = {
   display: "flex",
@@ -39,7 +39,7 @@ export function History() {
   const days = history.data?.days ?? [];
 
   return (
-    <div style={{ padding: 16 }}>
+    <div style={{ padding: 16, overflowX: "hidden", maxWidth: "100%" }}>
       <h1 className="t-screen-title" style={{ margin: "8px 0 12px" }}>
         History
       </h1>
@@ -61,7 +61,12 @@ export function History() {
       </div>
 
       {days.length === 0 ? (
-        <Centered>Nothing here yet.</Centered>
+        <EmptyState
+          compact
+          icon="↻"
+          title="Nothing here yet"
+          hint="Expenses and settlements will appear in this timeline."
+        />
       ) : (
         days.map((d) => (
           <section key={d.date} style={{ marginBottom: 20 }}>
