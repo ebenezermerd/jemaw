@@ -150,6 +150,32 @@ export interface CreateSettlementInput {
   toMemberId: string;
 }
 
+// ─── Suggestions (Phase 3) ────────────────────────────────────────────
+export interface SuggestionDto {
+  id: string;
+  /** decimal string */
+  amount: string;
+  description: string;
+  payerMemberId: string | null;
+  splitType: SplitType;
+  /** member ids */
+  splitWith: string[];
+  shares: Record<string, number> | null;
+  /** telegram message ids cited as evidence */
+  evidenceMessageIds: number[];
+  reasoning: string;
+  /** 0..1, two decimals */
+  confidence: string;
+  /** "normal" | "low" — derived from confidence for the UI strip */
+  tier: "normal" | "low";
+}
+
+export interface SuggestionsResponse {
+  suggestions: SuggestionDto[];
+  /** true while a scan is in flight (the UI polls). */
+  scanning: boolean;
+}
+
 // ─── History ──────────────────────────────────────────────────────────
 export type HistoryItem =
   | { kind: "expense"; expense: ExpenseDto }

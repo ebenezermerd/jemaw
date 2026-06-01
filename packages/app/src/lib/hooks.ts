@@ -13,6 +13,7 @@ import type {
   MemberDto,
   SettlePlanResponse,
   SettlementDto,
+  SuggestionsResponse,
 } from "@jemaw/shared/types";
 import { api, getGroupId } from "./api.js";
 
@@ -118,7 +119,7 @@ export function useMarkPaid() {
 }
 
 function invalidateLedger(qc: ReturnType<typeof useQueryClient>) {
-  for (const key of ["balances", "expenses", "history", "settle", "group"]) {
+  for (const key of ["balances", "expenses", "history", "settle", "group", "suggestions"]) {
     qc.invalidateQueries({ queryKey: [key] });
   }
 }
@@ -140,5 +141,43 @@ export function useRenameMember() {
         displayName: args.displayName,
       }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["group"] }),
+  });
+}
+
+export function useSuggestions() {
+  return useQuery({
+    queryKey: ["suggestions"],
+    queryFn: () =>
+      api.get<SuggestionsResponse>(`/api/groups/${gid()}/suggestions`),
+    // Poll while a scan may be in flight; cheap and simple (plan §11 polling).
+    refetchInterval: (q) =>
+      q.state.data?.scanning ? 4000 : false,
+  });
+}
+
+export function useConfirmSuggestion() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) =>
+      api.post(`/api/groups/${gid()}/suggestions/${id}/confirm`, {}),
+    onSuccess: () => invalidateLedger(qc),
+  });
+}
+
+export function useDismissSuggestion() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) =>
+      api.post(`/api/groups/${gid()}/suggestions/${id}/dismiss`, {}),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["suggestions"] }),
+  });
+}
+
+export function useEditSuggestion() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (args: { id: string; input: CreateExpenseInput }) =>
+      api.post(`/api/groups/${gid()}/suggestions/${args.id}/edit`, args.input),
+    onSuccess: () => invalidateLedger(qc),
   });
 }

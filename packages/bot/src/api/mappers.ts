@@ -2,7 +2,12 @@
  * Row -> DTO mappers. Centralizes the wire-format conventions (string ids,
  * decimal-string money, ISO timestamps).
  */
-import type { Member, Group, Settlement } from "@jemaw/shared/schema";
+import type {
+  Member,
+  Group,
+  Settlement,
+  Suggestion,
+} from "@jemaw/shared/schema";
 import type {
   MemberDto,
   GroupDto,
@@ -10,6 +15,7 @@ import type {
   BalanceDto,
   SettlementDto,
   TransferDto,
+  SuggestionDto,
 } from "@jemaw/shared/types";
 import { centsToDecimal, telegramIdToString } from "@jemaw/shared/types";
 import type { ExpenseWithShares } from "../repo.js";
@@ -90,5 +96,22 @@ export function toSettlementDto(s: Settlement): SettlementDto {
     markedPaidAt: s.markedPaidAt ? s.markedPaidAt.toISOString() : null,
     markedPaidByMemberId: s.markedPaidByMemberId,
     createdAt: s.createdAt.toISOString(),
+  };
+}
+
+export function toSuggestionDto(s: Suggestion): SuggestionDto {
+  const confidence = Number(s.confidence);
+  return {
+    id: s.id,
+    amount: s.amount,
+    description: s.description,
+    payerMemberId: s.payerMemberId,
+    splitType: s.splitType,
+    splitWith: (s.splitWith as string[]) ?? [],
+    shares: (s.shares as Record<string, number> | null) ?? null,
+    evidenceMessageIds: (s.evidenceMessageIds as number[]) ?? [],
+    reasoning: s.reasoning,
+    confidence: s.confidence,
+    tier: confidence >= 0.7 ? "normal" : "low",
   };
 }

@@ -21,6 +21,9 @@ const schema = z
     MINI_APP_URL: z.string().url().optional(),
     // Set in Cloud Run to connect to Cloud SQL over the mounted Unix socket.
     INSTANCE_CONNECTION_NAME: z.string().optional(),
+    // Phase 3: when present, the bot runs Gemini scans. Optional so the bot
+    // boots fine without it (scans simply don't run).
+    GEMINI_API_KEY: z.string().optional(),
   })
   .refine((e) => e.BOT_MODE !== "webhook" || !!e.WEBHOOK_URL, {
     message: "WEBHOOK_URL is required when BOT_MODE=webhook",

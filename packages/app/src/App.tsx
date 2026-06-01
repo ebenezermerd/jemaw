@@ -6,6 +6,7 @@ import { Balances, Centered } from "./routes/Balances.js";
 import { History } from "./routes/History.js";
 import { Add } from "./routes/Add.js";
 import { Settle } from "./routes/Settle.js";
+import { Suggestions } from "./routes/Suggestions.js";
 import { ExpenseDetail } from "./routes/ExpenseDetail.js";
 import { Settings } from "./routes/Settings.js";
 
@@ -31,25 +32,36 @@ function Header() {
           </span>
         )}
       </div>
-      <button
-        aria-label="Settings"
-        onClick={() => nav("/settings")}
-        style={{
-          width: 40,
-          height: 40,
-          borderRadius: "var(--r-full)",
-          border: "none",
-          background: "transparent",
-          color: "var(--text-muted)",
-          cursor: "pointer",
-          fontSize: 20,
-        }}
-      >
-        ⚙
-      </button>
+      <div style={{ display: "flex", gap: 4 }}>
+        <button
+          aria-label="Add expense"
+          onClick={() => nav("/add")}
+          style={iconBtn}
+        >
+          +
+        </button>
+        <button
+          aria-label="Settings"
+          onClick={() => nav("/settings")}
+          style={iconBtn}
+        >
+          ⚙
+        </button>
+      </div>
     </header>
   );
 }
+
+const iconBtn: React.CSSProperties = {
+  width: 40,
+  height: 40,
+  borderRadius: "var(--r-full)",
+  border: "none",
+  background: "transparent",
+  color: "var(--text-muted)",
+  cursor: "pointer",
+  fontSize: 20,
+};
 
 function Shell() {
   return (
@@ -66,6 +78,7 @@ function Shell() {
       <main style={{ flex: 1 }}>
         <Routes>
           <Route path="/" element={<Navigate to="/balances" replace />} />
+          <Route path="/suggestions" element={<Suggestions />} />
           <Route path="/balances" element={<Balances />} />
           <Route path="/settle" element={<Settle />} />
           <Route path="/history" element={<History />} />

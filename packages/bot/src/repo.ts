@@ -2,7 +2,7 @@
  * Data-access layer. Thin typed queries over Drizzle so routes and Telegram
  * handlers share one set of operations.
  */
-import { and, eq, desc, isNull } from "drizzle-orm";
+import { and, eq, desc, gt, isNull } from "drizzle-orm";
 import type { Db } from "./db.js";
 import {
   groups,
@@ -11,9 +11,14 @@ import {
   expenseShares,
   settlements,
   messages,
+  aiRuns,
+  suggestions,
   type Group,
   type Member,
   type Settlement,
+  type Message,
+  type AiRun,
+  type Suggestion,
 } from "@jemaw/shared/schema";
 
 // ─── Groups ───────────────────────────────────────────────────────────
@@ -320,4 +325,107 @@ export async function captureMessage(
       sentAt,
     })
     .onConflictDoNothing();
+}
+
+/** Recent messages for a scan: after `sinceMessageId` (if any), up to `limit`. */
+export async function recentMessages(
+  db: Db,
+  groupId: string,
+  sinceMessageId: bigint | null,
+  limit: number,
+): Promise<Message[]> {
+  const where = sinceMessageId
+    ? and(
+        eq(messages.groupId, groupId),
+        gt(messages.telegramMessageId, sinceMessageId),
+      )
+    : eq(messages.groupId, groupId);
+  const rows = await db
+    .select()
+    .from(messages)
+    .where(where)
+    .orderBy(desc(messages.telegramMessageId))
+    .limit(limit);
+  // Return chronological (oldest first) for the prompt.
+  return rows.reverse();
+}
+
+export async function setLastScanMessageId(
+  db: Db,
+  groupId: string,
+  messageId: bigint,
+): Promise<void> {
+  await db
+    .update(groups)
+    .set({ lastScanMessageId: messageId })
+    .where(eq(groups.id, groupId));
+}
+
+// ─── AI runs & suggestions ────────────────────────────────────────────
+export async function createAiRun(
+  db: Db,
+  values: typeof aiRuns.$inferInsert,
+): Promise<AiRun> {
+  const rows = await db.insert(aiRuns).values(values).returning();
+  return rows[0]!;
+}
+
+export async function insertSuggestions(
+  db: Db,
+  rows: (typeof suggestions.$inferInsert)[],
+): Promise<Suggestion[]> {
+  if (rows.length === 0) return [];
+  return db.insert(suggestions).values(rows).returning();
+}
+
+export async function listPendingSuggestions(
+  db: Db,
+  groupId: string,
+): Promise<Suggestion[]> {
+  return db
+    .select()
+    .from(suggestions)
+    .where(
+      and(
+        eq(suggestions.groupId, groupId),
+        eq(suggestions.status, "pending"),
+      ),
+    )
+    .orderBy(desc(suggestions.confidence));
+}
+
+export async function countPendingSuggestions(
+  db: Db,
+  groupId: string,
+): Promise<number> {
+  const rows = await listPendingSuggestions(db, groupId);
+  return rows.length;
+}
+
+export async function getSuggestion(
+  db: Db,
+  groupId: string,
+  suggestionId: string,
+): Promise<Suggestion | null> {
+  const rows = await db
+    .select()
+    .from(suggestions)
+    .where(
+      and(eq(suggestions.groupId, groupId), eq(suggestions.id, suggestionId)),
+    )
+    .limit(1);
+  return rows[0] ?? null;
+}
+
+export async function resolveSuggestion(
+  db: Db,
+  suggestionId: string,
+  status: "confirmed" | "edited" | "dismissed",
+  resolvedByMemberId: string,
+  when: Date,
+): Promise<void> {
+  await db
+    .update(suggestions)
+    .set({ status, resolvedByMemberId, resolvedAt: when })
+    .where(eq(suggestions.id, suggestionId));
 }

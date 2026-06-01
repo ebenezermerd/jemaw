@@ -16,6 +16,9 @@ import {
   groupHasExpenses,
   listSettlements,
   createSettlement,
+  listPendingSuggestions,
+  getSuggestion,
+  resolveSuggestion,
   addManualMember,
   renameMember,
 } from "../repo.js";
@@ -41,7 +44,9 @@ import {
   toMemberDto,
   toTransferDto,
   toSettlementDto,
+  toSuggestionDto,
 } from "./mappers.js";
+import type { SuggestionsResponse } from "@jemaw/shared/types";
 
 /**
  * Compute the current net balances for a group from live expenses + paid
@@ -507,6 +512,139 @@ export async function registerApi(
       );
       if (!m) return reply.code(404).send({ error: "member not found" });
       return toMemberDto(m);
+    },
+  );
+
+  // ─── Suggestions (Phase 3) ──────────────────────────────────────────
+  // GET pending suggestions (+ scanning flag for the polling UI)
+  app.get(
+    "/api/groups/:groupId/suggestions",
+    { preHandler: auth },
+    async (req) => {
+      const { group } = req.jemaw!;
+      const pending = await listPendingSuggestions(db, group.id);
+      const res: SuggestionsResponse = {
+        suggestions: pending.map(toSuggestionDto),
+        scanning: false,
+      };
+      return res;
+    },
+  );
+
+  // POST confirm a suggestion → create an expense from it.
+  app.post(
+    "/api/groups/:groupId/suggestions/:suggestionId/confirm",
+    { preHandler: auth },
+    async (req, reply) => {
+      const { group, member } = req.jemaw!;
+      const { suggestionId } = req.params as { suggestionId: string };
+      const s = await getSuggestion(db, group.id, suggestionId);
+      if (!s) return reply.code(404).send({ error: "not found" });
+      if (s.status !== "pending") {
+        return reply.code(409).send({ error: "already resolved" });
+      }
+      if (!s.payerMemberId) {
+        return reply.code(400).send({ error: "suggestion has no payer; edit it" });
+      }
+
+      const splitWith = (s.splitWith as string[]) ?? [];
+      const totalCents = decimalToCents(s.amount);
+      let computed;
+      try {
+        computed = computeSplit({
+          totalCents,
+          splitType: s.splitType,
+          memberIds: splitWith,
+          shares: (s.shares as Record<string, number> | null) ?? undefined,
+          expenseSeed: s.id,
+        });
+      } catch (err) {
+        return reply
+          .code(400)
+          .send({ error: err instanceof Error ? err.message : "bad split" });
+      }
+
+      const created = await createExpenseWithShares(
+        db,
+        {
+          groupId: group.id,
+          payerMemberId: s.payerMemberId,
+          amount: centsToDecimal(totalCents),
+          currency: group.defaultCurrency,
+          description: s.description,
+          createdByMemberId: member.id,
+          source: "ai_confirmed",
+          sourceSuggestionId: s.id,
+          occurredAt: new Date(),
+        },
+        computed.map((c) => ({
+          memberId: c.memberId,
+          shareAmount: centsToDecimal(c.shareCents),
+        })),
+      );
+      await resolveSuggestion(db, s.id, "confirmed", member.id, new Date());
+      return reply.code(201).send(toExpenseDto(created));
+    },
+  );
+
+  // POST edit a suggestion → create an edited expense from supplied values.
+  app.post(
+    "/api/groups/:groupId/suggestions/:suggestionId/edit",
+    { preHandler: auth },
+    async (req, reply) => {
+      const { group, member } = req.jemaw!;
+      const { suggestionId } = req.params as { suggestionId: string };
+      const s = await getSuggestion(db, group.id, suggestionId);
+      if (!s) return reply.code(404).send({ error: "not found" });
+      if (s.status !== "pending") {
+        return reply.code(409).send({ error: "already resolved" });
+      }
+      const parsed = createExpenseSchema.safeParse(req.body);
+      if (!parsed.success) return reply.code(400).send({ error: "invalid body" });
+      const body = parsed.data;
+      const members = await listMembers(db, group.id);
+      const built = buildShareRows(
+        body,
+        group.id,
+        new Set(members.map((m) => m.id)),
+        s.id,
+      );
+      if ("error" in built) return reply.code(400).send({ error: built.error });
+
+      const created = await createExpenseWithShares(
+        db,
+        {
+          groupId: group.id,
+          payerMemberId: body.payerMemberId,
+          amount: centsToDecimal(decimalToCents(body.amount)),
+          currency: group.defaultCurrency,
+          description: body.description,
+          createdByMemberId: member.id,
+          source: "ai_edited",
+          sourceSuggestionId: s.id,
+          occurredAt: body.occurredAt ? new Date(body.occurredAt) : new Date(),
+        },
+        built.shares,
+      );
+      await resolveSuggestion(db, s.id, "edited", member.id, new Date());
+      return reply.code(201).send(toExpenseDto(created));
+    },
+  );
+
+  // POST dismiss a suggestion.
+  app.post(
+    "/api/groups/:groupId/suggestions/:suggestionId/dismiss",
+    { preHandler: auth },
+    async (req, reply) => {
+      const { group, member } = req.jemaw!;
+      const { suggestionId } = req.params as { suggestionId: string };
+      const s = await getSuggestion(db, group.id, suggestionId);
+      if (!s) return reply.code(404).send({ error: "not found" });
+      if (s.status !== "pending") {
+        return reply.code(409).send({ error: "already resolved" });
+      }
+      await resolveSuggestion(db, s.id, "dismissed", member.id, new Date());
+      return reply.code(200).send({ ok: true });
     },
   );
 }
