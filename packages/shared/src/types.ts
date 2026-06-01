@@ -151,6 +151,8 @@ export interface SettlePlanResponse {
   transfers: TransferDto[];
 }
 
+export type PaymentMethod = "cash" | "bank" | "telebirr" | "other";
+
 /** A persisted, paid settlement. */
 export interface SettlementDto {
   id: string;
@@ -159,14 +161,27 @@ export interface SettlementDto {
   /** decimal string */
   amount: string;
   currency: string;
+  method: PaymentMethod;
+  description: string | null;
+  expenseIds: string[] | null;
+  occurredAt: string | null; // ISO
   markedPaidAt: string | null; // ISO
   markedPaidByMemberId: string | null;
   createdAt: string; // ISO
 }
 
-/** Body for POST /settlements — the server decides the amount (clamped). */
+/**
+ * Body for POST /settlements. `fromMemberId` defaults to the caller. `amount`
+ * is clamped to the live debt server-side; omit to settle the full debt.
+ */
 export interface CreateSettlementInput {
   toMemberId: string;
+  fromMemberId?: string;
+  amount?: string;
+  method?: PaymentMethod;
+  description?: string;
+  expenseIds?: string[];
+  occurredAt?: string;
 }
 
 // ─── Suggestions (Phase 3) ────────────────────────────────────────────
