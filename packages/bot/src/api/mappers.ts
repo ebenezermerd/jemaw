@@ -103,9 +103,12 @@ export function toSuggestionDto(s: Suggestion): SuggestionDto {
   const confidence = Number(s.confidence);
   return {
     id: s.id,
+    kind: s.kind,
     amount: s.amount,
     description: s.description,
     payerMemberId: s.payerMemberId,
+    fromMemberId: s.fromMemberId,
+    toMemberId: s.toMemberId,
     splitType: s.splitType,
     splitWith: (s.splitWith as string[]) ?? [],
     shares: (s.shares as Record<string, number> | null) ?? null,
