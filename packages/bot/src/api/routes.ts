@@ -21,6 +21,7 @@ import {
   resolveSuggestion,
   addManualMember,
   renameMember,
+  updateGroupCurrency,
 } from "../repo.js";
 import { computeSplit } from "../domain/splits.js";
 import {
@@ -46,7 +47,10 @@ import {
   toSettlementDto,
   toSuggestionDto,
 } from "./mappers.js";
-import type { SuggestionsResponse } from "@jemaw/shared/types";
+import type {
+  SuggestionsResponse,
+  MeSummaryDto,
+} from "@jemaw/shared/types";
 
 /**
  * Compute the current net balances for a group from live expenses + paid
@@ -138,6 +142,10 @@ const createSettlementSchema = z.object({
   toMemberId: z.string().uuid(),
 });
 
+const updateGroupSchema = z.object({
+  defaultCurrency: z.string().length(3).optional(),
+});
+
 const addMemberSchema = z.object({
   displayName: z.string().min(1).max(80),
   telegramUserId: z.string().optional(),
@@ -172,6 +180,68 @@ export async function registerApi(
       const members = await listMembers(db, group.id);
       const hasExpenses = await groupHasExpenses(db, group.id);
       return toGroupDto(group, members, hasExpenses);
+    },
+  );
+
+  // PATCH group settings (currency) — blocked once expenses exist.
+  app.patch(
+    "/api/groups/:groupId",
+    { preHandler: auth },
+    async (req, reply) => {
+      const { group } = req.jemaw!;
+      const parsed = updateGroupSchema.safeParse(req.body);
+      if (!parsed.success) return reply.code(400).send({ error: "invalid body" });
+      if (parsed.data.defaultCurrency) {
+        if (await groupHasExpenses(db, group.id)) {
+          return reply
+            .code(409)
+            .send({ error: "currency is locked — expenses exist" });
+        }
+        const updated = await updateGroupCurrency(
+          db,
+          group.id,
+          parsed.data.defaultCurrency.toUpperCase(),
+        );
+        if (!updated) return reply.code(404).send({ error: "group not found" });
+        const members = await listMembers(db, group.id);
+        return toGroupDto(updated, members, false);
+      }
+      const members = await listMembers(db, group.id);
+      return toGroupDto(group, members, await groupHasExpenses(db, group.id));
+    },
+  );
+
+  // GET the calling member's personal summary (Home card).
+  app.get(
+    "/api/groups/:groupId/me/summary",
+    { preHandler: auth },
+    async (req) => {
+      const { group, member } = req.jemaw!;
+      const { nets } = await loadBalances(db, group.id);
+      const net = nets.find((n) => n.memberId === member.id)?.netCents ?? 0;
+
+      const expenses = await listLiveExpenses(db, group.id);
+      let paidCents = 0;
+      let shareCents = 0;
+      let count = 0;
+      for (const e of expenses) {
+        const isPayer = e.expense.payerMemberId === member.id;
+        const myShare = e.shares.find((s) => s.memberId === member.id);
+        if (isPayer) paidCents += decimalToCents(e.expense.amount);
+        if (myShare) shareCents += decimalToCents(myShare.shareAmount);
+        if (isPayer || myShare) count += 1;
+      }
+
+      const res: MeSummaryDto = {
+        memberId: member.id,
+        displayName: member.displayName,
+        net: centsToDecimal(net),
+        totalPaid: centsToDecimal(paidCents),
+        totalShare: centsToDecimal(shareCents),
+        expenseCount: count,
+        currency: group.defaultCurrency,
+      };
+      return res;
     },
   );
 

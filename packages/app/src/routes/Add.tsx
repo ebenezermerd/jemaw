@@ -28,6 +28,7 @@ export function Add() {
   const [description, setDescription] = useState("");
   const [amount, setAmount] = useState("");
   const [payer, setPayer] = useState<string>("");
+  const [date, setDate] = useState<string>(todayISO());
   const [splitType, setSplitType] = useState<SplitType>("equal");
   const [splitWith, setSplitWith] = useState<Set<string>>(new Set());
   const [shares, setShares] = useState<Record<string, number>>({});
@@ -92,6 +93,7 @@ export function Add() {
       splitWith: participants,
       shares: splitType === "shares" ? shares : undefined,
       exact: splitType === "exact" ? exact : undefined,
+      occurredAt: dateToISO(date),
     };
     if (fromSuggestionId) {
       // Editing a suggestion → records an ai_edited expense + resolves it.
@@ -126,6 +128,16 @@ export function Add() {
           placeholder="0.00"
           className="tnum t-display"
           style={{ ...inputStyle, fontVariantNumeric: "tabular-nums" }}
+        />
+      </Field>
+
+      <Field label="When">
+        <input
+          type="date"
+          value={date}
+          max={todayISO()}
+          onChange={(e) => setDate(e.target.value)}
+          style={inputStyle}
         />
       </Field>
 
@@ -380,4 +392,17 @@ function StepBtn({ children, onClick }: { children: React.ReactNode; onClick: ()
       {children}
     </button>
   );
+}
+
+/** Today's date as YYYY-MM-DD (local). */
+function todayISO(): string {
+  const d = new Date();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${d.getFullYear()}-${m}-${day}`;
+}
+
+/** A YYYY-MM-DD date string → ISO at local noon (avoids TZ day-shift). */
+function dateToISO(ymd: string): string {
+  return new Date(`${ymd}T12:00:00`).toISOString();
 }

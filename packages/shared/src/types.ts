@@ -93,6 +93,25 @@ export interface BalanceDto {
   net: string;
 }
 
+/** The calling member's personal standing for the Home summary card. */
+export interface MeSummaryDto {
+  memberId: string;
+  displayName: string;
+  /** signed decimal — focal number */
+  net: string;
+  /** sum of expenses this member fronted (decimal) */
+  totalPaid: string;
+  /** sum of this member's shares (decimal) */
+  totalShare: string;
+  /** number of live expenses they're involved in */
+  expenseCount: number;
+  currency: string;
+}
+
+export interface UpdateGroupInput {
+  defaultCurrency?: string;
+}
+
 // ─── Request bodies ───────────────────────────────────────────────────
 export interface CreateExpenseInput {
   description: string;
