@@ -2,11 +2,14 @@ import { loadEnv } from "./env.js";
 import { createDb } from "./db.js";
 import { createBot } from "./bot.js";
 import { buildServer } from "./server.js";
-import { mountWebhook } from "./webhook.js";
+import { mountWebhookRoute, registerWebhook } from "./webhook.js";
 
 async function main(): Promise<void> {
   const env = loadEnv();
-  const db = createDb(env.DATABASE_URL);
+  const db = createDb({
+    databaseUrl: env.DATABASE_URL,
+    instanceConnectionName: env.INSTANCE_CONNECTION_NAME,
+  });
 
   // Default currency for groups created in Phase 1 (per-group currency picker
   // arrives with onboarding UI; EUR is the v1 default).
@@ -29,9 +32,15 @@ async function main(): Promise<void> {
 
   if (env.BOT_MODE === "webhook") {
     if (!env.WEBHOOK_URL) throw new Error("WEBHOOK_URL required in webhook mode");
-    await mountWebhook(app, bot, env.WEBHOOK_URL);
+    // Mount the route BEFORE listening, then register with Telegram AFTER, so
+    // the container passes its health check even if setWebhook hiccups.
+    mountWebhookRoute(app, bot);
     await app.listen({ port: env.PORT, host: "0.0.0.0" });
     app.log.info(`Bot in webhook mode, listening on :${env.PORT}`);
+    const url = await registerWebhook(bot, env.WEBHOOK_URL, (m) =>
+      app.log.warn(m),
+    );
+    if (url) app.log.info(`Webhook registered at ${url}`);
   } else {
     await app.listen({ port: env.PORT, host: "0.0.0.0" });
     app.log.info(`Bot in polling mode, /health on :${env.PORT}`);

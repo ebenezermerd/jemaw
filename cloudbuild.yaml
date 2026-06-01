@@ -1,0 +1,17 @@
+# Cloud Build config for the Jemaw bot image.
+# Build context is the repo root; Dockerfile lives in packages/bot.
+steps:
+  - name: gcr.io/cloud-builders/docker
+    args:
+      - build
+      - "-f"
+      - packages/bot/Dockerfile
+      - "-t"
+      - "${_IMAGE}"
+      - "."
+images:
+  - "${_IMAGE}"
+options:
+  logging: CLOUD_LOGGING_ONLY
+substitutions:
+  _IMAGE: europe-west1-docker.pkg.dev/jemaw-498106/jemaw/jemaw-bot:latest
