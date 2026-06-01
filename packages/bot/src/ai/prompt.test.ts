@@ -8,6 +8,8 @@ const data: ScanData = {
     { telegramUserId: 222, displayName: "Tom" },
   ],
   recentExpenses: [{ description: "Cab", amount: "18.00", payerName: "Tom" }],
+  openDebts: [{ fromName: "Tom", toName: "Sara", amount: "9.00" }],
+  recentSettlements: [],
   messages: [
     {
       telegramMessageId: 101,

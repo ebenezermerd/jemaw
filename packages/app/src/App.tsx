@@ -15,6 +15,7 @@ import { Balances } from "./routes/Balances.js";
 import { History } from "./routes/History.js";
 import { Add } from "./routes/Add.js";
 import { Settle } from "./routes/Settle.js";
+import { SettleForm } from "./routes/SettleForm.js";
 import { Suggestions } from "./routes/Suggestions.js";
 import { ExpenseDetail } from "./routes/ExpenseDetail.js";
 import { Settings } from "./routes/Settings.js";
@@ -63,6 +64,7 @@ function RefreshableMain() {
           <Route path="/suggestions" element={<Suggestions />} />
           <Route path="/balances" element={<Balances />} />
           <Route path="/settle" element={<Settle />} />
+          <Route path="/settle/new" element={<SettleForm />} />
           <Route path="/history" element={<History />} />
           <Route path="/add" element={<Add />} />
           <Route path="/expense/:id" element={<ExpenseDetail />} />

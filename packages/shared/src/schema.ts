@@ -56,6 +56,13 @@ export const aiRunStatus = pgEnum("ai_run_status", [
   "api_error",
 ]);
 
+export const paymentMethod = pgEnum("payment_method", [
+  "cash",
+  "bank",
+  "telebirr",
+  "other",
+]);
+
 // ─── groups ───────────────────────────────────────────────────────────
 export const groups = pgTable("groups", {
   id: uuid("id").primaryKey().defaultRandom(),
@@ -197,6 +204,11 @@ export const settlements = pgTable("settlements", {
     .references(() => members.id),
   amount: numeric("amount", { precision: 12, scale: 2 }).notNull(),
   currency: text("currency").notNull(),
+  method: paymentMethod("method").notNull().default("cash"),
+  description: text("description"),
+  // Selected expense ids this payment covers — metadata for context/history.
+  expenseIds: jsonb("expense_ids"),
+  occurredAt: timestamp("occurred_at", { withTimezone: true }),
   markedPaidAt: timestamp("marked_paid_at", { withTimezone: true }),
   markedPaidByMemberId: uuid("marked_paid_by_member_id").references(
     () => members.id,

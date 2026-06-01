@@ -12,7 +12,6 @@ import {
   useSuggestions,
   useSettlePlan,
   useConfirmSuggestion,
-  useConfirmSuggestionWithAmount,
   useDismissSuggestion,
 } from "../lib/hooks.js";
 import { SummaryCard } from "../ui/SummaryCard.js";
@@ -33,7 +32,6 @@ export function Home() {
   const suggestions = useSuggestions();
   const settle = useSettlePlan();
   const confirm = useConfirmSuggestion();
-  const confirmWith = useConfirmSuggestionWithAmount();
   const dismiss = useDismissSuggestion();
   const nav = useNavigate();
 
@@ -112,7 +110,7 @@ export function Home() {
           />
         ) : (
           <div style={{ display: "grid", gap: 8 }}>
-            {/* AI-detected settlements from chat */}
+            {/* AI-detected settlements from chat → open the settle form prefilled */}
             {settleSugg.map((s) => (
               <SettlementSuggestionRow
                 key={s.id}
@@ -121,12 +119,18 @@ export function Home() {
                 fromName={nameOf(s.fromMemberId)}
                 toName={nameOf(s.toMemberId)}
                 toTgId={s.toMemberId ? tgId(s.toMemberId) : undefined}
-                onConfirm={(amount) => confirmWith.mutate({ id: s.id, amount })}
-                onDismiss={() => dismiss.mutate(s.id)}
-                busy={confirmWith.isPending || dismiss.isPending}
+                onSettle={(amount) => {
+                  const p = new URLSearchParams();
+                  if (s.fromMemberId) p.set("from", s.fromMemberId);
+                  if (s.toMemberId) p.set("to", s.toMemberId);
+                  if (amount) p.set("amount", amount);
+                  nav(`/settle/new?${p.toString()}`);
+                }}
+                onDismiss={() => setRemoving(s.id)}
+                busy={dismiss.isPending}
               />
             ))}
-            {/* computed transfers you owe */}
+            {/* computed transfers you owe → open the settle form prefilled */}
             {transfers.map((t, i) => (
               <SettleRow
                 key={`${t.toMemberId}-${i}`}
@@ -134,7 +138,9 @@ export function Home() {
                 currency={currency}
                 toName={nameOf(t.toMemberId)}
                 toTgId={tgId(t.toMemberId)}
-                onSettle={() => nav("/settle")}
+                onSettle={() =>
+                  nav(`/settle/new?from=${t.fromMemberId}&to=${t.toMemberId}&amount=${t.amount}`)
+                }
               />
             ))}
           </div>
@@ -442,7 +448,7 @@ function SettlementSuggestionRow({
   fromName,
   toName,
   toTgId,
-  onConfirm,
+  onSettle,
   onDismiss,
   busy,
 }: {
@@ -451,17 +457,13 @@ function SettlementSuggestionRow({
   fromName: string;
   toName: string;
   toTgId?: string;
-  onConfirm: (amount?: string) => void;
+  onSettle: (amount?: string) => void;
   onDismiss: () => void;
   busy: boolean;
 }) {
-  const [amount, setAmount] = useState(s.amount ?? "");
-  const needsAmount = s.amount == null;
-  const canConfirm = !needsAmount || /^\d+(\.\d{1,2})?$/.test(amount);
-
   return (
     <Row
-      onSwipeRight={() => canConfirm && onConfirm(needsAmount ? amount : undefined)}
+      onSwipeRight={() => onSettle(s.amount ?? undefined)}
       onSwipeLeft={onDismiss}
       header={(open) => (
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
@@ -496,35 +498,11 @@ function SettlementSuggestionRow({
       >
         {s.reasoning}
       </div>
-      {needsAmount && (
-        <input
-          value={amount}
-          onChange={(e) => setAmount(e.target.value.replace(/[^\d.]/g, ""))}
-          inputMode="decimal"
-          placeholder="Amount paid back"
-          className="tnum"
-          style={{
-            width: "100%",
-            height: 40,
-            padding: "0 12px",
-            marginBottom: 8,
-            borderRadius: "var(--r-md)",
-            border: "1px solid var(--border-strong)",
-            background: "var(--surface)",
-            color: "var(--text)",
-            fontSize: 16,
-          }}
-        />
-      )}
       <div style={{ display: "flex", gap: 8 }}>
         <Button variant="ghost" onClick={onDismiss} disabled={busy} style={{ flex: 1 }}>
           Remove
         </Button>
-        <Button
-          onClick={() => onConfirm(needsAmount ? amount : undefined)}
-          disabled={busy || !canConfirm}
-          style={{ flex: 1 }}
-        >
+        <Button onClick={() => onSettle(s.amount ?? undefined)} style={{ flex: 1 }}>
           ✓ Settle
         </Button>
       </div>

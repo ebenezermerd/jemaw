@@ -23,11 +23,28 @@ export interface PromptExpense {
   payerName: string;
 }
 
+/** A line of the live settle plan (who owes whom, how much). */
+export interface PromptDebt {
+  fromName: string;
+  toName: string;
+  amount: string;
+}
+
+export interface PromptSettlement {
+  fromName: string;
+  toName: string;
+  amount: string;
+}
+
 export interface ScanData {
   members: PromptMember[];
   currency: string;
   messages: PromptMessage[];
   recentExpenses: PromptExpense[];
+  /** open debts from the live settle plan — grounds settlement detection */
+  openDebts: PromptDebt[];
+  /** recently recorded settlements — so paybacks aren't re-detected */
+  recentSettlements: PromptSettlement[];
 }
 
 export const SYSTEM_PROMPT = [
@@ -72,11 +89,32 @@ export function buildUserPrompt(input: ScanData): string {
     )
     .join("\n");
 
+  const debts =
+    input.openDebts.length > 0
+      ? input.openDebts
+          .map((d) => `- ${d.fromName} owes ${d.toName} ${input.currency} ${d.amount}`)
+          .join("\n")
+      : "(everyone is even)";
+
+  const settled =
+    input.recentSettlements.length > 0
+      ? input.recentSettlements
+          .map((s) => `- ${s.fromName} paid ${s.toName} ${input.currency} ${s.amount}`)
+          .join("\n")
+      : "(none)";
+
   return [
     `Group currency: ${input.currency}`,
     "",
     "Members:",
     members,
+    "",
+    "Current open debts (use these to ground settlement detection — a payback",
+    "should match a real debt direction):",
+    debts,
+    "",
+    "Recently recorded settlements (do not re-detect these paybacks):",
+    settled,
     "",
     "Recently confirmed expenses (do not re-suggest these):",
     recent,

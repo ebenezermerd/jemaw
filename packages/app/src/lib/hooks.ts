@@ -13,6 +13,7 @@ import type {
   MemberDto,
   SettlePlanResponse,
   SettlementDto,
+  CreateSettlementInput,
   SuggestionsResponse,
   MeSummaryDto,
 } from "@jemaw/shared/types";
@@ -134,6 +135,16 @@ export function useMarkPaid() {
       api.post<SettlementDto>(`/api/groups/${gid()}/settlements`, {
         toMemberId,
       }),
+    onSuccess: () => invalidateLedger(qc),
+  });
+}
+
+/** Record a settlement with full form details (settle form). */
+export function useCreateSettlement() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (input: CreateSettlementInput) =>
+      api.post<SettlementDto>(`/api/groups/${gid()}/settlements`, input),
     onSuccess: () => invalidateLedger(qc),
   });
 }

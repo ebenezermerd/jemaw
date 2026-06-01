@@ -15,6 +15,13 @@
       "when": 1780334133622,
       "tag": "0001_lovely_jack_power",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1780337591199,
+      "tag": "0002_swift_felicia_hardy",
+      "breakpoints": true
     }
   ]
 }

@@ -13,12 +13,15 @@ import {
   listMembers,
   lastNMessages,
   listLiveExpenses,
+  listSettlements,
   createAiRun,
   insertSuggestions,
   setLastScanMessageId,
   countPendingSuggestions,
   handledEvidenceMessageIds,
 } from "../repo.js";
+import { computeBalances } from "../domain/balances.js";
+import { computeSettlement } from "../domain/settle.js";
 import type { Group } from "@jemaw/shared/schema";
 
 const MAX_MESSAGES = 50;
@@ -74,6 +77,37 @@ export async function scanGroup(
       members.find((m) => m.id === e.expense.payerMemberId)?.displayName ??
       "Member",
   }));
+  const nameOfMember = (id: string) =>
+    members.find((m) => m.id === id)?.displayName ?? "Member";
+
+  // Ground the AI with the real open debts + recent settlements.
+  const settlementRows = await listSettlements(db, group.id);
+  const nets = computeBalances(
+    members.map((m) => m.id),
+    liveExpenses.map((e) => ({
+      payerMemberId: e.expense.payerMemberId,
+      amountCents: decimalToCents(e.expense.amount),
+      shares: e.shares.map((s) => ({
+        memberId: s.memberId,
+        shareCents: decimalToCents(s.shareAmount),
+      })),
+    })),
+    settlementRows.map((s) => ({
+      fromMemberId: s.fromMemberId,
+      toMemberId: s.toMemberId,
+      amountCents: decimalToCents(s.amount),
+    })),
+  );
+  const openDebts = computeSettlement(nets).map((t) => ({
+    fromName: nameOfMember(t.fromMemberId),
+    toName: nameOfMember(t.toMemberId),
+    amount: centsToDecimal(t.amountCents),
+  }));
+  const recentSettlements = settlementRows.slice(0, 5).map((s) => ({
+    fromName: nameOfMember(s.fromMemberId),
+    toName: nameOfMember(s.toMemberId),
+    amount: s.amount,
+  }));
 
   const data: ScanData = {
     currency: group.defaultCurrency,
@@ -82,6 +116,8 @@ export async function scanGroup(
       displayName: m.displayName,
     })),
     recentExpenses,
+    openDebts,
+    recentSettlements,
     messages: msgs.map((m) => ({
       telegramMessageId: Number(m.telegramMessageId),
       senderName: nameByTgId.get(m.senderTelegramUserId.toString()) ?? "Member",
