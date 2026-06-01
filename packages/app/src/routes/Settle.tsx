@@ -1,6 +1,9 @@
 import { useState } from "react";
 import { useGroup, useSettlePlan, useMarkPaid } from "../lib/hooks.js";
 import { Button, Avatar, Money } from "../ui/primitives.js";
+import { Sheet } from "../motion/Sheet.js";
+import { Celebration } from "../motion/Celebration.js";
+import { SkeletonList } from "../motion/Skeleton.js";
 import { Centered } from "./Balances.js";
 import type { TransferDto } from "@jemaw/shared/types";
 
@@ -16,9 +19,14 @@ export function Settle() {
   const nameOf = (id: string) =>
     group.data?.members.find((m) => m.id === id)?.displayName ?? "Member";
 
-  if (plan.isLoading) return <Centered>Loading…</Centered>;
+  if (plan.isLoading) return <SkeletonList count={3} height={72} />;
   const transfers = plan.data?.transfers ?? [];
-  if (transfers.length === 0) return <Centered>Everyone's even.</Centered>;
+  if (transfers.length === 0)
+    return (
+      <Centered>
+        <Celebration text="Everyone's even." />
+      </Centered>
+    );
 
   async function confirmPaid() {
     if (!confirming) return;
@@ -71,7 +79,7 @@ export function Settle() {
                 <div className="t-body-strong">
                   {nameOf(t.fromMemberId)} → {nameOf(t.toMemberId)}
                 </div>
-                <Money value={t.amount} currency={currency} />
+                <Money value={t.amount} currency={currency} animate />
               </div>
               {mine ? (
                 <Button onClick={() => setConfirming(t)}>Mark as paid</Button>
@@ -88,88 +96,37 @@ export function Settle() {
         })}
       </div>
 
-      {confirming && (
-        <ConfirmSheet
-          to={nameOf(confirming.toMemberId)}
-          amount={confirming.amount}
-          currency={currency}
-          pending={markPaid.isPending}
-          onConfirm={confirmPaid}
-          onCancel={() => setConfirming(null)}
-        />
-      )}
-    </div>
-  );
-}
-
-/** Bottom-sheet confirmation (plan §13.6). The debtor confirms they sent money. */
-function ConfirmSheet({
-  to,
-  amount,
-  currency,
-  pending,
-  onConfirm,
-  onCancel,
-}: {
-  to: string;
-  amount: string;
-  currency: string;
-  pending: boolean;
-  onConfirm: () => void;
-  onCancel: () => void;
-}) {
-  return (
-    <div
-      onClick={onCancel}
-      style={{
-        position: "fixed",
-        inset: 0,
-        background: "rgba(0,0,0,0.5)",
-        display: "flex",
-        alignItems: "flex-end",
-        justifyContent: "center",
-        zIndex: 50,
-        animation: "jemaw-fade var(--dur-base) var(--ease-standard)",
-      }}
-    >
-      <div
-        onClick={(e) => e.stopPropagation()}
-        style={{
-          width: "100%",
-          maxWidth: 560,
-          background: "var(--surface)",
-          borderTopLeftRadius: "var(--r-xl)",
-          borderTopRightRadius: "var(--r-xl)",
-          padding: 24,
-          paddingBottom: "calc(24px + env(safe-area-inset-bottom))",
-          boxShadow: "var(--shadow-sheet)",
-          animation: "jemaw-slide-up var(--dur-base) var(--ease-standard)",
-        }}
-      >
-        <h2 className="t-heading" style={{ marginTop: 0 }}>
-          Confirm payment
-        </h2>
-        <p className="t-body" style={{ color: "var(--text-muted)" }}>
-          Confirm you sent <Money value={amount} currency={currency} /> to {to}?
-          This only records it — no money moves through Jemaw.
-        </p>
-        <div style={{ display: "flex", gap: 8, marginTop: 16 }}>
-          <Button
-            variant="ghost"
-            onClick={onCancel}
-            style={{ flex: 1 }}
-          >
-            Not yet
-          </Button>
-          <Button onClick={onConfirm} disabled={pending} style={{ flex: 1 }}>
-            {pending ? "Saving…" : "Yes, mark paid"}
-          </Button>
-        </div>
-      </div>
-      <style>{`
-        @keyframes jemaw-fade { from { opacity: 0 } to { opacity: 1 } }
-        @keyframes jemaw-slide-up { from { transform: translateY(100%) } to { transform: translateY(0) } }
-      `}</style>
+      <Sheet open={confirming != null} onClose={() => setConfirming(null)}>
+        {confirming && (
+          <>
+            <h2 className="t-heading" style={{ marginTop: 0 }}>
+              Confirm payment
+            </h2>
+            <p className="t-body" style={{ color: "var(--text-muted)" }}>
+              Confirm you sent{" "}
+              <Money value={confirming.amount} currency={currency} /> to{" "}
+              {nameOf(confirming.toMemberId)}? This only records it — no money
+              moves through Jemaw.
+            </p>
+            <div style={{ display: "flex", gap: 8, marginTop: 16 }}>
+              <Button
+                variant="ghost"
+                onClick={() => setConfirming(null)}
+                style={{ flex: 1 }}
+              >
+                Not yet
+              </Button>
+              <Button
+                onClick={confirmPaid}
+                disabled={markPaid.isPending}
+                style={{ flex: 1 }}
+              >
+                {markPaid.isPending ? "Saving…" : "Yes, mark paid"}
+              </Button>
+            </div>
+          </>
+        )}
+      </Sheet>
     </div>
   );
 }

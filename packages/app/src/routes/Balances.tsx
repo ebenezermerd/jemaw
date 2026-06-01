@@ -1,13 +1,15 @@
 import { useNavigate } from "react-router-dom";
 import { useBalances, useGroup } from "../lib/hooks.js";
 import { Money } from "../ui/primitives.js";
+import { SkeletonList } from "../motion/Skeleton.js";
+import { Celebration } from "../motion/Celebration.js";
 
 export function Balances() {
   const group = useGroup();
   const balances = useBalances();
   const nav = useNavigate();
 
-  if (balances.isLoading) return <Skeleton />;
+  if (balances.isLoading) return <SkeletonList />;
   if (balances.error)
     return <Centered>Couldn't load balances.</Centered>;
 
@@ -17,7 +19,12 @@ export function Balances() {
 
   if (rows.length === 0)
     return <Centered>Nothing to track yet.</Centered>;
-  if (allEven) return <Centered>Everyone's even.</Centered>;
+  if (allEven)
+    return (
+      <Centered>
+        <Celebration text="Everyone's even." />
+      </Centered>
+    );
 
   return (
     <div style={{ padding: 16, display: "grid", gap: 4 }}>
@@ -49,7 +56,7 @@ export function Balances() {
           }
         >
           <span className="t-body-strong">{r.displayName}</span>
-          <Money value={r.net} currency={currency} signed />
+          <Money value={r.net} currency={currency} signed animate />
         </button>
       ))}
     </div>
@@ -72,23 +79,3 @@ export function Centered({ children }: { children: React.ReactNode }) {
   );
 }
 
-function Skeleton() {
-  return (
-    <div style={{ padding: 16, display: "grid", gap: 8 }}>
-      {[0, 1, 2].map((i) => (
-        <div
-          key={i}
-          style={{
-            height: 56,
-            borderRadius: "var(--r-md)",
-            background:
-              "linear-gradient(90deg, var(--surface) 0%, var(--surface-elevated) 50%, var(--surface) 100%)",
-            backgroundSize: "200% 100%",
-            animation: "jemaw-shimmer 1.2s linear infinite",
-          }}
-        />
-      ))}
-      <style>{`@keyframes jemaw-shimmer { from { background-position: 200% 0 } to { background-position: -200% 0 } }`}</style>
-    </div>
-  );
-}

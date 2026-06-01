@@ -1,9 +1,11 @@
 /**
  * Jemaw UI primitives — JEMAW_PLAN.md §12.10. Restrained: borders + background
- * lift instead of shadows, single-green accent, tabular numerals. CSS
- * transitions only (Framer Motion is Phase 4).
+ * lift instead of shadows, single-green accent, tabular numerals. Tap feedback
+ * uses a CSS transform that the reduced-motion media query disables; richer
+ * spring/layout motion lives in the motion/ components.
  */
 import type { ButtonHTMLAttributes, ReactNode } from "react";
+import { AnimatedNumber } from "../motion/AnimatedNumber.js";
 
 // ─── Button ───────────────────────────────────────────────────────────
 type ButtonVariant = "primary" | "ghost" | "danger";
@@ -155,10 +157,13 @@ export function Money({
   value,
   currency,
   signed = false,
+  animate = false,
 }: {
   value: string; // decimal string
   currency: string;
   signed?: boolean;
+  /** animate digit changes (§12.9); use for balances/settle amounts */
+  animate?: boolean;
 }) {
   const n = Number(value);
   const color = !signed
@@ -168,8 +173,17 @@ export function Money({
       : n < 0
         ? "var(--warn)"
         : "var(--text-muted)";
-  const display =
-    signed && n > 0 ? `+${value}` : value;
+  const display = signed && n > 0 ? `+${value}` : value;
+
+  if (animate) {
+    return (
+      <AnimatedNumber
+        value={display}
+        prefix={symbolFor(currency)}
+        color={color}
+      />
+    );
+  }
   return (
     <span className="tnum" style={{ color, fontWeight: 500 }}>
       {symbolFor(currency)}
