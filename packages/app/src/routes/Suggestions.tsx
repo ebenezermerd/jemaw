@@ -121,7 +121,7 @@ function Card({
         <span className="t-body-strong">{s.description}</span>
         <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
           <span className="t-heading">
-            <Money value={s.amount} currency={currency} />
+            <Money value={s.amount ?? "0.00"} currency={currency} />
           </span>
           <span className="t-caption" style={{ color: "var(--text-muted)" }}>
             {payerName} paid · split {s.splitWith.length}{" "}
