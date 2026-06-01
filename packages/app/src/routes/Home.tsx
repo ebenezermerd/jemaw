@@ -12,14 +12,17 @@ import {
   useSuggestions,
   useSettlePlan,
   useConfirmSuggestion,
+  useConfirmSuggestionWithAmount,
   useDismissSuggestion,
 } from "../lib/hooks.js";
 import { SummaryCard } from "../ui/SummaryCard.js";
 import { MemberAvatar } from "../ui/MemberAvatar.js";
 import { Money, Pill, Button } from "../ui/primitives.js";
 import { EmptyState } from "../ui/EmptyState.js";
+import { Modal } from "../motion/Modal.js";
 import { Skeleton } from "../motion/Skeleton.js";
 import { useReducedMotion } from "../motion/useReducedMotion.js";
+import { type PanInfo } from "framer-motion";
 import type { SuggestionDto, TransferDto } from "@jemaw/shared/types";
 
 type Tab = "suggested" | "settle";
@@ -30,6 +33,7 @@ export function Home() {
   const suggestions = useSuggestions();
   const settle = useSettlePlan();
   const confirm = useConfirmSuggestion();
+  const confirmWith = useConfirmSuggestionWithAmount();
   const dismiss = useDismissSuggestion();
   const nav = useNavigate();
 
@@ -40,18 +44,22 @@ export function Home() {
   const tgId = (id: string) => members.find((m) => m.id === id)?.telegramUserId;
   const me = currentMemberId(members);
 
-  const sugg = suggestions.data?.suggestions ?? [];
+  const all = suggestions.data?.suggestions ?? [];
+  const sugg = all.filter((s) => s.kind === "expense");
+  const settleSugg = all.filter((s) => s.kind === "settlement");
   const transfers = (settle.data?.transfers ?? []).filter(
     (t) => me != null && t.fromMemberId === me,
   );
+  const settleCount = settleSugg.length + transfers.length;
 
   // Default to whichever tab has items (prefer Suggested).
   const [tab, setTab] = useState<Tab>("suggested");
+  const [removing, setRemoving] = useState<string | null>(null);
   useEffect(() => {
-    if (sugg.length === 0 && transfers.length > 0) setTab("settle");
+    if (sugg.length === 0 && settleCount > 0) setTab("settle");
     else if (sugg.length > 0) setTab("suggested");
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sugg.length, transfers.length]);
+  }, [sugg.length, settleCount]);
 
   return (
     <div style={{ paddingBottom: 8, overflowX: "hidden" }}>
@@ -68,7 +76,7 @@ export function Home() {
           tab={tab}
           onTab={setTab}
           suggestedCount={sugg.length}
-          settleCount={transfers.length}
+          settleCount={settleCount}
         />
 
         {tab === "suggested" ? (
@@ -88,22 +96,37 @@ export function Home() {
                   currency={currency}
                   payerName={nameOf(s.payerMemberId)}
                   onAdd={() => confirm.mutate(s.id)}
-                  onDismiss={() => dismiss.mutate(s.id)}
+                  onRequestRemove={() => setRemoving(s.id)}
                   onEdit={() => nav(`/add?from=${s.id}`)}
                   busy={confirm.isPending || dismiss.isPending}
                 />
               ))}
             </div>
           )
-        ) : transfers.length === 0 ? (
+        ) : settleCount === 0 ? (
           <EmptyState
             compact
             icon="⇄"
             title="Nothing to settle"
-            hint="When you owe someone, the transfer shows up here."
+            hint="When you owe someone — or Jemaw spots a payback in chat — it shows up here."
           />
         ) : (
           <div style={{ display: "grid", gap: 8 }}>
+            {/* AI-detected settlements from chat */}
+            {settleSugg.map((s) => (
+              <SettlementSuggestionRow
+                key={s.id}
+                s={s}
+                currency={currency}
+                fromName={nameOf(s.fromMemberId)}
+                toName={nameOf(s.toMemberId)}
+                toTgId={s.toMemberId ? tgId(s.toMemberId) : undefined}
+                onConfirm={(amount) => confirmWith.mutate({ id: s.id, amount })}
+                onDismiss={() => dismiss.mutate(s.id)}
+                busy={confirmWith.isPending || dismiss.isPending}
+              />
+            ))}
+            {/* computed transfers you owe */}
             {transfers.map((t, i) => (
               <SettleRow
                 key={`${t.toMemberId}-${i}`}
@@ -117,6 +140,31 @@ export function Home() {
           </div>
         )}
       </div>
+
+      {/* remove-suggestion confirmation (left-swipe or Remove button) */}
+      <Modal open={removing != null} onClose={() => setRemoving(null)}>
+        <h2 className="t-heading" style={{ marginTop: 0 }}>
+          Remove this suggestion?
+        </h2>
+        <p className="t-body" style={{ color: "var(--text-muted)" }}>
+          It won't be added. Jemaw can suggest it again on the next scan.
+        </p>
+        <div style={{ display: "flex", gap: 8, marginTop: 16 }}>
+          <Button variant="ghost" onClick={() => setRemoving(null)} style={{ flex: 1 }}>
+            Keep
+          </Button>
+          <Button
+            variant="danger"
+            onClick={() => {
+              if (removing) dismiss.mutate(removing);
+              setRemoving(null);
+            }}
+            style={{ flex: 1 }}
+          >
+            Remove
+          </Button>
+        </div>
+      </Modal>
     </div>
   );
 }
@@ -175,18 +223,36 @@ function Tabs({
   );
 }
 
-// ─── Collapsible row shell ────────────────────────────────────────────
+// ─── Collapsible row shell with swipe (right = add, left = remove) ────
 function Row({
   header,
   children,
+  onSwipeRight,
+  onSwipeLeft,
 }: {
   header: (open: boolean) => React.ReactNode;
   children: React.ReactNode;
+  /** right-drag commits the primary action (add/confirm) */
+  onSwipeRight?: () => void;
+  /** left-drag asks to remove (parent shows a confirm dialog) */
+  onSwipeLeft?: () => void;
 }) {
   const [open, setOpen] = useState(false);
   const reduced = useReducedMotion();
+
+  function onDragEnd(_e: unknown, info: PanInfo) {
+    if (info.offset.x > 100 || info.velocity.x > 600) onSwipeRight?.();
+    else if (info.offset.x < -100 || info.velocity.x < -600) onSwipeLeft?.();
+  }
+
   return (
-    <div
+    <motion.div
+      layout
+      drag={reduced || (!onSwipeRight && !onSwipeLeft) ? false : "x"}
+      dragConstraints={{ left: 0, right: 0 }}
+      dragElastic={0.5}
+      dragSnapToOrigin
+      onDragEnd={onDragEnd}
       style={{
         background: "var(--surface)",
         border: "1px solid var(--border)",
@@ -221,7 +287,7 @@ function Row({
           </motion.div>
         )}
       </AnimatePresence>
-    </div>
+    </motion.div>
   );
 }
 
@@ -246,7 +312,7 @@ function SuggestionRow({
   currency,
   payerName,
   onAdd,
-  onDismiss,
+  onRequestRemove,
   onEdit,
   busy,
 }: {
@@ -254,12 +320,14 @@ function SuggestionRow({
   currency: string;
   payerName: string;
   onAdd: () => void;
-  onDismiss: () => void;
+  onRequestRemove: () => void;
   onEdit: () => void;
   busy: boolean;
 }) {
   return (
     <Row
+      onSwipeRight={onAdd}
+      onSwipeLeft={onRequestRemove}
       header={(open) => (
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
           <div style={{ flex: 1, minWidth: 0 }}>
@@ -267,14 +335,14 @@ function SuggestionRow({
               {s.description}
             </div>
             <div className="t-caption" style={{ color: "var(--text-muted)" }}>
-              {payerName} paid
+              {payerName} paid · swipe → add, ← remove
             </div>
           </div>
           <Pill variant={s.tier === "normal" ? "accent" : "warn"}>
             {s.tier === "normal" ? "AI" : "low"}
           </Pill>
           <span className="t-body-strong">
-            <Money value={s.amount} currency={currency} />
+            <Money value={s.amount ?? "0.00"} currency={currency} />
           </span>
           <Chevron open={open} />
         </div>
@@ -294,14 +362,111 @@ function SuggestionRow({
         {s.splitWith.length === 1 ? "way" : "ways"}
       </div>
       <div style={{ display: "flex", gap: 8 }}>
-        <Button variant="ghost" onClick={onDismiss} disabled={busy} style={{ flex: 1 }}>
-          Dismiss
+        <Button variant="ghost" onClick={onRequestRemove} disabled={busy} style={{ flex: 1 }}>
+          Remove
         </Button>
         <Button variant="ghost" onClick={onEdit} disabled={busy} style={{ flex: 1 }}>
           Edit
         </Button>
         <Button onClick={onAdd} disabled={busy} style={{ flex: 1 }}>
           ✓ Add
+        </Button>
+      </div>
+    </Row>
+  );
+}
+
+// ─── Settlement suggestion row (AI-detected payback) ─────────────────
+function SettlementSuggestionRow({
+  s,
+  currency,
+  fromName,
+  toName,
+  toTgId,
+  onConfirm,
+  onDismiss,
+  busy,
+}: {
+  s: SuggestionDto;
+  currency: string;
+  fromName: string;
+  toName: string;
+  toTgId?: string;
+  onConfirm: (amount?: string) => void;
+  onDismiss: () => void;
+  busy: boolean;
+}) {
+  const [amount, setAmount] = useState(s.amount ?? "");
+  const needsAmount = s.amount == null;
+  const canConfirm = !needsAmount || /^\d+(\.\d{1,2})?$/.test(amount);
+
+  return (
+    <Row
+      onSwipeRight={() => canConfirm && onConfirm(needsAmount ? amount : undefined)}
+      onSwipeLeft={onDismiss}
+      header={(open) => (
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <MemberAvatar name={toName} telegramUserId={toTgId} size={28} />
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div className="t-body-strong" style={ellip}>
+              {fromName} paid {toName}
+            </div>
+            <div className="t-caption" style={{ color: "var(--text-muted)" }}>
+              spotted in chat
+            </div>
+          </div>
+          <Pill variant={s.tier === "normal" ? "accent" : "warn"}>AI</Pill>
+          {s.amount && (
+            <span className="t-body-strong">
+              <Money value={s.amount} currency={currency} />
+            </span>
+          )}
+          <Chevron open={open} />
+        </div>
+      )}
+    >
+      <div
+        className="t-caption"
+        style={{
+          color: "var(--text-muted)",
+          marginBottom: 12,
+          paddingLeft: 10,
+          borderLeft: "2px solid var(--border-strong)",
+          fontStyle: "italic",
+        }}
+      >
+        {s.reasoning}
+      </div>
+      {needsAmount && (
+        <input
+          value={amount}
+          onChange={(e) => setAmount(e.target.value.replace(/[^\d.]/g, ""))}
+          inputMode="decimal"
+          placeholder="Amount paid back"
+          className="tnum"
+          style={{
+            width: "100%",
+            height: 40,
+            padding: "0 12px",
+            marginBottom: 8,
+            borderRadius: "var(--r-md)",
+            border: "1px solid var(--border-strong)",
+            background: "var(--surface)",
+            color: "var(--text)",
+            fontSize: 16,
+          }}
+        />
+      )}
+      <div style={{ display: "flex", gap: 8 }}>
+        <Button variant="ghost" onClick={onDismiss} disabled={busy} style={{ flex: 1 }}>
+          Remove
+        </Button>
+        <Button
+          onClick={() => onConfirm(needsAmount ? amount : undefined)}
+          disabled={busy || !canConfirm}
+          style={{ flex: 1 }}
+        >
+          ✓ Settle
         </Button>
       </div>
     </Row>

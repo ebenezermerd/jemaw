@@ -17,13 +17,28 @@ export const suggestionSchema = z.object({
   reasoning: z.string().max(200),
 });
 
+/** A settlement/payback mention ("I paid Sara back 200 for the cab"). */
+export const settlementSuggestionSchema = z.object({
+  confidence: z.number().min(0).max(1),
+  from_telegram_id: z.number().int(),
+  to_telegram_id: z.number().int(),
+  amount: z.number().positive().nullable(),
+  currency: z.string().length(3),
+  evidence_message_ids: z.array(z.number().int()),
+  reasoning: z.string().max(200),
+});
+
 export const scanResponseSchema = z.object({
   suggestions: z.array(suggestionSchema),
+  // Optional so older/empty responses still parse.
+  settlements: z.array(settlementSuggestionSchema).optional().default([]),
   scan_window: z.object({
     from_message_id: z.number().int(),
     to_message_id: z.number().int(),
   }),
 });
+
+export type RawSettlement = z.infer<typeof settlementSuggestionSchema>;
 
 export type RawSuggestion = z.infer<typeof suggestionSchema>;
 export type ScanResponse = z.infer<typeof scanResponseSchema>;

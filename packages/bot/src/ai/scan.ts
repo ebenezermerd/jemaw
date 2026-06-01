@@ -206,10 +206,13 @@ export async function scanGroup(
     rows.push({
       groupId: group.id,
       aiRunId: run.id,
+      kind: "expense" as const,
       confidence: s.confidence.toFixed(2),
       description: s.description,
       amount: centsToDecimal(decimalToCents(s.amount.toFixed(2))),
       payerMemberId: payer?.id ?? null,
+      fromMemberId: null,
+      toMemberId: null,
       splitType: s.split_type,
       splitWith: splitMemberIds,
       shares,
@@ -219,10 +222,47 @@ export async function scanGroup(
     });
   }
 
+  // ── settlements (paybacks detected in chat) ──
+  for (const st of parsed.data.settlements) {
+    if (tierFor(st.confidence) === "drop") {
+      dropped++;
+      continue;
+    }
+    const from = memberByTgId.get(st.from_telegram_id);
+    const to = memberByTgId.get(st.to_telegram_id);
+    if (!from || !to || from.id === to.id) {
+      dropped++;
+      console.log(
+        `[scan] drop settlement: unknown member ${st.from_telegram_id}->${st.to_telegram_id}`,
+      );
+      continue;
+    }
+    rows.push({
+      groupId: group.id,
+      aiRunId: run.id,
+      kind: "settlement" as const,
+      confidence: st.confidence.toFixed(2),
+      description: `${from.displayName} → ${to.displayName}`,
+      amount:
+        st.amount != null
+          ? centsToDecimal(decimalToCents(st.amount.toFixed(2)))
+          : null,
+      payerMemberId: null,
+      fromMemberId: from.id,
+      toMemberId: to.id,
+      splitType: "equal" as const, // unused for settlements; schema needs non-null
+      splitWith: [],
+      shares: null,
+      evidenceMessageIds: st.evidence_message_ids,
+      reasoning: st.reasoning,
+      status: "pending" as const,
+    });
+  }
+
   const inserted = await insertSuggestions(db, rows);
   await setLastScanMessageId(db, group.id, BigInt(toId));
   console.log(
-    `[scan] inserted ${inserted.length}, dropped ${dropped} (of ${parsed.data.suggestions.length})`,
+    `[scan] inserted ${inserted.length}, dropped ${dropped} (expenses=${parsed.data.suggestions.length} settlements=${parsed.data.settlements.length})`,
   );
 
   return {

@@ -8,6 +8,13 @@
       "when": 1780249035979,
       "tag": "0000_loving_maginty",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1780334133622,
+      "tag": "0001_lovely_jack_power",
+      "breakpoints": true
     }
   ]
 }

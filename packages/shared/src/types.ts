@@ -170,14 +170,21 @@ export interface CreateSettlementInput {
 }
 
 // ─── Suggestions (Phase 3) ────────────────────────────────────────────
+export type SuggestionKind = "expense" | "settlement";
+
 export interface SuggestionDto {
   id: string;
-  /** decimal string */
-  amount: string;
+  kind: SuggestionKind;
+  /** decimal string; may be null for a vague settlement until edited */
+  amount: string | null;
   description: string;
+  /** expense: who paid */
   payerMemberId: string | null;
+  /** settlement: payer → payee */
+  fromMemberId: string | null;
+  toMemberId: string | null;
   splitType: SplitType;
-  /** member ids */
+  /** member ids (expense only) */
   splitWith: string[];
   shares: Record<string, number> | null;
   /** telegram message ids cited as evidence */
@@ -193,6 +200,11 @@ export interface SuggestionsResponse {
   suggestions: SuggestionDto[];
   /** true while a scan is in flight (the UI polls). */
   scanning: boolean;
+}
+
+/** Body for confirming a suggestion — amount required for vague settlements. */
+export interface ConfirmSuggestionInput {
+  amount?: string;
 }
 
 // ─── History ──────────────────────────────────────────────────────────

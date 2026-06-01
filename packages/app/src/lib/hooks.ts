@@ -202,6 +202,18 @@ export function useConfirmSuggestion() {
   });
 }
 
+/** Confirm a suggestion with an explicit amount (vague settlements). */
+export function useConfirmSuggestionWithAmount() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (args: { id: string; amount?: string }) =>
+      api.post(`/api/groups/${gid()}/suggestions/${args.id}/confirm`, {
+        amount: args.amount,
+      }),
+    onSuccess: () => invalidateLedger(qc),
+  });
+}
+
 export function useDismissSuggestion() {
   const qc = useQueryClient();
   return useMutation({
