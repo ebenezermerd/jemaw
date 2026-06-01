@@ -9,6 +9,7 @@ import {
 import type { CreateExpenseInput } from "@jemaw/shared/types";
 import { Button, Avatar } from "../ui/primitives.js";
 import { Modal } from "../motion/Modal.js";
+import { PageHeader } from "../ui/PageHeader.js";
 import { PageLoader } from "../motion/Loader.js";
 import { Centered } from "./Balances.js";
 
@@ -77,11 +78,9 @@ export function ExpenseDetail() {
   }
 
   return (
-    <div style={{ padding: 16, display: "grid", gap: 20 }}>
-      <h1 className="t-screen-title" style={{ margin: "8px 0 0" }}>
-        Edit expense
-      </h1>
-
+    <div>
+      <PageHeader title="Edit expense" fallback="/history" />
+      <div style={{ padding: "0 16px 16px", display: "grid", gap: 20 }}>
       <Field label="Description">
         <input value={description} onChange={(e) => setDescription(e.target.value)} style={inputStyle} />
       </Field>
@@ -161,6 +160,7 @@ export function ExpenseDetail() {
           </Button>
         </div>
       </Modal>
+      </div>
     </div>
   );
 }
