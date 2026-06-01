@@ -1,5 +1,11 @@
-import { BrowserRouter, Routes, Route, Navigate, useNavigate } from "react-router-dom";
-import { useGroup } from "./lib/hooks.js";
+import {
+  BrowserRouter,
+  Routes,
+  Route,
+  Navigate,
+  useNavigate,
+  useLocation,
+} from "react-router-dom";
 import { getGroupId } from "./lib/api.js";
 import { TabBar } from "./ui/TabBar.js";
 import { Home } from "./routes/Home.js";
@@ -11,49 +17,35 @@ import { Suggestions } from "./routes/Suggestions.js";
 import { ExpenseDetail } from "./routes/ExpenseDetail.js";
 import { Settings } from "./routes/Settings.js";
 
-function Header() {
-  const group = useGroup();
+/** A small settings gear floating at the top-right (no header bar). */
+function SettingsButton() {
   const nav = useNavigate();
-  const g = group.data;
+  const { pathname } = useLocation();
+  if (pathname === "/settings") return null; // hide on the settings page itself
   return (
-    <header
+    <button
+      aria-label="Settings"
+      onClick={() => nav("/settings")}
       style={{
-        display: "flex",
-        alignItems: "flex-start",
-        justifyContent: "space-between",
-        padding: "16px 16px 0",
+        position: "fixed",
+        top: "calc(8px + env(safe-area-inset-top))",
+        right: 12,
+        zIndex: 40,
+        width: 38,
+        height: 38,
+        borderRadius: "var(--r-full)",
+        border: "1px solid var(--border)",
+        background: "color-mix(in srgb, var(--bg) 70%, transparent)",
+        backdropFilter: "blur(8px)",
+        color: "var(--text-muted)",
+        cursor: "pointer",
+        fontSize: 18,
       }}
     >
-      <div style={{ display: "flex", flexDirection: "column" }}>
-        <span className="t-heading">{g?.name ?? "Jemaw"}</span>
-        {g && (
-          <span className="t-caption" style={{ color: "var(--text-faint)" }}>
-            {g.members.length} member{g.members.length === 1 ? "" : "s"} ·{" "}
-            {g.defaultCurrency}
-          </span>
-        )}
-      </div>
-      <button
-        aria-label="Settings"
-        onClick={() => nav("/settings")}
-        style={iconBtn}
-      >
-        ⚙
-      </button>
-    </header>
+      ⚙
+    </button>
   );
 }
-
-const iconBtn: React.CSSProperties = {
-  width: 40,
-  height: 40,
-  borderRadius: "var(--r-full)",
-  border: "none",
-  background: "transparent",
-  color: "var(--text-muted)",
-  cursor: "pointer",
-  fontSize: 20,
-};
 
 function Shell() {
   return (
@@ -66,8 +58,13 @@ function Shell() {
         margin: "0 auto",
       }}
     >
-      <Header />
-      <main style={{ flex: 1 }}>
+      <SettingsButton />
+      <main
+        style={{
+          flex: 1,
+          paddingTop: "calc(8px + env(safe-area-inset-top))",
+        }}
+      >
         <Routes>
           <Route path="/" element={<Home />} />
           <Route path="/suggestions" element={<Suggestions />} />
