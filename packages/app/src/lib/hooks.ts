@@ -175,6 +175,24 @@ export function useSuggestions() {
   });
 }
 
+/**
+ * Pull-to-refresh handler: re-fetch everything, and on the Home/Suggestions
+ * screens also kick a fresh Gemini scan. Resolves when done.
+ */
+export function useRefresh() {
+  const qc = useQueryClient();
+  return async (opts?: { scan?: boolean }) => {
+    if (opts?.scan) {
+      try {
+        await api.post(`/api/groups/${gid()}/scan`, {});
+      } catch {
+        // AI not configured or failed — still refresh the data below.
+      }
+    }
+    await qc.invalidateQueries();
+  };
+}
+
 export function useConfirmSuggestion() {
   const qc = useQueryClient();
   return useMutation({
