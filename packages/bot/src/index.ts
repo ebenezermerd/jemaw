@@ -3,6 +3,7 @@ import { createDb } from "./db.js";
 import { createBot } from "./bot.js";
 import { buildServer } from "./server.js";
 import { mountWebhookRoute, registerWebhook } from "./webhook.js";
+import { createGeminiClient } from "./ai/geminiClient.js";
 
 async function main(): Promise<void> {
   const env = loadEnv();
@@ -15,10 +16,16 @@ async function main(): Promise<void> {
   // arrives with onboarding UI; EUR is the v1 default).
   const defaultCurrency = "EUR";
 
+  // Gemini scans run only when a key is configured.
+  const gemini = env.GEMINI_API_KEY
+    ? createGeminiClient(env.GEMINI_API_KEY)
+    : undefined;
+
   const bot = createBot(env.TELEGRAM_BOT_TOKEN, {
     db,
     defaultCurrency,
     miniAppUrl: env.MINI_APP_URL,
+    gemini,
   });
 
   const app = await buildServer({

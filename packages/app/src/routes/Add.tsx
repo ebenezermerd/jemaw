@@ -1,6 +1,11 @@
 import { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
-import { useGroup, useCreateExpense } from "../lib/hooks.js";
+import { useNavigate, useSearchParams } from "react-router-dom";
+import {
+  useGroup,
+  useCreateExpense,
+  useSuggestions,
+  useEditSuggestion,
+} from "../lib/hooks.js";
 import type { SplitType, CreateExpenseInput } from "@jemaw/shared/types";
 import { decimalToCents, centsToDecimal } from "@jemaw/shared/types";
 import { Button, Avatar } from "../ui/primitives.js";
@@ -9,7 +14,14 @@ import { Centered } from "./Balances.js";
 export function Add() {
   const group = useGroup();
   const create = useCreateExpense();
+  const editSuggestion = useEditSuggestion();
   const nav = useNavigate();
+  const [params] = useSearchParams();
+  const fromSuggestionId = params.get("from") ?? undefined;
+  const suggestions = useSuggestions();
+  const source = fromSuggestionId
+    ? suggestions.data?.suggestions.find((s) => s.id === fromSuggestionId)
+    : undefined;
 
   const members = group.data?.members.filter((m) => m.isActive) ?? [];
 
@@ -28,6 +40,17 @@ export function Add() {
       setSplitWith(new Set(members.map((m) => m.id)));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [group.data]);
+
+  // Prefill from a suggestion when editing one.
+  useEffect(() => {
+    if (!source) return;
+    setDescription(source.description);
+    setAmount(source.amount);
+    if (source.payerMemberId) setPayer(source.payerMemberId);
+    setSplitType(source.splitType);
+    setSplitWith(new Set(source.splitWith));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [source?.id]);
 
   if (group.isLoading) return <Centered>Loading…</Centered>;
   if (members.length === 0)
@@ -70,14 +93,20 @@ export function Add() {
       shares: splitType === "shares" ? shares : undefined,
       exact: splitType === "exact" ? exact : undefined,
     };
-    await create.mutateAsync(input);
-    nav("/balances");
+    if (fromSuggestionId) {
+      // Editing a suggestion → records an ai_edited expense + resolves it.
+      await editSuggestion.mutateAsync({ id: fromSuggestionId, input });
+      nav("/suggestions");
+    } else {
+      await create.mutateAsync(input);
+      nav("/balances");
+    }
   }
 
   return (
     <div style={{ padding: 16, display: "grid", gap: 20 }}>
       <h1 className="t-title" style={{ margin: "8px 0 0" }}>
-        Add expense
+        {fromSuggestionId ? "Edit suggestion" : "Add expense"}
       </h1>
 
       <Field label="Description">
@@ -198,8 +227,11 @@ export function Add() {
         )}
       </Field>
 
-      <Button disabled={!valid || create.isPending} onClick={submit}>
-        {create.isPending ? "Adding…" : "Add"}
+      <Button
+        disabled={!valid || create.isPending || editSuggestion.isPending}
+        onClick={submit}
+      >
+        {create.isPending || editSuggestion.isPending ? "Adding…" : "Add"}
       </Button>
     </div>
   );

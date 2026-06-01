@@ -4,9 +4,17 @@ import {
   upsertGroup,
   getGroupById,
   captureMessage,
+  countPendingSuggestions,
+  findMemberByTelegramId,
 } from "./repo.js";
 import { registerUser, seedAdmins } from "./telegram/memberSync.js";
 import { ensurePinnedMessage } from "./telegram/pinnedMessage.js";
+import type { GeminiClient } from "./ai/geminiClient.js";
+import { ScanRateLimiter } from "./ai/rateLimit.js";
+import { scanGroup } from "./ai/scan.js";
+
+/** Word-boundary, case-insensitive "jemaw" trigger (plan §10). */
+const JEMAW_RE = /(?<![a-z0-9])jemaw(?![a-z0-9])/i;
 
 // ─── Reply copy (pure, testable) ──────────────────────────────────────
 export function startGroupText(): string {
@@ -43,14 +51,58 @@ export interface BotDeps {
   db: Db;
   defaultCurrency: string;
   miniAppUrl: string | undefined;
+  /** Present only when GEMINI_API_KEY is set; absent → scans don't run. */
+  gemini?: GeminiClient;
 }
 
 const GROUP_TYPES = new Set(["group", "supergroup"]);
 
-/** Create the grammY bot with Phase 1 handlers registered. */
+/** Create the grammY bot with all handlers (Phases 1-3) registered. */
 export function createBot(token: string, deps: BotDeps): Bot {
   const bot = new Bot(token);
-  const { db, defaultCurrency, miniAppUrl } = deps;
+  const { db, defaultCurrency, miniAppUrl, gemini } = deps;
+  const rateLimiter = new ScanRateLimiter();
+
+  /** Refresh the pinned button so it reflects the current suggestion count. */
+  async function refreshPinned(
+    api: Context["api"],
+    groupId: string,
+    chatId: number,
+  ): Promise<void> {
+    const group = await getGroupById(db, groupId);
+    const count = await countPendingSuggestions(db, groupId).catch(() => 0);
+    await ensurePinnedMessage(
+      api,
+      db,
+      {
+        groupId,
+        telegramChatId: BigInt(chatId),
+        existingPinnedMessageId: group?.pinnedMessageId ?? null,
+        miniAppUrl,
+      },
+      count,
+    ).catch(() => {});
+  }
+
+  /**
+   * Kick a Gemini scan if allowed (key present + not rate-limited). Fire and
+   * forget: errors are recorded in ai_runs, never thrown to the handler.
+   */
+  function maybeScan(
+    api: Context["api"],
+    group: { id: string; telegramChatId: bigint },
+    triggeredByMemberId: string | null,
+    triggerType: "keyword" | "command",
+  ): void {
+    if (!gemini) return;
+    if (!rateLimiter.tryAcquire(group.id)) return;
+    void (async () => {
+      const g = await getGroupById(db, group.id);
+      if (!g) return;
+      await scanGroup({ db, gemini, now: () => Date.now() }, g, triggeredByMemberId, triggerType);
+      await refreshPinned(api, group.id, Number(group.telegramChatId));
+    })().catch(() => {});
+  }
 
   async function ensureGroup(ctx: Context): Promise<string | null> {
     const chat = ctx.chat;
@@ -104,7 +156,24 @@ export function createBot(token: string, deps: BotDeps): Bot {
     await ctx.reply(helpText());
   });
 
-  // Capture plain group text + register the speaker (see-as-they-speak).
+  // /jemaw — refresh the pinned button and kick a scan.
+  bot.command("jemaw", async (ctx) => {
+    const groupId = await ensureGroup(ctx);
+    if (!groupId || !ctx.chat) return;
+    if (ctx.from) await registerUser(db, groupId, ctx.from).catch(() => {});
+    const member = ctx.from
+      ? await findScanMember(db, groupId, ctx.from.id)
+      : null;
+    maybeScan(
+      ctx.api,
+      { id: groupId, telegramChatId: BigInt(ctx.chat.id) },
+      member,
+      "command",
+    );
+    await refreshPinned(ctx.api, groupId, ctx.chat.id);
+  });
+
+  // Capture plain group text + register the speaker; trigger a scan on "jemaw".
   bot.on("message:text", async (ctx) => {
     const chat = ctx.chat;
     if (!chat || !GROUP_TYPES.has(chat.type)) return;
@@ -121,7 +190,29 @@ export function createBot(token: string, deps: BotDeps): Bot {
       text,
       new Date(ctx.message.date * 1000),
     ).catch(() => {});
+
+    if (JEMAW_RE.test(text)) {
+      const member = ctx.from
+        ? await findScanMember(db, groupId, ctx.from.id)
+        : null;
+      maybeScan(
+        ctx.api,
+        { id: groupId, telegramChatId: BigInt(chat.id) },
+        member,
+        "keyword",
+      );
+    }
   });
 
   return bot;
+}
+
+/** Resolve a Telegram user to a member id for ai_runs attribution. */
+async function findScanMember(
+  db: Db,
+  groupId: string,
+  telegramUserId: number,
+): Promise<string | null> {
+  const m = await findMemberByTelegramId(db, groupId, BigInt(telegramUserId));
+  return m?.id ?? null;
 }
