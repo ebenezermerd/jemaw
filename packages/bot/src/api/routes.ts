@@ -10,24 +10,113 @@ import {
   listMembers,
   listLiveExpenses,
   createExpenseWithShares,
+  updateExpenseWithShares,
+  voidExpense,
   getExpense,
   groupHasExpenses,
+  listSettlements,
+  createSettlement,
   addManualMember,
   renameMember,
 } from "../repo.js";
 import { computeSplit } from "../domain/splits.js";
-import { computeBalances, type ExpenseForBalance } from "../domain/balances.js";
+import {
+  computeBalances,
+  type ExpenseForBalance,
+  type MemberNet,
+} from "../domain/balances.js";
+import { computeSettlement } from "../domain/settle.js";
 import {
   decimalToCents,
   centsToDecimal,
   type HistoryResponse,
+  type HistoryItem,
+  type SettlePlanResponse,
 } from "@jemaw/shared/types";
+import type { Member } from "@jemaw/shared/schema";
 import {
   toGroupDto,
   toExpenseDto,
   toBalanceDtos,
   toMemberDto,
+  toTransferDto,
+  toSettlementDto,
 } from "./mappers.js";
+
+/**
+ * Compute the current net balances for a group from live expenses + paid
+ * settlements. Shared by the balances, settle, and mark-paid endpoints so the
+ * math is defined in exactly one place.
+ */
+async function loadBalances(
+  db: Db,
+  groupId: string,
+): Promise<{ members: Member[]; nets: MemberNet[] }> {
+  const members = await listMembers(db, groupId);
+  const expenses = await listLiveExpenses(db, groupId);
+  const settlements = await listSettlements(db, groupId);
+  const forBalance: ExpenseForBalance[] = expenses.map((e) => ({
+    payerMemberId: e.expense.payerMemberId,
+    amountCents: decimalToCents(e.expense.amount),
+    shares: e.shares.map((s) => ({
+      memberId: s.memberId,
+      shareCents: decimalToCents(s.shareAmount),
+    })),
+  }));
+  const forSettle = settlements.map((s) => ({
+    fromMemberId: s.fromMemberId,
+    toMemberId: s.toMemberId,
+    amountCents: decimalToCents(s.amount),
+  }));
+  const nets = computeBalances(
+    members.map((m) => m.id),
+    forBalance,
+    forSettle,
+  );
+  return { members, nets };
+}
+
+/** Validated expense input shape (shared by create + edit). */
+type ExpenseInput = z.infer<typeof createExpenseSchema>;
+
+/**
+ * Validate members + compute share rows for an expense. Returns either the
+ * decimal-string share rows, or an error string for a 400 response.
+ */
+function buildShareRows(
+  input: ExpenseInput,
+  groupId: string,
+  memberIds: Set<string>,
+  seedSuffix: string,
+): { shares: { memberId: string; shareAmount: string }[] } | { error: string } {
+  if (!memberIds.has(input.payerMemberId)) return { error: "payer not in group" };
+  for (const id of input.splitWith) {
+    if (!memberIds.has(id)) return { error: `member ${id} not in group` };
+  }
+  const totalCents = decimalToCents(input.amount);
+  try {
+    const computed = computeSplit({
+      totalCents,
+      splitType: input.splitType,
+      memberIds: input.splitWith,
+      shares: input.shares,
+      exactCents: input.exact
+        ? Object.fromEntries(
+            Object.entries(input.exact).map(([k, v]) => [k, decimalToCents(v)]),
+          )
+        : undefined,
+      expenseSeed: `${groupId}:${input.description}:${input.amount}:${seedSuffix}`,
+    });
+    return {
+      shares: computed.map((c) => ({
+        memberId: c.memberId,
+        shareAmount: centsToDecimal(c.shareCents),
+      })),
+    };
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : "bad split" };
+  }
+}
 
 const createExpenseSchema = z.object({
   description: z.string().min(1).max(200),
@@ -38,6 +127,10 @@ const createExpenseSchema = z.object({
   shares: z.record(z.string(), z.number().int().positive()).optional(),
   exact: z.record(z.string(), z.string().regex(/^\d+(\.\d{1,2})?$/)).optional(),
   occurredAt: z.string().datetime().optional(),
+});
+
+const createSettlementSchema = z.object({
+  toMemberId: z.string().uuid(),
 });
 
 const addMemberSchema = z.object({
@@ -83,23 +176,73 @@ export async function registerApi(
     { preHandler: auth },
     async (req) => {
       const { group } = req.jemaw!;
-      const members = await listMembers(db, group.id);
-      const expenses = await listLiveExpenses(db, group.id);
-      const forBalance: ExpenseForBalance[] = expenses.map((e) => ({
-        payerMemberId: e.expense.payerMemberId,
-        amountCents: decimalToCents(e.expense.amount),
-        shares: e.shares.map((s) => ({
-          memberId: s.memberId,
-          shareCents: decimalToCents(s.shareAmount),
-        })),
-      }));
-      const nets = computeBalances(
-        members.map((m) => m.id),
-        forBalance,
-      );
+      const { members, nets } = await loadBalances(db, group.id);
       const nameOf = (id: string) =>
         members.find((m) => m.id === id)?.displayName ?? "Member";
       return toBalanceDtos(nets, nameOf);
+    },
+  );
+
+  // GET live settle-up plan
+  app.get(
+    "/api/groups/:groupId/settle",
+    { preHandler: auth },
+    async (req) => {
+      const { group } = req.jemaw!;
+      const { nets } = await loadBalances(db, group.id);
+      const transfers = computeSettlement(nets).map(toTransferDto);
+      const res: SettlePlanResponse = { transfers };
+      return res;
+    },
+  );
+
+  // GET settlements list
+  app.get(
+    "/api/groups/:groupId/settlements",
+    { preHandler: auth },
+    async (req) => {
+      const { group } = req.jemaw!;
+      const settlements = await listSettlements(db, group.id);
+      return settlements.map(toSettlementDto);
+    },
+  );
+
+  // POST mark-as-paid: only the debtor, amount clamped to current debt.
+  app.post(
+    "/api/groups/:groupId/settlements",
+    { preHandler: auth },
+    async (req, reply) => {
+      const { group, member } = req.jemaw!;
+      const parsed = createSettlementSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return reply.code(400).send({ error: "invalid body" });
+      }
+      const { toMemberId } = parsed.data;
+
+      // Recompute the live plan and find this exact debtor->creditor transfer.
+      const { nets } = await loadBalances(db, group.id);
+      const plan = computeSettlement(nets);
+      const transfer = plan.find(
+        (t) => t.fromMemberId === member.id && t.toMemberId === toMemberId,
+      );
+      if (!transfer) {
+        // Debt already cleared or changed since the screen loaded.
+        return reply.code(409).send({
+          error: "no current debt to this member",
+          transfers: plan.map(toTransferDto),
+        });
+      }
+
+      const created = await createSettlement(db, {
+        groupId: group.id,
+        fromMemberId: member.id,
+        toMemberId,
+        amount: centsToDecimal(transfer.amountCents),
+        currency: group.defaultCurrency,
+        markedPaidAt: new Date(),
+        markedPaidByMemberId: member.id,
+      });
+      return reply.code(201).send(toSettlementDto(created));
     },
   );
 
@@ -124,6 +267,68 @@ export async function registerApi(
       const e = await getExpense(db, group.id, expenseId);
       if (!e) return reply.code(404).send({ error: "not found" });
       return toExpenseDto(e);
+    },
+  );
+
+  // PATCH edit an expense (recompute shares)
+  app.patch(
+    "/api/groups/:groupId/expenses/:expenseId",
+    { preHandler: auth },
+    async (req, reply) => {
+      const { group } = req.jemaw!;
+      const { expenseId } = req.params as { expenseId: string };
+      const parsed = createExpenseSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return reply.code(400).send({ error: "invalid body" });
+      }
+      const body = parsed.data;
+      const members = await listMembers(db, group.id);
+      const built = buildShareRows(
+        body,
+        group.id,
+        new Set(members.map((m) => m.id)),
+        expenseId,
+      );
+      if ("error" in built) return reply.code(400).send({ error: built.error });
+
+      try {
+        const updated = await updateExpenseWithShares(
+          db,
+          group.id,
+          expenseId,
+          {
+            payerMemberId: body.payerMemberId,
+            amount: centsToDecimal(decimalToCents(body.amount)),
+            description: body.description,
+            occurredAt: body.occurredAt ? new Date(body.occurredAt) : undefined,
+          },
+          built.shares,
+        );
+        if (!updated) return reply.code(404).send({ error: "not found" });
+        return toExpenseDto(updated);
+      } catch (err) {
+        return reply.code(409).send({
+          error: err instanceof Error ? err.message : "cannot edit",
+        });
+      }
+    },
+  );
+
+  // POST void an expense (soft delete)
+  app.post(
+    "/api/groups/:groupId/expenses/:expenseId/void",
+    { preHandler: auth },
+    async (req, reply) => {
+      const { group } = req.jemaw!;
+      const { expenseId } = req.params as { expenseId: string };
+      const result = await voidExpense(db, group.id, expenseId, new Date());
+      if (result === "not_found") {
+        return reply.code(404).send({ error: "not found" });
+      }
+      if (result === "already_voided") {
+        return reply.code(409).send({ error: "already voided" });
+      }
+      return reply.code(200).send({ ok: true });
     },
   );
 
@@ -204,31 +409,57 @@ export async function registerApi(
     },
   );
 
-  // GET history (grouped by day)
+  // GET history (expenses + settlements, grouped by day)
   app.get(
     "/api/groups/:groupId/history",
     { preHandler: auth },
     async (req) => {
       const { group } = req.jemaw!;
       const { memberId } = req.query as { memberId?: string };
+
       let expenses = await listLiveExpenses(db, group.id);
+      let settlements = await listSettlements(db, group.id);
       if (memberId) {
         expenses = expenses.filter(
           (e) =>
             e.expense.payerMemberId === memberId ||
             e.shares.some((s) => s.memberId === memberId),
         );
+        settlements = settlements.filter(
+          (s) => s.fromMemberId === memberId || s.toMemberId === memberId,
+        );
       }
-      const byDay = new Map<string, ReturnType<typeof toExpenseDto>[]>();
+
+      // Each item carries its day + a sort timestamp.
+      const entries: { day: string; ts: number; item: HistoryItem }[] = [];
       for (const e of expenses) {
-        const day = e.expense.occurredAt.toISOString().slice(0, 10);
-        const list = byDay.get(day) ?? [];
-        list.push(toExpenseDto(e));
-        byDay.set(day, list);
+        entries.push({
+          day: e.expense.occurredAt.toISOString().slice(0, 10),
+          ts: e.expense.occurredAt.getTime(),
+          item: { kind: "expense", expense: toExpenseDto(e) },
+        });
+      }
+      for (const s of settlements) {
+        const when = s.markedPaidAt ?? s.createdAt;
+        entries.push({
+          day: when.toISOString().slice(0, 10),
+          ts: when.getTime(),
+          item: { kind: "settlement", settlement: toSettlementDto(s) },
+        });
+      }
+
+      const byDay = new Map<string, typeof entries>();
+      for (const e of entries) {
+        const list = byDay.get(e.day) ?? [];
+        list.push(e);
+        byDay.set(e.day, list);
       }
       const days = [...byDay.entries()]
         .sort((a, b) => (a[0] < b[0] ? 1 : -1))
-        .map(([date, exps]) => ({ date, expenses: exps }));
+        .map(([date, list]) => ({
+          date,
+          items: list.sort((a, b) => b.ts - a.ts).map((x) => x.item),
+        }));
       const res: HistoryResponse = { days };
       return res;
     },

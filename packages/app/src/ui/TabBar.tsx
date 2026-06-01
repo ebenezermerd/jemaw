@@ -2,9 +2,9 @@ import { NavLink } from "react-router-dom";
 
 const TABS = [
   { to: "/balances", label: "Balances", icon: "≡" },
+  { to: "/settle", label: "Settle", icon: "⇄" },
   { to: "/history", label: "History", icon: "↻" },
   { to: "/add", label: "Add", icon: "+" },
-  { to: "/settings", label: "Settings", icon: "⚙" },
 ];
 
 export function TabBar() {

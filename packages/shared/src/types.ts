@@ -119,11 +119,47 @@ export interface RenameMemberInput {
   displayName: string;
 }
 
+// ─── Settlements ──────────────────────────────────────────────────────
+/** A single transfer in a live settle-up plan (not yet persisted). */
+export interface TransferDto {
+  fromMemberId: string;
+  toMemberId: string;
+  /** decimal string */
+  amount: string;
+}
+
+export interface SettlePlanResponse {
+  transfers: TransferDto[];
+}
+
+/** A persisted, paid settlement. */
+export interface SettlementDto {
+  id: string;
+  fromMemberId: string;
+  toMemberId: string;
+  /** decimal string */
+  amount: string;
+  currency: string;
+  markedPaidAt: string | null; // ISO
+  markedPaidByMemberId: string | null;
+  createdAt: string; // ISO
+}
+
+/** Body for POST /settlements — the server decides the amount (clamped). */
+export interface CreateSettlementInput {
+  toMemberId: string;
+}
+
 // ─── History ──────────────────────────────────────────────────────────
+export type HistoryItem =
+  | { kind: "expense"; expense: ExpenseDto }
+  | { kind: "settlement"; settlement: SettlementDto };
+
 export interface HistoryDayGroup {
   /** YYYY-MM-DD */
   date: string;
-  expenses: ExpenseDto[];
+  /** expenses + settlements for the day, newest first */
+  items: HistoryItem[];
 }
 
 export interface HistoryResponse {
