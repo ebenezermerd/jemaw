@@ -7,7 +7,10 @@ import { z } from "zod";
  */
 const schema = z
   .object({
-    DATABASE_URL: z.string().url(),
+    DATABASE_URL: z
+      .string()
+      .min(1, "DATABASE_URL is required")
+      .startsWith("postgres", "DATABASE_URL must be a postgres connection string"),
     TELEGRAM_BOT_TOKEN: z.string().min(1, "TELEGRAM_BOT_TOKEN is required"),
     BOT_MODE: z.enum(["polling", "webhook"]).default("polling"),
     WEBHOOK_URL: z.string().url().optional(),
@@ -16,6 +19,8 @@ const schema = z
       .enum(["development", "production", "test"])
       .default("development"),
     MINI_APP_URL: z.string().url().optional(),
+    // Set in Cloud Run to connect to Cloud SQL over the mounted Unix socket.
+    INSTANCE_CONNECTION_NAME: z.string().optional(),
   })
   .refine((e) => e.BOT_MODE !== "webhook" || !!e.WEBHOOK_URL, {
     message: "WEBHOOK_URL is required when BOT_MODE=webhook",
