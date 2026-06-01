@@ -48,4 +48,44 @@ describe("computeBalances", () => {
     const r = computeBalances(["a", "b", "c"], []);
     expect(r.every((x) => x.netCents === 0)).toBe(true);
   });
+
+  it("a paid settlement zeroes the pair and preserves zero-sum", () => {
+    // a paid 1000, split with b → a +500, b -500. Then b pays a 500.
+    const expenses: ExpenseForBalance[] = [
+      {
+        payerMemberId: "a",
+        amountCents: 1000,
+        shares: [
+          { memberId: "a", shareCents: 500 },
+          { memberId: "b", shareCents: 500 },
+        ],
+      },
+    ];
+    const settlements = [
+      { fromMemberId: "b", toMemberId: "a", amountCents: 500 },
+    ];
+    const r = computeBalances(["a", "b"], expenses, settlements);
+    const by = Object.fromEntries(r.map((x) => [x.memberId, x.netCents]));
+    expect(by).toEqual({ a: 0, b: 0 });
+    expect(r.reduce((s, x) => s + x.netCents, 0)).toBe(0);
+  });
+
+  it("a partial settlement reduces but does not clear the debt", () => {
+    const expenses: ExpenseForBalance[] = [
+      {
+        payerMemberId: "a",
+        amountCents: 1000,
+        shares: [
+          { memberId: "a", shareCents: 500 },
+          { memberId: "b", shareCents: 500 },
+        ],
+      },
+    ];
+    const settlements = [
+      { fromMemberId: "b", toMemberId: "a", amountCents: 200 },
+    ];
+    const r = computeBalances(["a", "b"], expenses, settlements);
+    const by = Object.fromEntries(r.map((x) => [x.memberId, x.netCents]));
+    expect(by).toEqual({ a: 300, b: -300 });
+  });
 });

@@ -11,6 +11,8 @@ import type {
   HistoryResponse,
   CreateExpenseInput,
   MemberDto,
+  SettlePlanResponse,
+  SettlementDto,
 } from "@jemaw/shared/types";
 import { api, getGroupId } from "./api.js";
 
@@ -62,6 +64,63 @@ export function useCreateExpense() {
       qc.invalidateQueries({ queryKey: ["group"] });
     },
   });
+}
+
+export function useExpense(expenseId: string | undefined) {
+  return useQuery({
+    queryKey: ["expense", expenseId],
+    enabled: Boolean(expenseId),
+    queryFn: () =>
+      api.get<ExpenseDto>(`/api/groups/${gid()}/expenses/${expenseId}`),
+  });
+}
+
+export function useEditExpense() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (args: { expenseId: string; input: CreateExpenseInput }) =>
+      api.patch<ExpenseDto>(
+        `/api/groups/${gid()}/expenses/${args.expenseId}`,
+        args.input,
+      ),
+    onSuccess: () => invalidateLedger(qc),
+  });
+}
+
+export function useVoidExpense() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (expenseId: string) =>
+      api.post<{ ok: true }>(
+        `/api/groups/${gid()}/expenses/${expenseId}/void`,
+        {},
+      ),
+    onSuccess: () => invalidateLedger(qc),
+  });
+}
+
+export function useSettlePlan() {
+  return useQuery({
+    queryKey: ["settle"],
+    queryFn: () => api.get<SettlePlanResponse>(`/api/groups/${gid()}/settle`),
+  });
+}
+
+export function useMarkPaid() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (toMemberId: string) =>
+      api.post<SettlementDto>(`/api/groups/${gid()}/settlements`, {
+        toMemberId,
+      }),
+    onSuccess: () => invalidateLedger(qc),
+  });
+}
+
+function invalidateLedger(qc: ReturnType<typeof useQueryClient>) {
+  for (const key of ["balances", "expenses", "history", "settle", "group"]) {
+    qc.invalidateQueries({ queryKey: [key] });
+  }
 }
 
 export function useAddMember() {

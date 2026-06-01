@@ -9,9 +9,11 @@ import {
   members,
   expenses,
   expenseShares,
+  settlements,
   messages,
   type Group,
   type Member,
+  type Settlement,
 } from "@jemaw/shared/schema";
 
 // ─── Groups ───────────────────────────────────────────────────────────
@@ -221,6 +223,82 @@ export async function groupHasExpenses(
     .where(eq(expenses.groupId, groupId))
     .limit(1);
   return rows.length > 0;
+}
+
+/** Replace an expense's fields + shares atomically. Returns null if missing. */
+export async function updateExpenseWithShares(
+  db: Db,
+  groupId: string,
+  expenseId: string,
+  values: Partial<typeof expenses.$inferInsert>,
+  shareRows: Omit<typeof expenseShares.$inferInsert, "expenseId">[],
+): Promise<ExpenseWithShares | null> {
+  return db.transaction(async (tx) => {
+    const existing = await tx
+      .select()
+      .from(expenses)
+      .where(and(eq(expenses.groupId, groupId), eq(expenses.id, expenseId)))
+      .limit(1);
+    if (!existing[0]) return null;
+    if (existing[0].voidedAt) throw new Error("cannot edit a voided expense");
+
+    await tx
+      .update(expenses)
+      .set(values)
+      .where(eq(expenses.id, expenseId));
+    await tx.delete(expenseShares).where(eq(expenseShares.expenseId, expenseId));
+    const shares = await tx
+      .insert(expenseShares)
+      .values(shareRows.map((s) => ({ ...s, expenseId })))
+      .returning();
+    const updated = await tx
+      .select()
+      .from(expenses)
+      .where(eq(expenses.id, expenseId))
+      .limit(1);
+    return { expense: updated[0]!, shares };
+  });
+}
+
+/** Soft-delete an expense. Returns "ok" | "not_found" | "already_voided". */
+export async function voidExpense(
+  db: Db,
+  groupId: string,
+  expenseId: string,
+  when: Date,
+): Promise<"ok" | "not_found" | "already_voided"> {
+  const rows = await db
+    .select()
+    .from(expenses)
+    .where(and(eq(expenses.groupId, groupId), eq(expenses.id, expenseId)))
+    .limit(1);
+  if (!rows[0]) return "not_found";
+  if (rows[0].voidedAt) return "already_voided";
+  await db
+    .update(expenses)
+    .set({ voidedAt: when })
+    .where(eq(expenses.id, expenseId));
+  return "ok";
+}
+
+// ─── Settlements ──────────────────────────────────────────────────────
+export async function listSettlements(
+  db: Db,
+  groupId: string,
+): Promise<Settlement[]> {
+  return db
+    .select()
+    .from(settlements)
+    .where(eq(settlements.groupId, groupId))
+    .orderBy(desc(settlements.createdAt));
+}
+
+export async function createSettlement(
+  db: Db,
+  values: typeof settlements.$inferInsert,
+): Promise<Settlement> {
+  const rows = await db.insert(settlements).values(values).returning();
+  return rows[0]!;
 }
 
 // ─── Messages ─────────────────────────────────────────────────────────
