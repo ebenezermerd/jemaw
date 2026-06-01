@@ -23,20 +23,19 @@ export interface GeminiClient {
 /** Real client backed by @google/generative-ai. */
 export function createGeminiClient(apiKey: string): GeminiClient {
   const genAI = new GoogleGenerativeAI(apiKey);
-  const model = genAI.getGenerativeModel({
-    model: "gemini-2.5-flash",
-    generationConfig: {
-      responseMimeType: "application/json",
-      temperature: 0.2,
-    },
-  });
-
   return {
     async suggest({ systemPrompt, userPrompt }) {
-      const result = await model.generateContent([
-        { text: systemPrompt },
-        { text: userPrompt },
-      ]);
+      // The stable system instruction is passed separately so Gemini can cache
+      // it across calls; temperature 0 for deterministic, reliable extraction.
+      const model = genAI.getGenerativeModel({
+        model: "gemini-2.5-flash",
+        systemInstruction: systemPrompt,
+        generationConfig: {
+          responseMimeType: "application/json",
+          temperature: 0,
+        },
+      });
+      const result = await model.generateContent(userPrompt);
       const text = result.response.text();
       const usage = result.response.usageMetadata;
       return {
