@@ -45,8 +45,8 @@ function HeaderBar() {
   return (
     <header
       style={{
-        height: 56,
-        paddingTop: "calc(12px + env(safe-area-inset-top))",
+        height: 44,
+        paddingTop: "calc(12px + var(--jemaw-top-inset))",
         boxSizing: "content-box",
       }}
     />
