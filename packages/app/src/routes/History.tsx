@@ -1,6 +1,7 @@
 import { useSearchParams, useNavigate } from "react-router-dom";
 import { useGroup, useHistory } from "../lib/hooks.js";
 import { Avatar, Money } from "../ui/primitives.js";
+import { SkeletonList } from "../motion/Skeleton.js";
 import { Centered } from "./Balances.js";
 
 const rowButtonStyle: React.CSSProperties = {
@@ -34,7 +35,7 @@ export function History() {
   const nameOf = (id: string) =>
     members.find((m) => m.id === id)?.displayName ?? "Member";
 
-  if (history.isLoading) return <Centered>Loading…</Centered>;
+  if (history.isLoading) return <SkeletonList count={4} height={56} />;
   const days = history.data?.days ?? [];
 
   return (
