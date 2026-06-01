@@ -1,0 +1,9 @@
+.git
+node_modules
+**/node_modules
+**/dist
+**/dist-types
+.env
+.env.*
+.gcp-secrets.env
+*.log
