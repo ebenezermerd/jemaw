@@ -19,6 +19,12 @@ const schema = z
       .enum(["development", "production", "test"])
       .default("development"),
     MINI_APP_URL: z.string().url().optional(),
+    // Bot username + Mini App short name (BotFather /newapp) used to build the
+    // t.me deep link that opens the Mini App IN Telegram from a group with the
+    // group id as start_param. Without these the group button falls back to a
+    // plain url (opens in a browser, no context).
+    BOT_USERNAME: z.string().optional(),
+    MINI_APP_SHORT_NAME: z.string().optional(),
     // Set in Cloud Run to connect to Cloud SQL over the mounted Unix socket.
     INSTANCE_CONNECTION_NAME: z.string().optional(),
     // Phase 3: when present, the bot runs Gemini scans. Optional so the bot
