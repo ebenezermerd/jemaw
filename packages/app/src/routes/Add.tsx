@@ -10,6 +10,7 @@ import type { SplitType, CreateExpenseInput } from "@jemaw/shared/types";
 import { decimalToCents, centsToDecimal } from "@jemaw/shared/types";
 import { Button } from "../ui/primitives.js";
 import { MemberAvatar } from "../ui/MemberAvatar.js";
+import { PageLoader } from "../motion/Loader.js";
 import { Centered } from "./Balances.js";
 
 export function Add() {
@@ -54,7 +55,7 @@ export function Add() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [source?.id]);
 
-  if (group.isLoading) return <Centered>Loading…</Centered>;
+  if (group.isLoading) return <PageLoader />;
   if (members.length === 0)
     return <Centered>Add members before adding an expense.</Centered>;
 
@@ -113,7 +114,7 @@ export function Add() {
       </h1>
 
       <Group>
-        <Field label="Description">
+        <Field label="Description" icon="✎">
           <input
             value={description}
             onChange={(e) => setDescription(e.target.value)}
@@ -122,7 +123,7 @@ export function Add() {
           />
         </Field>
 
-        <Field label="Amount">
+        <Field label="Amount" icon="€">
           <input
             value={amount}
             onChange={(e) => setAmount(e.target.value.replace(/[^\d.]/g, ""))}
@@ -138,7 +139,7 @@ export function Add() {
           />
         </Field>
 
-        <Field label="When">
+        <Field label="When" icon="◷">
           <input
             type="date"
             value={date}
@@ -150,7 +151,7 @@ export function Add() {
       </Group>
 
       <Group>
-        <Field label="Paid by">
+        <Field label="Paid by" icon="◎">
           <ChipRow>
             {members.map((m) => (
               <Chip
@@ -164,7 +165,7 @@ export function Add() {
           </ChipRow>
         </Field>
 
-        <Field label="Split">
+        <Field label="Split" icon="⇆">
         <Segmented
           value={splitType}
           onChange={setSplitType}
@@ -172,7 +173,7 @@ export function Add() {
         />
       </Field>
 
-      <Field label="Split between">
+      <Field label="Split between" icon="≡">
         <div style={{ display: "grid", gap: 8 }}>
           {members.map((m) => {
             const on = splitWith.has(m.id);
@@ -293,10 +294,38 @@ function Group({ children }: { children: React.ReactNode }) {
   );
 }
 
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
+function Field({
+  label,
+  icon,
+  children,
+}: {
+  label: string;
+  icon?: string;
+  children: React.ReactNode;
+}) {
   return (
     <label style={{ display: "grid", gap: 8 }}>
-      <span className="t-label" style={{ color: "var(--text-muted)" }}>
+      <span
+        className="t-label"
+        style={{ color: "var(--text-muted)", display: "flex", alignItems: "center", gap: 6 }}
+      >
+        {icon && (
+          <span
+            aria-hidden
+            style={{
+              width: 22,
+              height: 22,
+              borderRadius: "var(--r-sm)",
+              background: "var(--accent-soft)",
+              color: "var(--accent)",
+              display: "grid",
+              placeItems: "center",
+              fontSize: 12,
+            }}
+          >
+            {icon}
+          </span>
+        )}
         {label}
       </span>
       {children}
