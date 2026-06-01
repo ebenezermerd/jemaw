@@ -1,10 +1,30 @@
-import { useSearchParams } from "react-router-dom";
+import { useSearchParams, useNavigate } from "react-router-dom";
 import { useGroup, useHistory } from "../lib/hooks.js";
 import { Avatar, Money } from "../ui/primitives.js";
 import { Centered } from "./Balances.js";
 
+const rowButtonStyle: React.CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  gap: 12,
+  minHeight: 56,
+  padding: "0 4px",
+  border: "none",
+  background: "transparent",
+  color: "var(--text)",
+  cursor: "pointer",
+  width: "100%",
+};
+
+const ellipsis: React.CSSProperties = {
+  overflow: "hidden",
+  textOverflow: "ellipsis",
+  whiteSpace: "nowrap",
+};
+
 export function History() {
   const [params, setParams] = useSearchParams();
+  const nav = useNavigate();
   const memberFilter = params.get("member") ?? undefined;
   const group = useGroup();
   const history = useHistory(memberFilter);
@@ -48,30 +68,44 @@ export function History() {
               {d.date}
             </p>
             <div style={{ display: "grid", gap: 2 }}>
-              {d.expenses.map((e) => (
-                <div
-                  key={e.id}
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 12,
-                    height: 56,
-                    padding: "0 4px",
-                  }}
-                >
-                  <Avatar name={nameOf(e.payerMemberId)} size={24} />
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div className="t-body-strong" style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                      {e.description}
+              {d.items.map((item, idx) =>
+                item.kind === "expense" ? (
+                  <button
+                    key={item.expense.id}
+                    onClick={() => nav(`/expense/${item.expense.id}`)}
+                    style={rowButtonStyle}
+                  >
+                    <Avatar name={nameOf(item.expense.payerMemberId)} size={24} />
+                    <div style={{ flex: 1, minWidth: 0, textAlign: "left" }}>
+                      <div className="t-body-strong" style={ellipsis}>
+                        {item.expense.description}
+                      </div>
+                      <div className="t-caption" style={{ color: "var(--text-muted)" }}>
+                        {nameOf(item.expense.payerMemberId)} paid · split{" "}
+                        {item.expense.shares.length}{" "}
+                        {item.expense.shares.length === 1 ? "way" : "ways"}
+                      </div>
                     </div>
-                    <div className="t-caption" style={{ color: "var(--text-muted)" }}>
-                      {nameOf(e.payerMemberId)} paid · split {e.shares.length}{" "}
-                      {e.shares.length === 1 ? "way" : "ways"}
+                    <Money value={item.expense.amount} currency={currency} />
+                  </button>
+                ) : (
+                  <div key={`s-${idx}`} style={{ ...rowButtonStyle, cursor: "default" }}>
+                    <Avatar name={nameOf(item.settlement.fromMemberId)} size={24} />
+                    <span style={{ color: "var(--text-muted)" }}>→</span>
+                    <Avatar name={nameOf(item.settlement.toMemberId)} size={24} />
+                    <div style={{ flex: 1, minWidth: 0, textAlign: "left" }}>
+                      <div className="t-body-strong" style={ellipsis}>
+                        {nameOf(item.settlement.fromMemberId)} paid{" "}
+                        {nameOf(item.settlement.toMemberId)}
+                      </div>
+                      <div className="t-caption" style={{ color: "var(--accent)" }}>
+                        settled
+                      </div>
                     </div>
+                    <Money value={item.settlement.amount} currency={currency} />
                   </div>
-                  <Money value={e.amount} currency={currency} />
-                </div>
-              ))}
+                ),
+              )}
             </div>
           </section>
         ))
