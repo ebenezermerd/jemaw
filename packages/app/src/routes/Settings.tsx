@@ -5,7 +5,8 @@ import {
   useRenameMember,
   useUpdateGroup,
 } from "../lib/hooks.js";
-import { Button, Avatar } from "../ui/primitives.js";
+import { Button } from "../ui/primitives.js";
+import { MemberAvatar } from "../ui/MemberAvatar.js";
 import { Centered } from "./Balances.js";
 import { getThemePref, setThemePref, type ThemePref } from "../lib/theme.js";
 
@@ -30,7 +31,7 @@ export function Settings() {
 
   return (
     <div style={{ padding: 16, display: "grid", gap: 28 }}>
-      <h1 className="t-title" style={{ margin: "8px 0 0" }}>
+      <h1 className="t-screen-title" style={{ margin: "8px 0 0" }}>
         Settings
       </h1>
 
@@ -90,7 +91,11 @@ export function Settings() {
               key={m.id}
               style={{ display: "flex", alignItems: "center", gap: 10, height: 48 }}
             >
-              <Avatar name={m.displayName} size={28} />
+              <MemberAvatar
+                name={m.displayName}
+                telegramUserId={m.telegramUserId}
+                size={28}
+              />
               <input
                 defaultValue={m.displayName}
                 onBlur={(e) => {

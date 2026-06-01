@@ -38,16 +38,17 @@ export function TabBar() {
           aria-label="Add expense"
           onClick={() => nav("/add")}
           style={{
-            width: 56,
-            height: 56,
-            marginTop: -28,
+            width: 58,
+            height: 58,
+            marginTop: -36,
             borderRadius: "var(--r-full)",
-            border: "3px solid var(--bg)",
+            border: "4px solid var(--bg)",
             background: "var(--accent)",
             color: "#0B0B0C",
-            fontSize: 28,
+            fontSize: 30,
             lineHeight: 1,
             cursor: "pointer",
+            boxShadow: "0 6px 18px color-mix(in srgb, var(--accent) 45%, transparent)",
             transition: "transform var(--dur-instant) var(--ease-standard)",
           }}
           onPointerDown={(e) => (e.currentTarget.style.transform = "scale(0.92)")}

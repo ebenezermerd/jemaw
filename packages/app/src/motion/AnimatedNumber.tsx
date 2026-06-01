@@ -10,15 +10,17 @@ import { duration, ease } from "./tokens.js";
 export function AnimatedNumber({
   value,
   prefix = "",
+  suffix = "",
   color,
 }: {
   /** the formatted string to display, e.g. "€12.50" or "+€48.50" */
   value: string;
   prefix?: string;
+  suffix?: string;
   color?: string;
 }) {
   const reduced = useReducedMotion();
-  const glyphs = (prefix + value).split("");
+  const glyphs = (prefix + value + suffix).split("");
 
   return (
     <span
@@ -28,7 +30,7 @@ export function AnimatedNumber({
         color: color ?? "inherit",
         fontVariantNumeric: "tabular-nums",
       }}
-      aria-label={prefix + value}
+      aria-label={prefix + value + suffix}
     >
       {glyphs.map((g, i) => (
         <span
