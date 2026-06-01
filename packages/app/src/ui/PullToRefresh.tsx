@@ -4,6 +4,7 @@
  * pull-to-refresh). Touch-based; no-ops where touch isn't available.
  */
 import { useRef, useState, type ReactNode } from "react";
+import { Loader } from "../motion/Loader.js";
 
 const THRESHOLD = 72; // px pull distance to commit
 const MAX = 96;
@@ -53,6 +54,7 @@ export function PullToRefresh({
     }
   }
 
+  const progress = Math.min(1, pull / THRESHOLD);
   const label = refreshing
     ? "Refreshing…"
     : pull >= THRESHOLD
@@ -66,30 +68,38 @@ export function PullToRefresh({
       onTouchEnd={onTouchEnd}
       style={{ minHeight: "100%" }}
     >
-      {/* indicator */}
+      {/* branded indicator: the Jemaw loader spins up as you pull */}
       <div
         style={{
           height: pull,
           overflow: "hidden",
           display: "grid",
           placeItems: "center",
-          transition: refreshing || pull === 0 ? "height var(--dur-base) var(--ease-standard)" : "none",
+          gap: 6,
+          gridAutoRows: "min-content",
+          justifyItems: "center",
+          transition:
+            refreshing || pull === 0
+              ? "height var(--dur-base) var(--ease-standard)"
+              : "none",
         }}
       >
+        <div
+          style={{
+            opacity: progress,
+            transform: refreshing ? "none" : `rotate(${progress * 270}deg) scale(${0.6 + progress * 0.4})`,
+          }}
+        >
+          <Loader size={28} />
+        </div>
         <span
           className="t-caption"
-          style={{ color: "var(--text-muted)", opacity: Math.min(1, pull / THRESHOLD) }}
+          style={{ color: "var(--text-muted)", opacity: progress }}
         >
           {label}
         </span>
       </div>
-      <div
-        style={{
-          transform: `translateY(${refreshing ? 0 : 0}px)`,
-        }}
-      >
-        {children}
-      </div>
+      {children}
     </div>
   );
 }

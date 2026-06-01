@@ -9,6 +9,7 @@ import {
 import type { CreateExpenseInput } from "@jemaw/shared/types";
 import { Button, Avatar } from "../ui/primitives.js";
 import { Modal } from "../motion/Modal.js";
+import { PageLoader } from "../motion/Loader.js";
 import { Centered } from "./Balances.js";
 
 /**
@@ -40,7 +41,7 @@ export function ExpenseDetail() {
     setSplitWith(new Set(e.shares.map((s) => s.memberId)));
   }, [expense.data]);
 
-  if (expense.isLoading || group.isLoading) return <Centered>Loading…</Centered>;
+  if (expense.isLoading || group.isLoading) return <PageLoader />;
   if (!expense.data) return <Centered>Expense not found.</Centered>;
   if (expense.data.voidedAt) return <Centered>This expense was voided.</Centered>;
 
