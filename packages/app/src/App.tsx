@@ -2,6 +2,7 @@ import { BrowserRouter, Routes, Route, Navigate, useNavigate } from "react-route
 import { useGroup } from "./lib/hooks.js";
 import { getGroupId } from "./lib/api.js";
 import { TabBar } from "./ui/TabBar.js";
+import { Home } from "./routes/Home.js";
 import { Balances, Centered } from "./routes/Balances.js";
 import { History } from "./routes/History.js";
 import { Add } from "./routes/Add.js";
@@ -32,22 +33,13 @@ function Header() {
           </span>
         )}
       </div>
-      <div style={{ display: "flex", gap: 4 }}>
-        <button
-          aria-label="Add expense"
-          onClick={() => nav("/add")}
-          style={iconBtn}
-        >
-          +
-        </button>
-        <button
-          aria-label="Settings"
-          onClick={() => nav("/settings")}
-          style={iconBtn}
-        >
-          ⚙
-        </button>
-      </div>
+      <button
+        aria-label="Settings"
+        onClick={() => nav("/settings")}
+        style={iconBtn}
+      >
+        ⚙
+      </button>
     </header>
   );
 }
@@ -77,7 +69,7 @@ function Shell() {
       <Header />
       <main style={{ flex: 1 }}>
         <Routes>
-          <Route path="/" element={<Navigate to="/balances" replace />} />
+          <Route path="/" element={<Home />} />
           <Route path="/suggestions" element={<Suggestions />} />
           <Route path="/balances" element={<Balances />} />
           <Route path="/settle" element={<Settle />} />
@@ -85,7 +77,7 @@ function Shell() {
           <Route path="/add" element={<Add />} />
           <Route path="/expense/:id" element={<ExpenseDetail />} />
           <Route path="/settings" element={<Settings />} />
-          <Route path="*" element={<Navigate to="/balances" replace />} />
+          <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </main>
       <TabBar />
