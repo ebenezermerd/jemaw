@@ -1,3 +1,4 @@
+import { useRef, useState } from "react";
 import { NavLink, useNavigate } from "react-router-dom";
 import { useSuggestions } from "../lib/hooks.js";
 
@@ -32,37 +33,93 @@ export function TabBar() {
         <Tab key={t.to} {...t} badge={t.to === "/" ? count : 0} />
       ))}
 
-      {/* Center raised FAB → Add */}
+      {/* Center raised FAB — tap acts on the current mode; long-press toggles. */}
       <div style={{ flex: 1, display: "grid", placeItems: "center" }}>
-        <button
-          aria-label="Add expense"
-          onClick={() => nav("/add")}
-          style={{
-            width: 58,
-            height: 58,
-            marginTop: -36,
-            borderRadius: "var(--r-full)",
-            border: "4px solid var(--bg)",
-            background: "var(--accent)",
-            color: "#0B0B0C",
-            fontSize: 30,
-            lineHeight: 1,
-            cursor: "pointer",
-            boxShadow: "0 6px 18px color-mix(in srgb, var(--accent) 45%, transparent)",
-            transition: "transform var(--dur-instant) var(--ease-standard)",
-          }}
-          onPointerDown={(e) => (e.currentTarget.style.transform = "scale(0.92)")}
-          onPointerUp={(e) => (e.currentTarget.style.transform = "scale(1)")}
-          onPointerLeave={(e) => (e.currentTarget.style.transform = "scale(1)")}
-        >
-          +
-        </button>
+        <CenterButton onAdd={() => nav("/add")} onSettings={() => nav("/settings")} />
       </div>
 
       {RIGHT.map((t) => (
         <Tab key={t.to} {...t} badge={0} />
       ))}
     </nav>
+  );
+}
+
+/**
+ * The raised center button. Tap performs the current mode's action (add or
+ * settings); a long-press toggles the mode and morphs the icon (+ ⇄ ⚙).
+ */
+function CenterButton({
+  onAdd,
+  onSettings,
+}: {
+  onAdd: () => void;
+  onSettings: () => void;
+}) {
+  const [mode, setMode] = useState<"add" | "settings">("add");
+  const longPressed = useRef(false);
+  const timer = useRef<number | null>(null);
+
+  function down(el: HTMLButtonElement) {
+    el.style.transform = "scale(0.92)";
+    longPressed.current = false;
+    timer.current = window.setTimeout(() => {
+      longPressed.current = true;
+      setMode((m) => (m === "add" ? "settings" : "add"));
+      // haptic hint where supported
+      try {
+        (window.Telegram?.WebApp as { HapticFeedback?: { impactOccurred?: (s: string) => void } } | undefined)
+          ?.HapticFeedback?.impactOccurred?.("medium");
+      } catch {
+        /* no haptics */
+      }
+    }, 450);
+  }
+  function up(el: HTMLButtonElement) {
+    el.style.transform = "scale(1)";
+    if (timer.current != null) {
+      clearTimeout(timer.current);
+      timer.current = null;
+    }
+    if (!longPressed.current) {
+      mode === "add" ? onAdd() : onSettings();
+    }
+  }
+
+  return (
+    <button
+      aria-label={mode === "add" ? "Add expense (long-press for settings)" : "Settings (long-press for add)"}
+      onPointerDown={(e) => down(e.currentTarget)}
+      onPointerUp={(e) => up(e.currentTarget)}
+      onPointerLeave={(e) => {
+        e.currentTarget.style.transform = "scale(1)";
+        if (timer.current != null) {
+          clearTimeout(timer.current);
+          timer.current = null;
+        }
+      }}
+      style={{
+        width: 58,
+        height: 58,
+        marginTop: -36,
+        borderRadius: "var(--r-full)",
+        border: "4px solid var(--bg)",
+        background: mode === "add" ? "var(--accent)" : "var(--surface-elevated)",
+        color: mode === "add" ? "#0B0B0C" : "var(--text)",
+        fontSize: mode === "add" ? 30 : 22,
+        lineHeight: 1,
+        cursor: "pointer",
+        boxShadow:
+          mode === "add"
+            ? "0 6px 18px color-mix(in srgb, var(--accent) 45%, transparent)"
+            : "0 6px 18px rgba(0,0,0,0.3)",
+        transition:
+          "transform var(--dur-instant) var(--ease-standard), background var(--dur-base), color var(--dur-base)",
+        touchAction: "none",
+      }}
+    >
+      {mode === "add" ? "+" : "⚙"}
+    </button>
   );
 }
 

@@ -12,11 +12,12 @@ function wrap(ui: React.ReactNode) {
 }
 
 describe("App", () => {
-  it("shows a guidance message when opened without a group context", () => {
-    // No ?group= and no Telegram start_param → no group.
+  it("shows the splash with guidance when opened without a group context", () => {
+    // No ?group= and no Telegram start_param → no group → splash.
     render(wrap(<App />));
+    expect(screen.getByText(/open from your group/i)).toBeDefined();
     expect(
-      screen.getByText(/Open Jemaw from your group's pinned message/i),
+      screen.getByText(/Tap the pinned .* button in your group chat/i),
     ).toBeDefined();
   });
 });
