@@ -3,8 +3,10 @@
 Operational commands for running Jemaw against **Cloud SQL (Postgres)** via the
 **Cloud SQL Auth Proxy**, mirroring the osteodata ICD-migration workflow.
 
-Project: **Jemaw** — id `gen-lang-client-0305882074` (number `1074160264056`)
-Instance connection name: **`gen-lang-client-0305882074:europe-west1:jemaw-pg`**
+Database project: **`jemaw-498106`** (billing enabled) hosts the Cloud SQL
+instance. The Gemini API key lives in a separate project
+`gen-lang-client-0305882074`; the two are independent and that is fine.
+Instance connection name: **`jemaw-498106:europe-west1:jemaw-pg`**
 
 Secrets (passwords) live in the gitignored `.gcp-secrets.env` at the repo root.
 `source` it before running the commands below: `set -a; . ./.gcp-secrets.env; set +a`
@@ -42,7 +44,7 @@ set -a; . ./.gcp-secrets.env; set +a
 
 # Instance (Postgres 16, shared-core, 10GB HDD, no backups to minimize cost).
 gcloud sql instances create "$CLOUDSQL_INSTANCE" \
-  --project=gen-lang-client-0305882074 \
+  --project=jemaw-498106 \
   --database-version=POSTGRES_16 \
   --tier=db-f1-micro \
   --region="$CLOUDSQL_REGION" \
@@ -69,7 +71,7 @@ on `127.0.0.1`. (Same tool/pattern as `cloud-sql-proxy ...:osteodata-mysql`.)
 ```bash
 # Start (background). Postgres default port is 5432; we use 5433 locally to
 # avoid clashing with the docker-compose Postgres on 5432.
-cloud-sql-proxy gen-lang-client-0305882074:europe-west1:jemaw-pg \
+cloud-sql-proxy jemaw-498106:europe-west1:jemaw-pg \
   --port 5433 &
 
 # Verify it's listening.
@@ -148,7 +150,7 @@ Unix-socket host `/cloudsql/<connection-name>` in DATABASE_URL. See DEPLOY_GCP.m
 
 ```bash
 # Proxy
-cloud-sql-proxy gen-lang-client-0305882074:europe-west1:jemaw-pg --port 5433 &
+cloud-sql-proxy jemaw-498106:europe-west1:jemaw-pg --port 5433 &
 lsof -i :5433
 
 # Migrate (through proxy)
