@@ -6,7 +6,7 @@
  */
 import type { ButtonHTMLAttributes, ReactNode } from "react";
 import { AnimatedNumber } from "../motion/AnimatedNumber.js";
-import { currencyAffix, formatMoney } from "../lib/money.js";
+import { currencyAffix, formatNumber } from "../lib/money.js";
 
 // ─── Button ───────────────────────────────────────────────────────────
 type ButtonVariant = "primary" | "ghost" | "danger";
@@ -200,7 +200,8 @@ export function Money({
       : n < 0
         ? "var(--warn)"
         : "var(--text-muted)";
-  const display = signed && n > 0 ? `+${value}` : value;
+  const grouped = formatNumber(value); // thousands separators
+  const display = signed && n > 0 ? `+${grouped}` : grouped;
   const { symbol, suffix } = currencyAffix(currency);
 
   if (animate) {
@@ -215,7 +216,7 @@ export function Money({
   }
   return (
     <span className="tnum" style={{ color, fontWeight: 500 }}>
-      {formatMoney(display, currency)}
+      {suffix ? `${display}${symbol}` : `${symbol}${display}`}
     </span>
   );
 }

@@ -140,6 +140,12 @@ const createExpenseSchema = z.object({
 
 const createSettlementSchema = z.object({
   toMemberId: z.string().uuid(),
+  fromMemberId: z.string().uuid().optional(),
+  amount: z.string().regex(/^\d+(\.\d{1,2})?$/).optional(),
+  method: z.enum(["cash", "bank", "telebirr", "other"]).optional(),
+  description: z.string().max(200).optional(),
+  expenseIds: z.array(z.string().uuid()).optional(),
+  occurredAt: z.string().datetime().optional(),
 });
 
 const updateGroupSchema = z.object({
@@ -284,7 +290,9 @@ export async function registerApi(
     },
   );
 
-  // POST mark-as-paid: only the debtor, amount clamped to current debt.
+  // POST record a settlement. Payer defaults to the caller; amount is clamped
+  // to the live debt (omit to settle in full). Carries method/description/
+  // expenseIds/date metadata from the settle form.
   app.post(
     "/api/groups/:groupId/settlements",
     { preHandler: auth },
@@ -294,28 +302,39 @@ export async function registerApi(
       if (!parsed.success) {
         return reply.code(400).send({ error: "invalid body" });
       }
-      const { toMemberId } = parsed.data;
+      const body = parsed.data;
+      const fromMemberId = body.fromMemberId ?? member.id;
+      const { toMemberId } = body;
 
       // Recompute the live plan and find this exact debtor->creditor transfer.
       const { nets } = await loadBalances(db, group.id);
       const plan = computeSettlement(nets);
       const transfer = plan.find(
-        (t) => t.fromMemberId === member.id && t.toMemberId === toMemberId,
+        (t) => t.fromMemberId === fromMemberId && t.toMemberId === toMemberId,
       );
       if (!transfer) {
-        // Debt already cleared or changed since the screen loaded.
         return reply.code(409).send({
-          error: "no current debt to this member",
+          error: "no current debt between these members",
           transfers: plan.map(toTransferDto),
         });
       }
 
+      // Amount: requested (clamped to debt) or the full debt.
+      const requestedCents = body.amount
+        ? decimalToCents(body.amount)
+        : transfer.amountCents;
+      const amountCents = Math.min(requestedCents, transfer.amountCents);
+
       const created = await createSettlement(db, {
         groupId: group.id,
-        fromMemberId: member.id,
+        fromMemberId,
         toMemberId,
-        amount: centsToDecimal(transfer.amountCents),
+        amount: centsToDecimal(amountCents),
         currency: group.defaultCurrency,
+        method: body.method ?? "cash",
+        description: body.description ?? null,
+        expenseIds: body.expenseIds ?? null,
+        occurredAt: body.occurredAt ? new Date(body.occurredAt) : new Date(),
         markedPaidAt: new Date(),
         markedPaidByMemberId: member.id,
       });
