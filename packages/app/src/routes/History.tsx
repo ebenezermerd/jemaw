@@ -40,7 +40,7 @@ export function History() {
 
   return (
     <div style={{ padding: 16 }}>
-      <h1 className="t-title" style={{ margin: "8px 0 12px" }}>
+      <h1 className="t-screen-title" style={{ margin: "8px 0 12px" }}>
         History
       </h1>
 

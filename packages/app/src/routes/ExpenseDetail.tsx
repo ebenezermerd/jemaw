@@ -77,7 +77,7 @@ export function ExpenseDetail() {
 
   return (
     <div style={{ padding: 16, display: "grid", gap: 20 }}>
-      <h1 className="t-title" style={{ margin: "8px 0 0" }}>
+      <h1 className="t-screen-title" style={{ margin: "8px 0 0" }}>
         Edit expense
       </h1>
 

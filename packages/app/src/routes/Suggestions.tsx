@@ -42,7 +42,7 @@ export function Suggestions() {
 
   return (
     <div style={{ padding: 16, display: "grid", gap: 12 }}>
-      <h1 className="t-title" style={{ margin: "8px 0 0" }}>
+      <h1 className="t-screen-title" style={{ margin: "8px 0 0" }}>
         Suggestions
       </h1>
       <AnimatePresence mode="popLayout">
