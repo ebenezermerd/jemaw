@@ -10,21 +10,7 @@ jobs:
   verify:
     name: Typecheck and test
     runs-on: ubuntu-latest
-
-    services:
-      postgres:
-        image: postgres:16-alpine
-        env:
-          POSTGRES_USER: ${{ vars.CI_POSTGRES_USER }}
-          POSTGRES_PASSWORD: ${{ secrets.CI_POSTGRES_PASSWORD }}
-          POSTGRES_DB: ${{ vars.CI_POSTGRES_DB }}
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd "pg_isready -U ${{ vars.CI_POSTGRES_USER }} -d ${{ vars.CI_POSTGRES_DB }}"
-          --health-interval 5s
-          --health-timeout 5s
-          --health-retries 10
+    timeout-minutes: 15
 
     env:
       DATABASE_URL: postgres://${{ vars.CI_POSTGRES_USER }}:${{ secrets.CI_POSTGRES_PASSWORD }}@localhost:5432/${{ vars.CI_POSTGRES_DB }}
@@ -33,6 +19,23 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+
+      # Start Postgres in a step with retries so a transient Docker Hub pull
+      # failure does not fail the build (services: blocks cannot be retried).
+      - name: Start Postgres
+        run: |
+          for i in 1 2 3; do
+            docker run -d --name jemaw-pg \
+              -e POSTGRES_USER='${{ vars.CI_POSTGRES_USER }}' \
+              -e POSTGRES_PASSWORD='${{ secrets.CI_POSTGRES_PASSWORD }}' \
+              -e POSTGRES_DB='${{ vars.CI_POSTGRES_DB }}' \
+              -p 5432:5432 postgres:16-alpine && break
+            echo "pull/start attempt $i failed; retrying in 10s"; sleep 10
+          done
+          for i in $(seq 1 20); do
+            docker exec jemaw-pg pg_isready -U '${{ vars.CI_POSTGRES_USER }}' -d '${{ vars.CI_POSTGRES_DB }}' && break
+            sleep 2
+          done
 
       - uses: pnpm/action-setup@v4
         with:
