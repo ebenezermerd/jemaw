@@ -22,7 +22,7 @@ import { EmptyState } from "../ui/EmptyState.js";
 import { Modal } from "../motion/Modal.js";
 import { Skeleton } from "../motion/Skeleton.js";
 import { useReducedMotion } from "../motion/useReducedMotion.js";
-import { type PanInfo } from "framer-motion";
+import { type PanInfo, useMotionValue, useTransform } from "framer-motion";
 import type { SuggestionDto, TransferDto } from "@jemaw/shared/types";
 
 type Tab = "suggested" | "settle";
@@ -239,55 +239,114 @@ function Row({
 }) {
   const [open, setOpen] = useState(false);
   const reduced = useReducedMotion();
+  const x = useMotionValue(0);
+  const swipeable = !reduced && (onSwipeRight != null || onSwipeLeft != null);
+
+  // Reveal a green (add) panel when dragging right, red (remove) when left.
+  const addOpacity = useTransform(x, [0, 100], [0, 1]);
+  const removeOpacity = useTransform(x, [-100, 0], [1, 0]);
 
   function onDragEnd(_e: unknown, info: PanInfo) {
-    if (info.offset.x > 100 || info.velocity.x > 600) onSwipeRight?.();
-    else if (info.offset.x < -100 || info.velocity.x < -600) onSwipeLeft?.();
+    if (onSwipeRight && (info.offset.x > 100 || info.velocity.x > 600))
+      onSwipeRight();
+    else if (onSwipeLeft && (info.offset.x < -100 || info.velocity.x < -600))
+      onSwipeLeft();
   }
 
   return (
-    <motion.div
-      layout
-      drag={reduced || (!onSwipeRight && !onSwipeLeft) ? false : "x"}
-      dragConstraints={{ left: 0, right: 0 }}
-      dragElastic={0.5}
-      dragSnapToOrigin
-      onDragEnd={onDragEnd}
+    <div
       style={{
-        background: "var(--surface)",
-        border: "1px solid var(--border)",
+        position: "relative",
         borderRadius: "var(--r-lg)",
         overflow: "hidden",
       }}
     >
-      <button
-        onClick={() => setOpen((o) => !o)}
+      {/* action backgrounds revealed under the card while dragging */}
+      {swipeable && (
+        <>
+          {onSwipeRight && (
+            <motion.div
+              style={{
+                position: "absolute",
+                inset: 0,
+                background: "var(--accent)",
+                color: "#0B0B0C",
+                display: "flex",
+                alignItems: "center",
+                paddingLeft: 20,
+                fontWeight: 700,
+                opacity: addOpacity,
+              }}
+            >
+              ＋ Add
+            </motion.div>
+          )}
+          {onSwipeLeft && (
+            <motion.div
+              style={{
+                position: "absolute",
+                inset: 0,
+                background: "var(--danger)",
+                color: "#fff",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "flex-end",
+                paddingRight: 20,
+                fontWeight: 700,
+                opacity: removeOpacity,
+              }}
+            >
+              Remove ✕
+            </motion.div>
+          )}
+        </>
+      )}
+
+      <motion.div
+        layout
+        drag={swipeable ? "x" : false}
+        dragConstraints={{ left: 0, right: 0 }}
+        dragElastic={0.5}
+        dragSnapToOrigin
+        onDragEnd={onDragEnd}
         style={{
-          width: "100%",
-          border: "none",
-          background: "transparent",
-          color: "var(--text)",
-          cursor: "pointer",
-          padding: "12px 14px",
-          textAlign: "left",
+          x,
+          position: "relative",
+          background: "var(--surface)",
+          border: "1px solid var(--border)",
+          borderRadius: "var(--r-lg)",
+          overflow: "hidden",
         }}
       >
-        {header(open)}
-      </button>
-      <AnimatePresence initial={false}>
-        {open && (
-          <motion.div
-            initial={reduced ? false : { height: 0, opacity: 0 }}
-            animate={{ height: "auto", opacity: 1 }}
-            exit={reduced ? { opacity: 0 } : { height: 0, opacity: 0 }}
-            transition={{ duration: reduced ? 0.08 : 0.22 }}
-            style={{ overflow: "hidden" }}
-          >
-            <div style={{ padding: "0 14px 14px" }}>{children}</div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-    </motion.div>
+        <button
+          onClick={() => setOpen((o) => !o)}
+          style={{
+            width: "100%",
+            border: "none",
+            background: "transparent",
+            color: "var(--text)",
+            cursor: "pointer",
+            padding: "12px 14px",
+            textAlign: "left",
+          }}
+        >
+          {header(open)}
+        </button>
+        <AnimatePresence initial={false}>
+          {open && (
+            <motion.div
+              initial={reduced ? false : { height: 0, opacity: 0 }}
+              animate={{ height: "auto", opacity: 1 }}
+              exit={reduced ? { opacity: 0 } : { height: 0, opacity: 0 }}
+              transition={{ duration: reduced ? 0.08 : 0.22 }}
+              style={{ overflow: "hidden" }}
+            >
+              <div style={{ padding: "0 14px 14px" }}>{children}</div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </motion.div>
+    </div>
   );
 }
 

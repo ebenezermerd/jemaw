@@ -17,6 +17,7 @@ import {
   insertSuggestions,
   setLastScanMessageId,
   countPendingSuggestions,
+  handledEvidenceMessageIds,
 } from "../repo.js";
 import type { Group } from "@jemaw/shared/schema";
 
@@ -148,12 +149,24 @@ export async function scanGroup(
     `[scan] gemini returned ${parsed.data.suggestions.length} suggestion(s)`,
   );
 
+  // Code-level dedup: skip anything whose evidence overlaps a message already
+  // handled by a prior suggestion (added / dismissed / pending). The prompt
+  // hint alone isn't trustworthy.
+  const handled = await handledEvidenceMessageIds(db, group.id);
+  const isDuplicate = (evidence: number[]) =>
+    evidence.some((id) => handled.has(id));
+
   // Map + threshold-filter into suggestion rows.
   const rows = [];
   let dropped = 0;
+  let deduped = 0;
   for (const s of parsed.data.suggestions) {
     if (tierFor(s.confidence) === "drop") {
       dropped++;
+      continue;
+    }
+    if (isDuplicate(s.evidence_message_ids)) {
+      deduped++;
       continue;
     }
 
@@ -228,6 +241,10 @@ export async function scanGroup(
       dropped++;
       continue;
     }
+    if (isDuplicate(st.evidence_message_ids)) {
+      deduped++;
+      continue;
+    }
     const from = memberByTgId.get(st.from_telegram_id);
     const to = memberByTgId.get(st.to_telegram_id);
     if (!from || !to || from.id === to.id) {
@@ -262,7 +279,7 @@ export async function scanGroup(
   const inserted = await insertSuggestions(db, rows);
   await setLastScanMessageId(db, group.id, BigInt(toId));
   console.log(
-    `[scan] inserted ${inserted.length}, dropped ${dropped} (expenses=${parsed.data.suggestions.length} settlements=${parsed.data.settlements.length})`,
+    `[scan] inserted ${inserted.length}, dropped ${dropped}, deduped ${deduped} (expenses=${parsed.data.suggestions.length} settlements=${parsed.data.settlements.length})`,
   );
 
   return {

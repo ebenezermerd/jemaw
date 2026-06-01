@@ -411,6 +411,26 @@ export async function insertSuggestions(
   return db.insert(suggestions).values(rows).returning();
 }
 
+/**
+ * The set of chat message ids already "spoken for" by any existing suggestion
+ * in this group — confirmed, dismissed, edited, or still pending. A new scan
+ * suggestion whose evidence overlaps this set is a duplicate and is skipped.
+ */
+export async function handledEvidenceMessageIds(
+  db: Db,
+  groupId: string,
+): Promise<Set<number>> {
+  const rows = await db
+    .select({ evidence: suggestions.evidenceMessageIds })
+    .from(suggestions)
+    .where(eq(suggestions.groupId, groupId));
+  const set = new Set<number>();
+  for (const r of rows) {
+    for (const id of (r.evidence as number[]) ?? []) set.add(id);
+  }
+  return set;
+}
+
 export async function listPendingSuggestions(
   db: Db,
   groupId: string,

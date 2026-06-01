@@ -188,6 +188,35 @@ d("scanGroup (mocked Gemini)", () => {
     expect(rows[0]!.amount).toBe("25.00");
   });
 
+  it("dedupes a suggestion citing an already-handled message", async () => {
+    await db.update(groups).set({ lastScanMessageId: null }).where(eq(groups.id, group.id));
+    await db.delete(suggestions).where(eq(suggestions.groupId, group.id));
+    const g = (await getGroupById(db, group.id))!;
+    const resp = {
+      suggestions: [
+        {
+          confidence: 0.9,
+          description: "Dinner",
+          amount: 50,
+          currency: "EUR",
+          payer_telegram_id: saraTg,
+          split_type: "equal",
+          split_with: [saraTg, tomTg],
+          shares: null,
+          evidence_message_ids: [1001],
+          reasoning: "Sara got dinner",
+        },
+      ],
+      scan_window: { from_message_id: 1001, to_message_id: 1002 },
+    };
+    // First scan inserts it.
+    const r1 = await scanGroup({ db, gemini: mockGemini(resp), now }, g, null, "keyword");
+    expect(r1.written).toBe(1);
+    // Same message cited again → deduped, nothing new written.
+    const r2 = await scanGroup({ db, gemini: mockGemini(resp), now }, g, null, "keyword");
+    expect(r2.written).toBe(0);
+  });
+
   it("returns no_messages only when the group has no messages at all", async () => {
     // The pointer no longer gates the window; emptiness does. Temporarily clear.
     await db.delete(messages).where(eq(messages.groupId, group.id));
