@@ -23,6 +23,8 @@ interface TelegramWebApp {
   expand?: () => void;
   requestFullscreen?: () => void;
   disableVerticalSwipes?: () => void;
+  isFullscreen?: boolean;
+  onEvent?: (event: string, cb: () => void) => void;
   BackButton?: TelegramBackButton;
 }
 
@@ -54,6 +56,18 @@ export function goFullscreen(): void {
   } catch {
     // older clients lack these — expand() already covers the common case
   }
+
+  // Mark full-screen so the CSS top-inset guarantees clearance under Telegram's
+  // controls; update when the fullscreen / safe-area state changes.
+  const markFullscreen = () => {
+    const on = wa.isFullscreen === true;
+    document.documentElement.dataset.fullscreen = on ? "1" : "0";
+  };
+  markFullscreen();
+  wa.onEvent?.("fullscreenChanged", markFullscreen);
+  // Re-mark after these so the inset recomputes once Telegram reports them.
+  wa.onEvent?.("safeAreaChanged", markFullscreen);
+  wa.onEvent?.("contentSafeAreaChanged", markFullscreen);
 }
 
 export function isInsideTelegram(): boolean {

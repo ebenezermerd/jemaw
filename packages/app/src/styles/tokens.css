@@ -70,6 +70,31 @@ body,
   overflow-x: hidden;
 }
 
+/*
+ * Top inset that clears Telegram's header controls in full-screen. Telegram
+ * sets --tg-content-safe-area-inset-top (below its UI) and
+ * --tg-safe-area-inset-top (device notch); CSS env() is usually 0 in the
+ * Telegram WebView. Sum the content inset (UI) onto the device inset, falling
+ * back to env() outside Telegram.
+ */
+:root {
+  --jemaw-top-inset: calc(
+    var(--tg-safe-area-inset-top, env(safe-area-inset-top, 0px)) +
+      var(--tg-content-safe-area-inset-top, 0px)
+  );
+}
+/* In full-screen, Telegram's controls need clearance even if the insets read
+ * 0 on a client that doesn't report them — guarantee a minimum. */
+:root[data-fullscreen="1"] {
+  --jemaw-top-inset: max(
+    calc(
+      var(--tg-safe-area-inset-top, env(safe-area-inset-top, 0px)) +
+        var(--tg-content-safe-area-inset-top, 0px)
+    ),
+    56px
+  );
+}
+
 body {
   background: var(--bg);
   color: var(--text);
