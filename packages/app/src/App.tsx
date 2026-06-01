@@ -17,33 +17,41 @@ import { Suggestions } from "./routes/Suggestions.js";
 import { ExpenseDetail } from "./routes/ExpenseDetail.js";
 import { Settings } from "./routes/Settings.js";
 
-/** A small settings gear floating at the top-right (no header bar). */
-function SettingsButton() {
+/** Empty top bar (no name/count) holding only the settings gear, right-aligned. */
+function HeaderBar() {
   const nav = useNavigate();
   const { pathname } = useLocation();
-  if (pathname === "/settings") return null; // hide on the settings page itself
   return (
-    <button
-      aria-label="Settings"
-      onClick={() => nav("/settings")}
+    <header
       style={{
-        position: "fixed",
-        top: "calc(8px + env(safe-area-inset-top))",
-        right: 12,
-        zIndex: 40,
-        width: 38,
-        height: 38,
-        borderRadius: "var(--r-full)",
-        border: "1px solid var(--border)",
-        background: "color-mix(in srgb, var(--bg) 70%, transparent)",
-        backdropFilter: "blur(8px)",
-        color: "var(--text-muted)",
-        cursor: "pointer",
-        fontSize: 18,
+        display: "flex",
+        justifyContent: "flex-end",
+        alignItems: "center",
+        height: 44,
+        padding: "0 12px",
+        paddingTop: "env(safe-area-inset-top)",
+        boxSizing: "content-box",
       }}
     >
-      ⚙
-    </button>
+      {pathname !== "/settings" && (
+        <button
+          aria-label="Settings"
+          onClick={() => nav("/settings")}
+          style={{
+            width: 38,
+            height: 38,
+            borderRadius: "var(--r-full)",
+            border: "none",
+            background: "transparent",
+            color: "var(--text-muted)",
+            cursor: "pointer",
+            fontSize: 18,
+          }}
+        >
+          ⚙
+        </button>
+      )}
+    </header>
   );
 }
 
@@ -58,13 +66,8 @@ function Shell() {
         margin: "0 auto",
       }}
     >
-      <SettingsButton />
-      <main
-        style={{
-          flex: 1,
-          paddingTop: "calc(8px + env(safe-area-inset-top))",
-        }}
-      >
+      <HeaderBar />
+      <main style={{ flex: 1 }}>
         <Routes>
           <Route path="/" element={<Home />} />
           <Route path="/suggestions" element={<Suggestions />} />

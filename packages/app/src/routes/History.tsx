@@ -4,28 +4,22 @@ import { Avatar, Money } from "../ui/primitives.js";
 import { SkeletonList } from "../motion/Skeleton.js";
 import { EmptyState } from "../ui/EmptyState.js";
 
-const rowButtonStyle: React.CSSProperties = {
-  display: "flex",
-  alignItems: "center",
-  gap: 12,
-  minHeight: 56,
-  padding: "0 4px",
-  border: "none",
-  background: "transparent",
+/** Roomy card row: title/meta on top, amount on its own line — no clipping. */
+const cardRow: React.CSSProperties = {
+  display: "block",
+  width: "100%",
+  textAlign: "left",
+  padding: 14,
+  border: "1px solid var(--border)",
+  background: "var(--surface)",
+  borderRadius: "var(--r-lg)",
   color: "var(--text)",
   cursor: "pointer",
-  width: "100%",
 };
 
 const ellipsis: React.CSSProperties = {
   overflow: "hidden",
   textOverflow: "ellipsis",
-  whiteSpace: "nowrap",
-};
-
-/** Amount column: never shrink/clip; the description column absorbs the squeeze. */
-const amountCell: React.CSSProperties = {
-  flexShrink: 0,
   whiteSpace: "nowrap",
 };
 
@@ -79,46 +73,60 @@ export function History() {
             <p className="t-caption" style={{ color: "var(--text-faint)", margin: "0 0 8px" }}>
               {d.date}
             </p>
-            <div style={{ display: "grid", gap: 2 }}>
+            <div style={{ display: "grid", gap: 8 }}>
               {d.items.map((item, idx) =>
                 item.kind === "expense" ? (
                   <button
                     key={item.expense.id}
                     onClick={() => nav(`/expense/${item.expense.id}`)}
-                    style={rowButtonStyle}
+                    style={cardRow}
                   >
-                    <Avatar name={nameOf(item.expense.payerMemberId)} size={24} />
-                    <div style={{ flex: 1, minWidth: 0, textAlign: "left" }}>
-                      <div className="t-body-strong" style={ellipsis}>
-                        {item.expense.description}
-                      </div>
-                      <div className="t-caption" style={{ color: "var(--text-muted)" }}>
-                        {nameOf(item.expense.payerMemberId)} paid · split{" "}
-                        {item.expense.shares.length}{" "}
-                        {item.expense.shares.length === 1 ? "way" : "ways"}
+                    <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                      <Avatar name={nameOf(item.expense.payerMemberId)} size={28} />
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div className="t-body-strong" style={ellipsis}>
+                          {item.expense.description}
+                        </div>
+                        <div className="t-caption" style={{ color: "var(--text-muted)" }} >
+                          {nameOf(item.expense.payerMemberId)} paid · split{" "}
+                          {item.expense.shares.length}
+                        </div>
                       </div>
                     </div>
-                    <span style={amountCell}>
+                    {/* amount on its own line, right-aligned — never clipped */}
+                    <div
+                      className="t-heading"
+                      style={{ textAlign: "right", marginTop: 8 }}
+                    >
                       <Money value={item.expense.amount} currency={currency} />
-                    </span>
+                    </div>
                   </button>
                 ) : (
-                  <div key={`s-${idx}`} style={{ ...rowButtonStyle, cursor: "default" }}>
-                    <Avatar name={nameOf(item.settlement.fromMemberId)} size={24} />
-                    <span style={{ color: "var(--text-muted)" }}>→</span>
-                    <Avatar name={nameOf(item.settlement.toMemberId)} size={24} />
-                    <div style={{ flex: 1, minWidth: 0, textAlign: "left" }}>
-                      <div className="t-body-strong" style={ellipsis}>
-                        {nameOf(item.settlement.fromMemberId)} paid{" "}
+                  <div key={`s-${idx}`} style={{ ...cardRow, cursor: "default" }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                      <Avatar name={nameOf(item.settlement.fromMemberId)} size={24} />
+                      <span style={{ color: "var(--text-muted)" }}>→</span>
+                      <Avatar name={nameOf(item.settlement.toMemberId)} size={24} />
+                      <span className="t-label" style={{ ...ellipsis, marginLeft: 2 }}>
+                        {nameOf(item.settlement.fromMemberId)} →{" "}
                         {nameOf(item.settlement.toMemberId)}
-                      </div>
-                      <div className="t-caption" style={{ color: "var(--accent)" }}>
-                        settled
-                      </div>
+                      </span>
                     </div>
-                    <span style={amountCell}>
-                      <Money value={item.settlement.amount} currency={currency} />
-                    </span>
+                    <div
+                      style={{
+                        display: "flex",
+                        justifyContent: "space-between",
+                        alignItems: "baseline",
+                        marginTop: 8,
+                      }}
+                    >
+                      <span className="t-caption" style={{ color: "var(--accent)" }}>
+                        settled
+                      </span>
+                      <span className="t-heading">
+                        <Money value={item.settlement.amount} currency={currency} />
+                      </span>
+                    </div>
                   </div>
                 ),
               )}
