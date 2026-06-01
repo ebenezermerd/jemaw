@@ -104,6 +104,8 @@ export function BalancesAnalytics({
             <Tooltip
               cursor={{ fill: "var(--surface-elevated)" }}
               contentStyle={tooltipStyle}
+              labelStyle={tooltipLabelStyle}
+              itemStyle={tooltipItemStyle}
               formatter={(v: number) => fmt(v)}
             />
             <Bar dataKey="net" radius={4}>
@@ -133,7 +135,9 @@ export function BalancesAnalytics({
                   <Cell key={i} fill={SLICE[i % SLICE.length]} />
                 ))}
               </Pie>
-              <Tooltip contentStyle={tooltipStyle} formatter={(v: number) => fmt(v)} />
+              <Tooltip contentStyle={tooltipStyle}
+              labelStyle={tooltipLabelStyle}
+              itemStyle={tooltipItemStyle} formatter={(v: number) => fmt(v)} />
             </PieChart>
           </ResponsiveContainer>
           <Legend data={shareData} />
@@ -159,7 +163,9 @@ export function BalancesAnalytics({
                 tickLine={false}
               />
               <YAxis hide />
-              <Tooltip contentStyle={tooltipStyle} formatter={(v: number) => fmt(v)} />
+              <Tooltip contentStyle={tooltipStyle}
+              labelStyle={tooltipLabelStyle}
+              itemStyle={tooltipItemStyle} formatter={(v: number) => fmt(v)} />
               <Area
                 type="monotone"
                 dataKey="value"
@@ -182,6 +188,11 @@ const tooltipStyle: React.CSSProperties = {
   color: "var(--text)",
   fontSize: 12,
 };
+
+// Recharts renders the label + each item with their own inline colors, which
+// otherwise default to dark and become unreadable in dark theme. Force tokens.
+const tooltipLabelStyle: React.CSSProperties = { color: "var(--text)" };
+const tooltipItemStyle: React.CSSProperties = { color: "var(--text)" };
 
 function StatCard({ label, value }: { label: string; value: string }) {
   return (
