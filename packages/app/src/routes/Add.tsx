@@ -10,6 +10,7 @@ import type { SplitType, CreateExpenseInput } from "@jemaw/shared/types";
 import { decimalToCents, centsToDecimal } from "@jemaw/shared/types";
 import { Button } from "../ui/primitives.js";
 import { MemberAvatar } from "../ui/MemberAvatar.js";
+import { PageHeader } from "../ui/PageHeader.js";
 import { PageLoader } from "../motion/Loader.js";
 import { Centered } from "./Balances.js";
 
@@ -108,10 +109,12 @@ export function Add() {
   }
 
   return (
-    <div style={{ padding: 16, display: "grid", gap: 16 }}>
-      <h1 className="t-screen-title" style={{ margin: "8px 0 0" }}>
-        {fromSuggestionId ? "Edit suggestion" : "Add expense"}
-      </h1>
+    <div>
+      <PageHeader
+        title={fromSuggestionId ? "Edit suggestion" : "Add expense"}
+        fallback={fromSuggestionId ? "/suggestions" : "/"}
+      />
+      <div style={{ padding: "0 16px 16px", display: "grid", gap: 16 }}>
 
       <Group>
         <Field label="Description" icon="✎">
@@ -280,6 +283,7 @@ export function Add() {
       >
         {create.isPending || editSuggestion.isPending ? "Adding…" : "Add"}
       </Button>
+      </div>
     </div>
   );
 }
