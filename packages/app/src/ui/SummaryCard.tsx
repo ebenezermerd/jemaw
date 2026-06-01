@@ -1,10 +1,10 @@
 /**
- * Personal summary card for Home — a refined credit-card surface. Focal: the
- * member's net standing. Stats (paid/share/items) live on the Balances screen,
- * not here, to keep the card clean and premium.
+ * Personal summary card for Home — a refined credit-card surface. Net standing
+ * is focal; paid / share / items are organized as a clean stat row across the
+ * bottom. No issuer/label chrome — just the chip, the balance, and the stats.
  */
 import { AnimatedNumber } from "../motion/AnimatedNumber.js";
-import { currencyAffix } from "../lib/money.js";
+import { currencyAffix, formatMoney } from "../lib/money.js";
 import { currentPhotoUrl } from "../telegram.js";
 import type { MeSummaryDto } from "@jemaw/shared/types";
 
@@ -22,48 +22,58 @@ export function SummaryCard({ s }: { s: MeSummaryDto }) {
         position: "relative",
         borderRadius: "var(--r-xl)",
         padding: 22,
-        minHeight: 196,
         overflow: "hidden",
         color: "#F7F7F5",
         background:
-          "linear-gradient(135deg, color-mix(in srgb, var(--accent) 88%, #000) 0%, color-mix(in srgb, var(--accent) 38%, #0B0B0C) 52%, #101012 100%)",
+          "linear-gradient(135deg, color-mix(in srgb, var(--accent) 88%, #000) 0%, color-mix(in srgb, var(--accent) 36%, #0B0B0C) 54%, #0E0E10 100%)",
         border: "1px solid var(--border-strong)",
-        display: "flex",
-        flexDirection: "column",
-        justifyContent: "space-between",
-        boxShadow: "0 12px 32px rgba(0,0,0,0.28)",
+        boxShadow: "0 12px 32px rgba(0,0,0,0.30)",
+        display: "grid",
+        gap: 18,
       }}
     >
-      {/* legibility scrim + subtle sheen */}
+      {/* sheen + scrim for legibility */}
       <div
         aria-hidden
         style={{
           position: "absolute",
           inset: 0,
           background:
-            "radial-gradient(130% 90% at 100% 0%, rgba(255,255,255,0.10) 0%, transparent 45%), radial-gradient(120% 80% at 0% 100%, rgba(0,0,0,0.32) 0%, transparent 55%)",
+            "radial-gradient(130% 90% at 100% 0%, rgba(255,255,255,0.10) 0%, transparent 46%), radial-gradient(120% 90% at 0% 100%, rgba(0,0,0,0.34) 0%, transparent 56%)",
           pointerEvents: "none",
         }}
       />
 
-      {/* top: issuer + chip */}
+      {/* top: cardholder (with photo) + chip */}
       <div
         style={{
           position: "relative",
           display: "flex",
           justifyContent: "space-between",
-          alignItems: "flex-start",
+          alignItems: "center",
         }}
       >
-        <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          {photo && (
+            <img
+              src={photo}
+              alt=""
+              width={30}
+              height={30}
+              style={{
+                width: 30,
+                height: 30,
+                borderRadius: "var(--r-full)",
+                objectFit: "cover",
+                border: "1px solid rgba(255,255,255,0.45)",
+              }}
+            />
+          )}
           <span
             className="t-label"
-            style={{ letterSpacing: "0.12em", opacity: 0.9 }}
+            style={{ textTransform: "uppercase", letterSpacing: "0.1em", opacity: 0.95 }}
           >
-            JEMAW
-          </span>
-          <span className="t-caption" style={{ opacity: 0.7 }}>
-            group balance
+            {s.displayName}
           </span>
         </div>
         <Chip />
@@ -91,41 +101,51 @@ export function SummaryCard({ s }: { s: MeSummaryDto }) {
         </div>
       </div>
 
-      {/* bottom: cardholder (with photo if available) */}
+      {/* bottom: stat row, organized with dividers */}
       <div
         style={{
           position: "relative",
-          display: "flex",
-          alignItems: "center",
-          gap: 10,
+          display: "grid",
+          gridTemplateColumns: "1fr 1fr 1fr",
+          borderTop: "1px solid rgba(255,255,255,0.16)",
+          paddingTop: 14,
         }}
       >
-        {photo ? (
-          <img
-            src={photo}
-            alt=""
-            width={28}
-            height={28}
-            style={{
-              width: 28,
-              height: 28,
-              borderRadius: "var(--r-full)",
-              objectFit: "cover",
-              border: "1px solid rgba(255,255,255,0.4)",
-            }}
-          />
-        ) : null}
-        <span
-          className="t-label"
-          style={{
-            textTransform: "uppercase",
-            letterSpacing: "0.1em",
-            opacity: 0.95,
-          }}
-        >
-          {s.displayName}
-        </span>
+        <Stat label="Paid" value={formatMoney(s.totalPaid, s.currency)} />
+        <Stat label="Your share" value={formatMoney(s.totalShare, s.currency)} divider />
+        <Stat label="Expenses" value={String(s.expenseCount)} divider />
       </div>
+    </div>
+  );
+}
+
+function Stat({
+  label,
+  value,
+  divider,
+}: {
+  label: string;
+  value: string;
+  divider?: boolean;
+}) {
+  return (
+    <div
+      style={{
+        display: "grid",
+        gap: 3,
+        paddingLeft: divider ? 14 : 0,
+        borderLeft: divider ? "1px solid rgba(255,255,255,0.16)" : "none",
+      }}
+    >
+      <span
+        className="tnum t-body-strong"
+        style={{ fontVariantNumeric: "tabular-nums" }}
+      >
+        {value}
+      </span>
+      <span className="t-caption" style={{ opacity: 0.72 }}>
+        {label}
+      </span>
     </div>
   );
 }

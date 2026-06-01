@@ -65,6 +65,9 @@ body,
 #root {
   margin: 0;
   height: 100%;
+  /* Never force a horizontal scrollbar anywhere in the app. */
+  max-width: 100%;
+  overflow-x: hidden;
 }
 
 body {
@@ -74,6 +77,12 @@ body {
   font-size: 16px;
   line-height: 22px;
   -webkit-font-smoothing: antialiased;
+}
+
+/* Charts/media shrink rather than overflow. */
+img,
+svg {
+  max-width: 100%;
 }
 
 /* Financial figures: tabular, always (§12.3). */
