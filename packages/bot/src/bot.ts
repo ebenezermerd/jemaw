@@ -51,6 +51,8 @@ export interface BotDeps {
   db: Db;
   defaultCurrency: string;
   miniAppUrl: string | undefined;
+  botUsername: string | undefined;
+  miniAppShortName: string | undefined;
   /** Present only when GEMINI_API_KEY is set; absent → scans don't run. */
   gemini?: GeminiClient;
 }
@@ -60,7 +62,8 @@ const GROUP_TYPES = new Set(["group", "supergroup"]);
 /** Create the grammY bot with all handlers (Phases 1-3) registered. */
 export function createBot(token: string, deps: BotDeps): Bot {
   const bot = new Bot(token);
-  const { db, defaultCurrency, miniAppUrl, gemini } = deps;
+  const { db, defaultCurrency, miniAppUrl, botUsername, miniAppShortName, gemini } =
+    deps;
   const rateLimiter = new ScanRateLimiter();
 
   /** Refresh the pinned button so it reflects the current suggestion count. */
@@ -79,6 +82,8 @@ export function createBot(token: string, deps: BotDeps): Bot {
         telegramChatId: BigInt(chatId),
         existingPinnedMessageId: group?.pinnedMessageId ?? null,
         miniAppUrl,
+        botUsername,
+        miniAppShortName,
       },
       count,
     ).catch(() => {});
@@ -148,7 +153,12 @@ export function createBot(token: string, deps: BotDeps): Bot {
       telegramChatId: BigInt(ctx.chat.id),
       existingPinnedMessageId: group?.pinnedMessageId ?? null,
       miniAppUrl,
-    }).catch(() => {});
+      botUsername,
+      miniAppShortName,
+    }).catch((err) =>
+      // Don't crash /start, but DO log — a silent pin failure hid a real bug.
+      console.error("ensurePinnedMessage failed:", err?.message ?? err),
+    );
     await ctx.reply(startGroupText());
   });
 

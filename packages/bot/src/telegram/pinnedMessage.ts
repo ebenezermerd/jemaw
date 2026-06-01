@@ -13,6 +13,10 @@ export interface PinnedState {
   telegramChatId: bigint;
   existingPinnedMessageId: bigint | null;
   miniAppUrl: string | undefined;
+  /** bot username, e.g. "jemawsbot" (for the t.me deep link) */
+  botUsername: string | undefined;
+  /** Mini App short name from BotFather /newapp (for the t.me deep link) */
+  miniAppShortName: string | undefined;
 }
 
 function buttonText(suggestionCount: number): string {
@@ -20,6 +24,24 @@ function buttonText(suggestionCount: number): string {
   return `Open Jemaw • ${suggestionCount} suggestion${
     suggestionCount === 1 ? "" : "s"
   }`;
+}
+
+/**
+ * Build the button that opens the Mini App. Prefers the t.me deep link
+ * (t.me/<bot>/<app>?startapp=<groupId>) which opens IN Telegram with the group
+ * id as start_param. Falls back to a plain url (browser, no context) only if the
+ * deep-link config is missing.
+ */
+export function buildOpenButton(state: PinnedState, count: number) {
+  const label = buttonText(count);
+  if (state.botUsername && state.miniAppShortName) {
+    const url = `https://t.me/${state.botUsername}/${state.miniAppShortName}?startapp=${state.groupId}`;
+    return { text: label, url };
+  }
+  if (state.miniAppUrl) {
+    return { text: label, url: state.miniAppUrl };
+  }
+  return { text: label, callback_data: "open_jemaw" };
 }
 
 /**
@@ -33,21 +55,10 @@ export async function ensurePinnedMessage(
   suggestionCount = 0,
 ): Promise<void> {
   const text = "Jemaw — your group's quiet bookkeeper.";
-  // NOTE: `web_app` inline buttons are rejected in GROUPS (BUTTON_TYPE_INVALID);
-  // they only work in private chats and the menu button. In groups we use a
-  // plain `url` button — it opens the Mini App when the URL is a registered
-  // Web App (BotFather /newapp or menu button).
-  const replyMarkup = state.miniAppUrl
-    ? {
-        inline_keyboard: [
-          [{ text: buttonText(suggestionCount), url: state.miniAppUrl }],
-        ],
-      }
-    : {
-        inline_keyboard: [
-          [{ text: buttonText(suggestionCount), callback_data: "open_jemaw" }],
-        ],
-      };
+  // `web_app` inline buttons are rejected in GROUPS (BUTTON_TYPE_INVALID). A
+  // t.me deep link opens the Mini App in Telegram with group context; see
+  // openButton().
+  const replyMarkup = { inline_keyboard: [[buildOpenButton(state, suggestionCount)]] };
 
   const chatId = Number(state.telegramChatId);
 
