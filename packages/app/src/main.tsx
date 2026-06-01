@@ -4,9 +4,11 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { MotionConfig } from "framer-motion";
 import { App } from "./App.js";
 import { applyTheme } from "./lib/theme.js";
+import { goFullscreen } from "./telegram.js";
 import "./styles/tokens.css";
 
 applyTheme();
+goFullscreen();
 
 const queryClient = new QueryClient({
   defaultOptions: { queries: { retry: 1, refetchOnWindowFocus: false } },

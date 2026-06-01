@@ -129,7 +129,12 @@ export function Add() {
             inputMode="decimal"
             placeholder="0.00"
             className="tnum"
-            style={{ ...inputStyle, fontSize: 28, height: 56, fontVariantNumeric: "tabular-nums" }}
+            style={{
+              ...inputStyle,
+              fontSize: 20,
+              fontWeight: 600,
+              fontVariantNumeric: "tabular-nums",
+            }}
           />
         </Field>
 

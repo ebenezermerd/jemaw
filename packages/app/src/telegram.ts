@@ -14,6 +14,8 @@ interface TelegramWebApp {
   colorScheme?: "light" | "dark";
   ready: () => void;
   expand?: () => void;
+  requestFullscreen?: () => void;
+  disableVerticalSwipes?: () => void;
 }
 
 declare global {
@@ -30,6 +32,20 @@ export function getInitData(): string {
     return wa.initData ?? "";
   }
   return "";
+}
+
+/** Take the full screen height in Telegram (expand + fullscreen where supported). */
+export function goFullscreen(): void {
+  const wa = window.Telegram?.WebApp;
+  if (!wa) return;
+  wa.ready();
+  wa.expand?.();
+  try {
+    wa.requestFullscreen?.();
+    wa.disableVerticalSwipes?.();
+  } catch {
+    // older clients lack these — expand() already covers the common case
+  }
 }
 
 export function isInsideTelegram(): boolean {
