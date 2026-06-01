@@ -23,6 +23,12 @@ const ellipsis: React.CSSProperties = {
   whiteSpace: "nowrap",
 };
 
+/** Amount column: never shrink/clip; the description column absorbs the squeeze. */
+const amountCell: React.CSSProperties = {
+  flexShrink: 0,
+  whiteSpace: "nowrap",
+};
+
 export function History() {
   const [params, setParams] = useSearchParams();
   const nav = useNavigate();
@@ -39,7 +45,7 @@ export function History() {
   const days = history.data?.days ?? [];
 
   return (
-    <div style={{ padding: 16, overflowX: "hidden", maxWidth: "100%" }}>
+    <div style={{ padding: 16, maxWidth: "100%" }}>
       <h1 className="t-screen-title" style={{ margin: "8px 0 12px" }}>
         History
       </h1>
@@ -92,7 +98,9 @@ export function History() {
                         {item.expense.shares.length === 1 ? "way" : "ways"}
                       </div>
                     </div>
-                    <Money value={item.expense.amount} currency={currency} />
+                    <span style={amountCell}>
+                      <Money value={item.expense.amount} currency={currency} />
+                    </span>
                   </button>
                 ) : (
                   <div key={`s-${idx}`} style={{ ...rowButtonStyle, cursor: "default" }}>
@@ -108,7 +116,9 @@ export function History() {
                         settled
                       </div>
                     </div>
-                    <Money value={item.settlement.amount} currency={currency} />
+                    <span style={amountCell}>
+                      <Money value={item.settlement.amount} currency={currency} />
+                    </span>
                   </div>
                 ),
               )}

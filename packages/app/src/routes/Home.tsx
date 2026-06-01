@@ -57,7 +57,7 @@ export function Home() {
     <div style={{ paddingBottom: 8, overflowX: "hidden" }}>
       <div style={{ padding: 16, paddingBottom: 8 }}>
         {summary.isLoading || !summary.data ? (
-          <Skeleton height={210} radius="var(--r-xl)" />
+          <Skeleton height={170} radius="var(--r-xl)" />
         ) : (
           <SummaryCard s={summary.data} />
         )}
