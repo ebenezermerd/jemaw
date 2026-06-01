@@ -158,11 +158,13 @@ d("scanGroup (mocked Gemini)", () => {
     expect(res.written).toBe(0);
   });
 
-  it("returns no_messages when there is nothing new since last scan", async () => {
-    // Set last scan past the newest message.
-    await db.update(groups).set({ lastScanMessageId: 9999n }).where(eq(groups.id, group.id));
+  it("returns no_messages only when the group has no messages at all", async () => {
+    // The pointer no longer gates the window; emptiness does. Temporarily clear.
+    await db.delete(messages).where(eq(messages.groupId, group.id));
     const g = (await getGroupById(db, group.id))!;
     const res = await scanGroup({ db, gemini: mockGemini({}), now }, g, null, "keyword");
     expect(res.status).toBe("no_messages");
+    // Restore for any later runs in the file (none after this, but tidy).
+    await captureMessage(db, group.id, 1001n, BigInt(saraTg), "I got dinner ~50", new Date());
   });
 });
