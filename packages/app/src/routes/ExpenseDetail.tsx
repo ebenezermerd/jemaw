@@ -8,6 +8,7 @@ import {
 } from "../lib/hooks.js";
 import type { CreateExpenseInput } from "@jemaw/shared/types";
 import { Button, Avatar } from "../ui/primitives.js";
+import { Modal } from "../motion/Modal.js";
 import { Centered } from "./Balances.js";
 
 /**
@@ -139,15 +140,26 @@ export function ExpenseDetail() {
         </Button>
       </div>
 
-      {confirmVoid && (
-        <Modal
-          title="Void this expense?"
-          body="It will be removed from balances and history. This can't be undone."
-          confirmLabel={voidExpense.isPending ? "Voiding…" : "Void"}
-          onConfirm={doVoid}
-          onCancel={() => setConfirmVoid(false)}
-        />
-      )}
+      <Modal open={confirmVoid} onClose={() => setConfirmVoid(false)}>
+        <h2 className="t-heading" style={{ marginTop: 0 }}>
+          Void this expense?
+        </h2>
+        <p className="t-body" style={{ color: "var(--text-muted)" }}>
+          It will be removed from balances and history. This can't be undone.
+        </p>
+        <div style={{ display: "flex", gap: 8, marginTop: 16 }}>
+          <Button
+            variant="ghost"
+            onClick={() => setConfirmVoid(false)}
+            style={{ flex: 1 }}
+          >
+            Cancel
+          </Button>
+          <Button variant="danger" onClick={doVoid} style={{ flex: 1 }}>
+            {voidExpense.isPending ? "Voiding…" : "Void"}
+          </Button>
+        </div>
+      </Modal>
     </div>
   );
 }
@@ -197,49 +209,3 @@ function Chip({ active, onClick, name }: { active: boolean; onClick: () => void;
   );
 }
 
-function Modal({
-  title,
-  body,
-  confirmLabel,
-  onConfirm,
-  onCancel,
-}: {
-  title: string;
-  body: string;
-  confirmLabel: string;
-  onConfirm: () => void;
-  onCancel: () => void;
-}) {
-  return (
-    <div
-      onClick={onCancel}
-      style={{
-        position: "fixed",
-        inset: 0,
-        background: "rgba(0,0,0,0.5)",
-        display: "grid",
-        placeItems: "center",
-        padding: 24,
-        zIndex: 50,
-      }}
-    >
-      <div
-        onClick={(e) => e.stopPropagation()}
-        style={{
-          maxWidth: 360,
-          width: "100%",
-          background: "var(--surface)",
-          borderRadius: "var(--r-lg)",
-          padding: 24,
-        }}
-      >
-        <h2 className="t-heading" style={{ marginTop: 0 }}>{title}</h2>
-        <p className="t-body" style={{ color: "var(--text-muted)" }}>{body}</p>
-        <div style={{ display: "flex", gap: 8, marginTop: 16 }}>
-          <Button variant="ghost" onClick={onCancel} style={{ flex: 1 }}>Cancel</Button>
-          <Button variant="danger" onClick={onConfirm} style={{ flex: 1 }}>{confirmLabel}</Button>
-        </div>
-      </div>
-    </div>
-  );
-}
