@@ -3,9 +3,14 @@
  * (e.g. local browser dev), returns an empty string instead of throwing.
  * HMAC verification happens server-side.
  */
+interface TelegramUser {
+  id?: number;
+  photo_url?: string;
+}
+
 interface TelegramWebApp {
   initData: string;
-  initDataUnsafe?: { start_param?: string };
+  initDataUnsafe?: { start_param?: string; user?: TelegramUser };
   colorScheme?: "light" | "dark";
   ready: () => void;
   expand?: () => void;
@@ -31,8 +36,13 @@ export function isInsideTelegram(): boolean {
   return Boolean(window.Telegram?.WebApp?.initData);
 }
 
-/** Apply Telegram's color scheme to the document (dark default). */
-export function applyTheme(): void {
-  const scheme = window.Telegram?.WebApp?.colorScheme;
-  document.documentElement.dataset.theme = scheme === "light" ? "light" : "dark";
+/** The current viewer's Telegram user id (as string), if available. */
+export function currentTelegramId(): string | null {
+  const id = window.Telegram?.WebApp?.initDataUnsafe?.user?.id;
+  return id != null ? String(id) : null;
+}
+
+/** The current viewer's Telegram photo URL, if Telegram provided one. */
+export function currentPhotoUrl(): string | undefined {
+  return window.Telegram?.WebApp?.initDataUnsafe?.user?.photo_url;
 }
