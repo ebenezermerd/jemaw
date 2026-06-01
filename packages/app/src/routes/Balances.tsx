@@ -49,9 +49,7 @@ export function Balances() {
           <Celebration text="Everyone's even." />
         </Centered>
       ) : (
-        <div
-          style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}
-        >
+        <div style={{ display: "grid", gap: 8 }}>
           {rows.map((r) => {
             const n = Number(r.net);
             const positive = n > 0;
@@ -62,35 +60,25 @@ export function Balances() {
                 onClick={() => nav(`/history?member=${r.memberId}`)}
                 style={kpiCard}
               >
-                <div
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 8,
-                    minWidth: 0,
-                  }}
-                >
-                  <MemberAvatar
-                    name={r.displayName}
-                    telegramUserId={tgId(r.memberId)}
-                    size={24}
-                  />
-                  <span className="t-label" style={ellipsis}>
+                <MemberAvatar
+                  name={r.displayName}
+                  telegramUserId={tgId(r.memberId)}
+                  size={36}
+                />
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div className="t-body-strong" style={ellipsis}>
                     {r.displayName}
+                  </div>
+                  <span
+                    className="t-caption"
+                    style={{ color: positive ? "var(--accent)" : "var(--warn)" }}
+                  >
+                    {status}
                   </span>
                 </div>
-                <div className="t-heading" style={{ marginTop: 8 }}>
+                <div className="t-heading" style={{ flexShrink: 0 }}>
                   <Money value={r.net} currency={currency} signed animate />
                 </div>
-                <span
-                  className="t-caption"
-                  style={{
-                    color: positive ? "var(--accent)" : "var(--warn)",
-                    marginTop: 2,
-                  }}
-                >
-                  {status}
-                </span>
               </button>
             );
           })}
@@ -110,10 +98,10 @@ export function Balances() {
 
 const kpiCard: React.CSSProperties = {
   display: "flex",
-  flexDirection: "column",
-  alignItems: "flex-start",
+  flexDirection: "row",
+  alignItems: "center",
   textAlign: "left",
-  gap: 0,
+  gap: 12,
   padding: 14,
   border: "1px solid var(--border)",
   background: "var(--surface)",
