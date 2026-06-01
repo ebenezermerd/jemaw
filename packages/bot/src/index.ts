@@ -35,6 +35,7 @@ async function main(): Promise<void> {
       db,
       botToken: env.TELEGRAM_BOT_TOKEN,
       now: () => Math.floor(Date.now() / 1000),
+      gemini,
     },
     corsOrigin: env.MINI_APP_URL,
   });
