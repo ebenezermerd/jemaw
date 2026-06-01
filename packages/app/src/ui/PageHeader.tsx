@@ -39,7 +39,9 @@ export function PageHeader({
         alignItems: "center",
         justifyContent: "space-between",
         gap: 12,
-        padding: "8px 16px 12px",
+        // Same top safe-area spacing as the main tab pages, so the back badge +
+        // title clear Telegram's top controls / notch in full-screen.
+        padding: "calc(12px + env(safe-area-inset-top)) 16px 12px",
       }}
     >
       <button
