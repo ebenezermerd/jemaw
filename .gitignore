@@ -8,3 +8,4 @@ dist/
 packages/*/dist/
 packages/*/dist-types/
 .gcp-secrets.env
+.firebase/
