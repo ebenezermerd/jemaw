@@ -45,8 +45,12 @@ export async function scanGroup(
   // Trailing window of the last N messages, so every "jemaw" re-examines recent
   // context (a since-last-scan window of one message finds nothing).
   const msgs = await lastNMessages(db, group.id, MAX_MESSAGES);
+  console.log(
+    `[scan] group=${group.id} members=${members.length} messages=${msgs.length}`,
+  );
 
   if (msgs.length === 0) {
+    console.log(`[scan] no messages to scan`);
     return {
       status: "no_messages",
       written: 0,
@@ -132,6 +136,7 @@ export async function scanGroup(
   });
 
   if (!parsed.success) {
+    console.log(`[scan] parse_error:`, parsed.error.issues?.[0]?.message);
     return {
       status: "parse_error",
       written: 0,
@@ -139,17 +144,29 @@ export async function scanGroup(
     };
   }
 
+  console.log(
+    `[scan] gemini returned ${parsed.data.suggestions.length} suggestion(s)`,
+  );
+
   // Map + threshold-filter into suggestion rows.
   const rows = [];
+  let dropped = 0;
   for (const s of parsed.data.suggestions) {
-    if (tierFor(s.confidence) === "drop") continue;
+    if (tierFor(s.confidence) === "drop") {
+      dropped++;
+      continue;
+    }
 
     // Payer + split members must be known group members.
     const payer =
       s.payer_telegram_id != null
         ? memberByTgId.get(s.payer_telegram_id)
         : undefined;
-    if (s.payer_telegram_id != null && !payer) continue; // unknown payer → drop
+    if (s.payer_telegram_id != null && !payer) {
+      dropped++;
+      console.log(`[scan] drop "${s.description}": unknown payer ${s.payer_telegram_id}`);
+      continue;
+    }
 
     const splitMemberIds: string[] = [];
     let unknown = false;
@@ -157,11 +174,15 @@ export async function scanGroup(
       const m = memberByTgId.get(tid);
       if (!m) {
         unknown = true;
+        console.log(`[scan] drop "${s.description}": unknown split member ${tid}`);
         break;
       }
       splitMemberIds.push(m.id);
     }
-    if (unknown || splitMemberIds.length === 0) continue;
+    if (unknown || splitMemberIds.length === 0) {
+      dropped++;
+      continue;
+    }
 
     // Map shares keys (telegram ids as strings) → member ids.
     let shares: Record<string, number> | null = null;
@@ -176,7 +197,10 @@ export async function scanGroup(
         }
         shares[m.id] = count;
       }
-      if (bad) continue;
+      if (bad) {
+        dropped++;
+        continue;
+      }
     }
 
     rows.push({
@@ -197,6 +221,9 @@ export async function scanGroup(
 
   const inserted = await insertSuggestions(db, rows);
   await setLastScanMessageId(db, group.id, BigInt(toId));
+  console.log(
+    `[scan] inserted ${inserted.length}, dropped ${dropped} (of ${parsed.data.suggestions.length})`,
+  );
 
   return {
     status: "success",
