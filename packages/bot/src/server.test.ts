@@ -3,7 +3,7 @@ import { buildServer } from "./server.js";
 
 function fakeDeps() {
   return {
-    api: { db: {} as never, botToken: "123:abc", now: () => 1_780_000_000 },
+    api: { db: {} as never, botToken: "123:abc", now: () => 1_780_000_000, scanLimiter: { tryAcquire: () => true } as never },
     corsOrigin: undefined,
   };
 }

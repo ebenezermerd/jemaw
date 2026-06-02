@@ -10,7 +10,7 @@ import {
 import { registerUser, seedAdmins } from "./telegram/memberSync.js";
 import { ensurePinnedMessage } from "./telegram/pinnedMessage.js";
 import type { GeminiClient } from "./ai/geminiClient.js";
-import { ScanRateLimiter } from "./ai/rateLimit.js";
+import type { ScanRateLimiter } from "./ai/rateLimit.js";
 import { scanGroup } from "./ai/scan.js";
 
 /** Word-boundary, case-insensitive "jemaw" trigger (plan §10). */
@@ -55,6 +55,7 @@ export interface BotDeps {
   miniAppShortName: string | undefined;
   /** Present only when GEMINI_API_KEY is set; absent → scans don't run. */
   gemini?: GeminiClient;
+  scanLimiter: ScanRateLimiter;
 }
 
 const GROUP_TYPES = new Set(["group", "supergroup"]);
@@ -62,9 +63,8 @@ const GROUP_TYPES = new Set(["group", "supergroup"]);
 /** Create the grammY bot with all handlers (Phases 1-3) registered. */
 export function createBot(token: string, deps: BotDeps): Bot {
   const bot = new Bot(token);
-  const { db, defaultCurrency, miniAppUrl, botUsername, miniAppShortName, gemini } =
+  const { db, defaultCurrency, miniAppUrl, botUsername, miniAppShortName, gemini, scanLimiter } =
     deps;
-  const rateLimiter = new ScanRateLimiter();
 
   /** Refresh the pinned button so it reflects the current suggestion count. */
   async function refreshPinned(
@@ -104,7 +104,7 @@ export function createBot(token: string, deps: BotDeps): Bot {
       console.log(`[scan] skipped: GEMINI_API_KEY not configured`);
       return;
     }
-    if (!rateLimiter.tryAcquire(group.id)) {
+    if (!scanLimiter.tryAcquire(group.id)) {
       console.log(`[scan] rate-limited for group ${group.id}`);
       return;
     }

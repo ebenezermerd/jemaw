@@ -4,6 +4,7 @@ import { createBot } from "./bot.js";
 import { buildServer } from "./server.js";
 import { mountWebhookRoute, registerWebhook } from "./webhook.js";
 import { createGeminiClient } from "./ai/geminiClient.js";
+import { ScanRateLimiter } from "./ai/rateLimit.js";
 
 async function main(): Promise<void> {
   const env = loadEnv();
@@ -20,6 +21,7 @@ async function main(): Promise<void> {
   const gemini = env.GEMINI_API_KEY
     ? createGeminiClient(env.GEMINI_API_KEY)
     : undefined;
+  const scanLimiter = new ScanRateLimiter();
 
   const bot = createBot(env.TELEGRAM_BOT_TOKEN, {
     db,
@@ -28,6 +30,7 @@ async function main(): Promise<void> {
     botUsername: env.BOT_USERNAME,
     miniAppShortName: env.MINI_APP_SHORT_NAME,
     gemini,
+    scanLimiter,
   });
 
   const app = await buildServer({
@@ -36,6 +39,7 @@ async function main(): Promise<void> {
       botToken: env.TELEGRAM_BOT_TOKEN,
       now: () => Math.floor(Date.now() / 1000),
       gemini,
+      scanLimiter,
     },
     corsOrigin: env.MINI_APP_URL,
   });
