@@ -98,6 +98,15 @@ export function SettleForm() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [from, to, expenses]);
 
+  const toName = members.find((m) => m.id === to)?.displayName ?? "them";
+  // Gross of the selected owed shares — shown against the net so the gap is clear
+  // when expenses in the other direction reduce what you actually pay.
+  const selectedGrossCents = relevant
+    .filter((e) => selected.has(e.id))
+    .reduce((sum, e) => sum + owedShareCents(e, from), 0);
+  const amountCents = /^\d+(\.\d{1,2})?$/.test(amount) ? decimalToCents(amount) : 0;
+  const hasOffset = selectedGrossCents > 0 && amountCents > 0 && selectedGrossCents !== amountCents;
+
   if (group.isLoading || expensesQ.isLoading) return <PageLoader />;
   if (members.length < 2)
     return <Centered>Need at least two members to settle.</Centered>;
@@ -193,12 +202,22 @@ export function SettleForm() {
         <Group>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
             <span className="t-label" style={{ color: "var(--text-muted)" }}>
-              Expenses to settle ({selected.size})
+              Settling your share of these ({selected.size})
             </span>
             <button onClick={toggleAll} className="t-label" style={linkBtn}>
               {allSelected ? "Deselect all" : "Select all"}
             </button>
           </div>
+          <p className="t-caption" style={{ color: "var(--text-faint)", margin: "-4px 0 0" }}>
+            Expenses {toName} paid where you owe a share.
+            {hasOffset && (
+              <>
+                {" "}
+                Listed shares total {formatMoney(centsToDecimal(selectedGrossCents), currency)}; you
+                pay {formatMoney(centsToDecimal(amountCents), currency)} after what {toName} owes you.
+              </>
+            )}
+          </p>
           <input
             value={query}
             onChange={(e) => setQuery(e.target.value)}
