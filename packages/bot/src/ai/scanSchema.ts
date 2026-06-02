@@ -13,7 +13,10 @@ export const suggestionSchema = z.object({
   split_type: z.enum(["equal", "shares", "exact"]),
   split_with: z.array(z.number().int()).min(1),
   shares: z.record(z.string(), z.number().int().positive()).nullable(),
-  evidence_message_ids: z.array(z.number().int()),
+  // Drop any stray nulls the model occasionally emits in the id list.
+  evidence_message_ids: z
+    .array(z.number().int().nullable())
+    .transform((ids) => ids.filter((id): id is number => id != null)),
   reasoning: z.string().max(200),
 });
 
@@ -24,18 +27,44 @@ export const settlementSuggestionSchema = z.object({
   to_telegram_id: z.number().int(),
   amount: z.number().positive().nullable(),
   currency: z.string().length(3),
-  evidence_message_ids: z.array(z.number().int()),
+  evidence_message_ids: z
+    .array(z.number().int().nullable())
+    .transform((ids) => ids.filter((id): id is number => id != null)),
   reasoning: z.string().max(200),
 });
 
+/**
+ * A tolerant array: validate each element independently and keep only the ones
+ * that parse, instead of failing the whole array on a single bad item. This is
+ * what stops one malformed settlement (e.g. a null member id Gemini emitted)
+ * from discarding every valid expense in the same scan.
+ */
+function tolerantArray<T extends z.ZodTypeAny>(item: T) {
+  return z
+    .array(z.unknown())
+    .optional()
+    .default([])
+    .transform((arr) =>
+      arr
+        .map((el) => item.safeParse(el))
+        .filter((r): r is z.SafeParseSuccess<z.infer<T>> => r.success)
+        .map((r) => r.data),
+    );
+}
+
 export const scanResponseSchema = z.object({
-  suggestions: z.array(suggestionSchema),
-  // Optional so older/empty responses still parse.
-  settlements: z.array(settlementSuggestionSchema).optional().default([]),
-  scan_window: z.object({
-    from_message_id: z.number().int(),
-    to_message_id: z.number().int(),
-  }),
+  suggestions: tolerantArray(suggestionSchema),
+  settlements: tolerantArray(settlementSuggestionSchema),
+  // scan_window is advisory only (we derive the real window from msg ids in
+  // code), so tolerate null / missing / partial rather than failing the scan.
+  scan_window: z
+    .object({
+      from_message_id: z.number().int().nullable().optional(),
+      to_message_id: z.number().int().nullable().optional(),
+    })
+    .nullable()
+    .optional()
+    .default({}),
 });
 
 export type RawSettlement = z.infer<typeof settlementSuggestionSchema>;

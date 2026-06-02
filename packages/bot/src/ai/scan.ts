@@ -173,7 +173,10 @@ export async function scanGroup(
   });
 
   if (!parsed.success) {
-    console.log(`[scan] parse_error:`, parsed.error.issues?.[0]?.message);
+    const issue = parsed.error.issues?.[0];
+    console.log(
+      `[scan] parse_error: ${issue?.message} at "${issue?.path?.join(".")}"`,
+    );
     return {
       status: "parse_error",
       written: 0,
