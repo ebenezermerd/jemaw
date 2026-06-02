@@ -270,8 +270,13 @@ export function SettleForm() {
                     <span className="t-body-strong" style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                       {e.description}
                     </span>
-                    <span className="t-caption" style={{ color: "var(--text-muted)" }}>
-                      {formatMoney(centsToDecimal(owedShareCents(e, from)), currency)}
+                    <span style={{ flexShrink: 0, textAlign: "right", display: "grid", gap: 1 }}>
+                      <span className="tnum t-caption" style={{ color: "var(--text)", fontWeight: 600 }}>
+                        {formatMoney(centsToDecimal(owedShareCents(e, from)), currency)}
+                      </span>
+                      <span className="tnum t-caption" style={{ color: "var(--text-faint)", fontSize: 11 }}>
+                        of {formatMoney(e.amount, currency)}
+                      </span>
                     </span>
                   </button>
                 );
