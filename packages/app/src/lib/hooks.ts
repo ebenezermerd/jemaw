@@ -186,6 +186,18 @@ export function useSuggestions() {
   });
 }
 
+/** Trigger a Gemini scan on the server. Fire and forget. */
+export function useTriggerScan() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () => api.post(`/api/groups/${gid()}/scan`, {}),
+    onSettled: () => {
+      // Invalidate suggestions so the UI picks up any new results.
+      qc.invalidateQueries({ queryKey: ["suggestions"] });
+    },
+  });
+}
+
 /**
  * Pull-to-refresh handler: re-fetch everything, and on the Home/Suggestions
  * screens also kick a fresh Gemini scan. Resolves when done.

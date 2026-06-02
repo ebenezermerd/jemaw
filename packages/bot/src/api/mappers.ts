@@ -36,6 +36,7 @@ export function toGroupDto(
   g: Group,
   members: Member[],
   hasExpenses: boolean,
+  canScan: boolean,
 ): GroupDto {
   return {
     id: g.id,
@@ -43,6 +44,7 @@ export function toGroupDto(
     defaultCurrency: g.defaultCurrency,
     members: members.map(toMemberDto),
     hasExpenses,
+    canScan,
   };
 }
 

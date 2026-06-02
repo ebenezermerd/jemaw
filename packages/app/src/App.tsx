@@ -8,7 +8,7 @@ import {
 import { useEffect } from "react";
 import { getGroupId } from "./lib/api.js";
 import { hideTelegramBack } from "./telegram.js";
-import { useRefresh, useGroup } from "./lib/hooks.js";
+import { useRefresh, useGroup, useTriggerScan } from "./lib/hooks.js";
 import { TabBar } from "./ui/TabBar.js";
 import { PullToRefresh } from "./ui/PullToRefresh.js";
 import { Splash } from "./ui/Splash.js";
@@ -130,6 +130,14 @@ export function App() {
 /** Show the splash until the group context has loaded once. */
 function Booting({ children }: { children: React.ReactNode }) {
   const group = useGroup();
+  const scan = useTriggerScan();
+  useEffect(() => {
+    if (group.data?.canScan && !scan.isPending) {
+      scan.mutate();
+    }
+    // Run once when group data first loads.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [Boolean(group.data?.canScan)]);
   if (group.isLoading && !group.data) return <Splash />;
   return <>{children}</>;
 }

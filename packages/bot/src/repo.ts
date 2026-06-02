@@ -383,6 +383,29 @@ export async function lastNMessages(
   return rows.reverse();
 }
 
+/**
+ * True when the group has chat messages newer than the last scan pointer,
+ * meaning a scan would have fresh context to examine.
+ */
+export async function groupHasNewMessages(
+  db: Db,
+  groupId: string,
+): Promise<boolean> {
+  const g = await getGroupById(db, groupId);
+  if (!g?.lastScanMessageId) return false;
+  const rows = await db
+    .select({ id: messages.id })
+    .from(messages)
+    .where(
+      and(
+        eq(messages.groupId, groupId),
+        gt(messages.telegramMessageId, g.lastScanMessageId),
+      ),
+    )
+    .limit(1);
+  return rows.length > 0;
+}
+
 export async function setLastScanMessageId(
   db: Db,
   groupId: string,
