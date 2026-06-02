@@ -33,26 +33,79 @@ describe("scanResponseSchema", () => {
     expect(r.success).toBe(true);
   });
 
-  it("rejects confidence out of range", () => {
+  it("drops a suggestion with confidence out of range (keeps the response)", () => {
     const r = scanResponseSchema.safeParse({
       ...valid,
-      suggestions: [{ ...valid.suggestions[0], confidence: 1.5 }],
+      suggestions: [
+        valid.suggestions[0],
+        { ...valid.suggestions[0], confidence: 1.5 },
+      ],
     });
-    expect(r.success).toBe(false);
+    expect(r.success).toBe(true);
+    expect(r.success && r.data.suggestions).toHaveLength(1);
   });
 
-  it("rejects a non-positive amount", () => {
+  it("drops a suggestion with a non-positive amount (keeps the response)", () => {
     const r = scanResponseSchema.safeParse({
       ...valid,
-      suggestions: [{ ...valid.suggestions[0], amount: 0 }],
+      suggestions: [
+        valid.suggestions[0],
+        { ...valid.suggestions[0], amount: 0 },
+      ],
     });
-    expect(r.success).toBe(false);
+    expect(r.success).toBe(true);
+    expect(r.success && r.data.suggestions).toHaveLength(1);
   });
 
-  it("rejects missing scan_window", () => {
+  it("tolerates a missing scan_window (advisory only)", () => {
     const { scan_window, ...rest } = valid;
     void scan_window;
-    expect(scanResponseSchema.safeParse(rest).success).toBe(false);
+    expect(scanResponseSchema.safeParse(rest).success).toBe(true);
+  });
+
+  it("keeps valid suggestions when another item is malformed", () => {
+    const r = scanResponseSchema.safeParse({
+      ...valid,
+      suggestions: [
+        valid.suggestions[0],
+        { confidence: 0.9, description: "broken" }, // missing required fields
+      ],
+    });
+    expect(r.success).toBe(true);
+    expect(r.success && r.data.suggestions).toHaveLength(1);
+  });
+
+  it("does not let a null settlement member id discard the whole scan", () => {
+    const r = scanResponseSchema.safeParse({
+      ...valid,
+      settlements: [
+        {
+          confidence: 0.8,
+          from_telegram_id: null, // the field that was failing in production
+          to_telegram_id: 456,
+          amount: 200,
+          currency: "ETB",
+          evidence_message_ids: [10],
+          reasoning: "payback",
+        },
+      ],
+    });
+    expect(r.success).toBe(true);
+    expect(r.success && r.data.suggestions).toHaveLength(1); // expense survives
+    expect(r.success && r.data.settlements).toHaveLength(0); // bad one dropped
+  });
+
+  it("strips stray nulls from evidence_message_ids", () => {
+    const r = scanResponseSchema.safeParse({
+      ...valid,
+      suggestions: [
+        { ...valid.suggestions[0], evidence_message_ids: [101, null, 103] },
+      ],
+    });
+    expect(r.success).toBe(true);
+    expect(r.success && r.data.suggestions[0]!.evidence_message_ids).toEqual([
+      101, 103,
+    ]);
   });
 });
 
