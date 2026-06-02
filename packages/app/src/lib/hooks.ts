@@ -186,11 +186,15 @@ export function useSuggestions() {
   });
 }
 
-/** Trigger a Gemini scan on the server. Fire and forget. */
+/** Trigger a Gemini scan on the server. Fire and forget — never throws. */
 export function useTriggerScan() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: () => api.post(`/api/groups/${gid()}/scan`, {}),
+    // Swallow errors: a scan that fails (AI unconfigured, rate limited, offline)
+    // must never bubble up and break the screen that triggered it — least of all
+    // the boot path, where it would freeze the splash.
+    onError: () => {},
     onSettled: () => {
       // Invalidate suggestions so the UI picks up any new results.
       qc.invalidateQueries({ queryKey: ["suggestions"] });
