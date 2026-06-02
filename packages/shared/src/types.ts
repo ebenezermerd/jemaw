@@ -63,6 +63,8 @@ export interface GroupDto {
   defaultCurrency: string;
   members: MemberDto[];
   hasExpenses: boolean;
+  /** True when new chat messages arrived since the last AI scan. */
+  canScan: boolean;
 }
 
 export interface ExpenseShareDto {

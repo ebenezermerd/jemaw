@@ -14,6 +14,7 @@ import {
   voidExpense,
   getExpense,
   groupHasExpenses,
+  groupHasNewMessages,
   listSettlements,
   createSettlement,
   listPendingSuggestions,
@@ -189,7 +190,10 @@ export async function registerApi(
       const { group } = req.jemaw!;
       const members = await listMembers(db, group.id);
       const hasExpenses = await groupHasExpenses(db, group.id);
-      return toGroupDto(group, members, hasExpenses);
+      const canScan = deps.gemini
+        ? await groupHasNewMessages(db, group.id)
+        : false;
+      return toGroupDto(group, members, hasExpenses, canScan);
     },
   );
 
@@ -214,10 +218,14 @@ export async function registerApi(
         );
         if (!updated) return reply.code(404).send({ error: "group not found" });
         const members = await listMembers(db, group.id);
-        return toGroupDto(updated, members, false);
+        return toGroupDto(updated, members, false, false);
       }
       const members = await listMembers(db, group.id);
-      return toGroupDto(group, members, await groupHasExpenses(db, group.id));
+      const hasExpenses = await groupHasExpenses(db, group.id);
+      const canScan = deps.gemini
+        ? await groupHasNewMessages(db, group.id)
+        : false;
+      return toGroupDto(group, members, hasExpenses, canScan);
     },
   );
 
