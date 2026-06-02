@@ -5,13 +5,14 @@ import {
   Navigate,
   useLocation,
 } from "react-router-dom";
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { getGroupId } from "./lib/api.js";
 import { hideTelegramBack } from "./telegram.js";
 import { useRefresh, useGroup, useTriggerScan } from "./lib/hooks.js";
 import { TabBar } from "./ui/TabBar.js";
 import { PullToRefresh } from "./ui/PullToRefresh.js";
 import { Splash } from "./ui/Splash.js";
+import { ErrorBoundary } from "./ui/ErrorBoundary.js";
 import { Home } from "./routes/Home.js";
 import { Balances } from "./routes/Balances.js";
 import { History } from "./routes/History.js";
@@ -119,25 +120,31 @@ export function App() {
     );
   }
   return (
-    <BrowserRouter>
-      <Booting>
-        <Shell />
-      </Booting>
-    </BrowserRouter>
+    <ErrorBoundary>
+      <BrowserRouter>
+        <Booting>
+          <Shell />
+        </Booting>
+      </BrowserRouter>
+    </ErrorBoundary>
   );
 }
 
 /** Show the splash until the group context has loaded once. */
 function Booting({ children }: { children: React.ReactNode }) {
   const group = useGroup();
+  const canScan = group.data?.canScan === true;
   const scan = useTriggerScan();
+  const autoScanned = useRef(false);
+  // Auto-scan on open when there's fresh chat to examine. Fully fire-and-forget:
+  // the mutation swallows its own errors (see useTriggerScan), and this effect
+  // runs after render so it can never affect the splash decision below.
   useEffect(() => {
-    if (group.data?.canScan && !scan.isPending) {
+    if (canScan && !autoScanned.current) {
+      autoScanned.current = true;
       scan.mutate();
     }
-    // Run once when group data first loads.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [Boolean(group.data?.canScan)]);
+  }, [canScan, scan]);
   if (group.isLoading && !group.data) return <Splash />;
   return <>{children}</>;
 }
