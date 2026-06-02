@@ -60,15 +60,16 @@ export function SettleForm() {
   const [description, setDescription] = useState("");
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [query, setQuery] = useState("");
-  const [touchedAmount, setTouchedAmount] = useState(false);
 
-  // Prefill from params. The amount is NOT seeded here: the owed shares of the
-  // selected expenses drive it (see below). The param amount is used only as a
-  // fallback when there are no relevant expenses to total.
+  // Prefill from params. The amount is the settle plan's net (e.g. 450), which
+  // already accounts for both directions and prior settlements — we trust it
+  // rather than re-deriving a one-directional share sum that would diverge.
   useEffect(() => {
     if (!group.data) return;
     setFrom(params.get("from") ?? me);
     setTo(params.get("to") ?? "");
+    const a = params.get("amount");
+    if (a) setAmount(a);
     const m = params.get("method") as PaymentMethod | null;
     if (m) setMethod(m);
     const exp = params.get("expenses");
@@ -76,53 +77,26 @@ export function SettleForm() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [group.data]);
 
-  // Preselect the relevant expenses whenever the from→to pair changes, so the
-  // list and amount line up. An expenses= link is honoured once instead.
-  const [autoSelected, setAutoSelected] = useState(false);
-  const [selectedPair, setSelectedPair] = useState("");
-  useEffect(() => {
-    if (!from || !to) return;
-    const pair = `${from}>${to}`;
-    if (pair === selectedPair) return;
-    if (!autoSelected && params.get("expenses")) {
-      setAutoSelected(true);
-      setSelectedPair(pair);
-      return;
-    }
-    const ids = expenses.filter((e) => isOwedBetween(e, from, to)).map((e) => e.id);
-    setSelected(new Set(ids));
-    setAutoSelected(true);
-    setSelectedPair(pair);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [from, to, expenses]);
-
   // Expenses relevant to this from→to pair: ones where `from` owes `to`
-  // (to paid, from has a share). Used both for the list and the auto-total.
+  // (to paid, from has a share). Shown as the context behind this balance and
+  // attached to the settlement; they do NOT drive the amount (the net does).
   const relevant = useMemo(
     () => expenses.filter((e) => isOwedBetween(e, from, to)),
     [expenses, from, to],
   );
 
-  // Sum of the owed shares (not gross amounts) of the selected expenses.
-  const selectedShareCents = useMemo(
-    () =>
-      relevant
-        .filter((e) => selected.has(e.id))
-        .reduce((sum, e) => sum + owedShareCents(e, from), 0),
-    [relevant, selected, from],
-  );
-
-  // Drive the amount from the selected shares, unless the user typed their own.
-  // When there are no relevant expenses, fall back to the param amount.
+  // Preselect the relevant expenses once the pair is known (unless the link named
+  // specific ones), so the list reflects what makes up this balance.
+  const [selectedPair, setSelectedPair] = useState("");
   useEffect(() => {
-    if (touchedAmount || !autoSelected) return;
-    if (relevant.length > 0) {
-      setAmount(selectedShareCents > 0 ? centsToDecimal(selectedShareCents) : "");
-    } else {
-      setAmount(params.get("amount") ?? "");
-    }
+    if (!from || !to) return;
+    const pair = `${from}>${to}`;
+    if (pair === selectedPair) return;
+    setSelectedPair(pair);
+    if (params.get("expenses")) return; // link named specific expenses
+    setSelected(new Set(relevant.map((e) => e.id)));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedShareCents, relevant.length, autoSelected]);
+  }, [from, to, expenses]);
 
   if (group.isLoading || expensesQ.isLoading) return <PageLoader />;
   if (members.length < 2)
@@ -180,10 +154,7 @@ export function SettleForm() {
         <Field label="Amount" icon="€">
           <input
             value={amount}
-            onChange={(e) => {
-              setAmount(e.target.value.replace(/[^\d.]/g, ""));
-              setTouchedAmount(true);
-            }}
+            onChange={(e) => setAmount(e.target.value.replace(/[^\d.]/g, ""))}
             inputMode="decimal"
             placeholder="0.00"
             className="tnum"
