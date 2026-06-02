@@ -62,22 +62,40 @@ export function SettleForm() {
   const [query, setQuery] = useState("");
   const [touchedAmount, setTouchedAmount] = useState(false);
 
-  // Prefill from params once data is ready.
+  // Prefill from params. The param amount is a fallback only (not "touched"), so
+  // the live auto-total still owns the amount.
   useEffect(() => {
     if (!group.data) return;
     setFrom(params.get("from") ?? me);
     setTo(params.get("to") ?? "");
     const a = params.get("amount");
-    if (a) {
-      setAmount(a);
-      setTouchedAmount(true);
-    }
+    if (a) setAmount(a);
     const m = params.get("method") as PaymentMethod | null;
     if (m) setMethod(m);
     const exp = params.get("expenses");
     if (exp) setSelected(new Set(exp.split(",").filter(Boolean)));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [group.data]);
+
+  // Preselect the relevant expenses whenever the from→to pair changes, so the
+  // list and amount line up. An expenses= link is honoured once instead.
+  const [autoSelected, setAutoSelected] = useState(false);
+  const [selectedPair, setSelectedPair] = useState("");
+  useEffect(() => {
+    if (!from || !to) return;
+    const pair = `${from}>${to}`;
+    if (pair === selectedPair) return;
+    if (!autoSelected && params.get("expenses")) {
+      setAutoSelected(true);
+      setSelectedPair(pair);
+      return;
+    }
+    const ids = expenses.filter((e) => isOwedBetween(e, from, to)).map((e) => e.id);
+    setSelected(new Set(ids));
+    setAutoSelected(true);
+    setSelectedPair(pair);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [from, to, expenses]);
 
   // Expenses relevant to this from→to pair: ones where `from` owes `to`
   // (to paid, from has a share). Used both for the list and the auto-total.
@@ -86,15 +104,16 @@ export function SettleForm() {
     [expenses, from, to],
   );
 
-  // Auto-fill the amount from the selected expenses' owed shares (unless edited).
+  // Live auto-total from the selected expenses, unless the user typed an amount.
   useEffect(() => {
-    if (touchedAmount) return;
+    if (touchedAmount || !autoSelected) return;
     const cents = relevant
       .filter((e) => selected.has(e.id))
       .reduce((sum, e) => sum + owedShareCents(e, from), 0);
     if (cents > 0) setAmount(centsToDecimal(cents));
+    else if (relevant.length > 0) setAmount("");
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selected, relevant]);
+  }, [selected, relevant, autoSelected]);
 
   if (group.isLoading || expensesQ.isLoading) return <PageLoader />;
   if (members.length < 2)

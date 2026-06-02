@@ -44,7 +44,7 @@ export function ExpenseDetail() {
 
   if (expense.isLoading || group.isLoading) return <PageLoader />;
   if (!expense.data) return <Centered>Expense not found.</Centered>;
-  if (expense.data.voidedAt) return <Centered>This expense was voided.</Centered>;
+  if (expense.data.voidedAt) return <Centered>This expense was removed.</Centered>;
 
   const participants = [...splitWith];
   const valid =
@@ -133,7 +133,7 @@ export function ExpenseDetail() {
 
       <div style={{ display: "flex", gap: 8 }}>
         <Button variant="danger" onClick={() => setConfirmVoid(true)} style={{ flex: 1 }}>
-          Void
+          Remove
         </Button>
         <Button onClick={save} disabled={!valid || edit.isPending} style={{ flex: 1 }}>
           {edit.isPending ? "Saving…" : "Save"}
@@ -142,7 +142,7 @@ export function ExpenseDetail() {
 
       <Modal open={confirmVoid} onClose={() => setConfirmVoid(false)}>
         <h2 className="t-heading" style={{ marginTop: 0 }}>
-          Void this expense?
+          Remove this expense?
         </h2>
         <p className="t-body" style={{ color: "var(--text-muted)" }}>
           It will be removed from balances and history. This can't be undone.
@@ -156,7 +156,7 @@ export function ExpenseDetail() {
             Cancel
           </Button>
           <Button variant="danger" onClick={doVoid} style={{ flex: 1 }}>
-            {voidExpense.isPending ? "Voiding…" : "Void"}
+            {voidExpense.isPending ? "Removing…" : "Remove"}
           </Button>
         </div>
       </Modal>
