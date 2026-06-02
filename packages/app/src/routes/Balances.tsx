@@ -3,7 +3,6 @@ import { useBalances, useGroup, useExpenses } from "../lib/hooks.js";
 import { Money } from "../ui/primitives.js";
 import { MemberAvatar } from "../ui/MemberAvatar.js";
 import { SkeletonList } from "../motion/Skeleton.js";
-import { Celebration } from "../motion/Celebration.js";
 import { EmptyState } from "../ui/EmptyState.js";
 import { BalancesAnalytics } from "../ui/BalancesAnalytics.js";
 
@@ -44,13 +43,13 @@ export function Balances() {
         Balances
       </h1>
 
-      {allEven ? (
-        <Centered>
-          <Celebration text="Everyone's even." />
-        </Centered>
-      ) : (
-        <div style={{ display: "grid", gap: 8 }}>
-          {rows.map((r) => {
+      {allEven && (
+        <p className="t-caption" style={{ color: "var(--accent)", margin: 0 }}>
+          ✓ All settled up — everyone's even.
+        </p>
+      )}
+      <div style={{ display: "grid", gap: 8 }}>
+        {rows.map((r) => {
             const n = Number(r.net);
             const positive = n > 0;
             const status = n === 0 ? "even" : positive ? "is owed" : "owes";
@@ -71,7 +70,14 @@ export function Balances() {
                   </div>
                   <span
                     className="t-caption"
-                    style={{ color: positive ? "var(--accent)" : "var(--warn)" }}
+                    style={{
+                      color:
+                        n === 0
+                          ? "var(--text-muted)"
+                          : positive
+                            ? "var(--accent)"
+                            : "var(--warn)",
+                    }}
                   >
                     {status}
                   </span>
@@ -82,8 +88,7 @@ export function Balances() {
               </button>
             );
           })}
-        </div>
-      )}
+      </div>
 
       {/* analytics */}
       <BalancesAnalytics
