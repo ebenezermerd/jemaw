@@ -1,14 +1,24 @@
 import { useNavigate } from "react-router-dom";
-import { useGroup, useSettlePlan } from "../lib/hooks.js";
+import { useGroup, useSettlePlan, useBalances } from "../lib/hooks.js";
 import { Avatar, Money } from "../ui/primitives.js";
-import { Celebration } from "../motion/Celebration.js";
+import { MemberAvatar } from "../ui/MemberAvatar.js";
 import { SkeletonList } from "../motion/Skeleton.js";
-import { Centered } from "./Balances.js";
 
 const ellip: React.CSSProperties = {
   overflow: "hidden",
   textOverflow: "ellipsis",
   whiteSpace: "nowrap",
+};
+
+const evenRow: React.CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  gap: 12,
+  padding: 14,
+  border: "1px solid var(--border)",
+  background: "var(--surface)",
+  borderRadius: "var(--r-lg)",
+  width: "100%",
 };
 
 /** Two small avatars overlapped into one compact pill (payer over payee). */
@@ -26,20 +36,50 @@ function DuoAvatar({ from, to }: { from: string; to: string }) {
 export function Settle() {
   const group = useGroup();
   const plan = useSettlePlan();
+  const balances = useBalances();
   const nav = useNavigate();
 
   const currency = group.data?.defaultCurrency ?? "EUR";
+  const members = group.data?.members ?? [];
+  const tgId = (id: string) => members.find((m) => m.id === id)?.telegramUserId;
   const nameOf = (id: string) =>
-    group.data?.members.find((m) => m.id === id)?.displayName ?? "Member";
+    members.find((m) => m.id === id)?.displayName ?? "Member";
 
   if (plan.isLoading) return <SkeletonList count={3} height={72} />;
   const transfers = plan.data?.transfers ?? [];
-  if (transfers.length === 0)
+
+  // Even — show the current per member standing (all settled) rather than a bare
+  // celebration, so the page still reflects the group's state.
+  if (transfers.length === 0) {
+    const rows = balances.data ?? [];
     return (
-      <Centered>
-        <Celebration text="Everyone's even." />
-      </Centered>
+      <div style={{ padding: 16, display: "grid", gap: 14 }}>
+        <h1 className="t-screen-title" style={{ margin: "8px 0 0" }}>
+          Settle up
+        </h1>
+        <p className="t-caption" style={{ color: "var(--accent)", margin: 0 }}>
+          ✓ All settled up — everyone's even.
+        </p>
+        <div style={{ display: "grid", gap: 8 }}>
+          {rows.map((r) => (
+            <div key={r.memberId} style={evenRow}>
+              <MemberAvatar
+                name={r.displayName}
+                telegramUserId={tgId(r.memberId)}
+                size={36}
+              />
+              <div className="t-body-strong" style={{ flex: 1, minWidth: 0, ...ellip }}>
+                {r.displayName}
+              </div>
+              <div className="t-heading" style={{ flexShrink: 0 }}>
+                <Money value={r.net} currency={currency} signed />
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
     );
+  }
 
   return (
     <div style={{ padding: 16 }}>
