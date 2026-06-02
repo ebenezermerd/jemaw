@@ -62,14 +62,13 @@ export function SettleForm() {
   const [query, setQuery] = useState("");
   const [touchedAmount, setTouchedAmount] = useState(false);
 
-  // Prefill from params. The param amount is a fallback only (not "touched"), so
-  // the live auto-total still owns the amount.
+  // Prefill from params. The amount is NOT seeded here: the owed shares of the
+  // selected expenses drive it (see below). The param amount is used only as a
+  // fallback when there are no relevant expenses to total.
   useEffect(() => {
     if (!group.data) return;
     setFrom(params.get("from") ?? me);
     setTo(params.get("to") ?? "");
-    const a = params.get("amount");
-    if (a) setAmount(a);
     const m = params.get("method") as PaymentMethod | null;
     if (m) setMethod(m);
     const exp = params.get("expenses");
@@ -104,16 +103,26 @@ export function SettleForm() {
     [expenses, from, to],
   );
 
-  // Live auto-total from the selected expenses, unless the user typed an amount.
+  // Sum of the owed shares (not gross amounts) of the selected expenses.
+  const selectedShareCents = useMemo(
+    () =>
+      relevant
+        .filter((e) => selected.has(e.id))
+        .reduce((sum, e) => sum + owedShareCents(e, from), 0),
+    [relevant, selected, from],
+  );
+
+  // Drive the amount from the selected shares, unless the user typed their own.
+  // When there are no relevant expenses, fall back to the param amount.
   useEffect(() => {
     if (touchedAmount || !autoSelected) return;
-    const cents = relevant
-      .filter((e) => selected.has(e.id))
-      .reduce((sum, e) => sum + owedShareCents(e, from), 0);
-    if (cents > 0) setAmount(centsToDecimal(cents));
-    else if (relevant.length > 0) setAmount("");
+    if (relevant.length > 0) {
+      setAmount(selectedShareCents > 0 ? centsToDecimal(selectedShareCents) : "");
+    } else {
+      setAmount(params.get("amount") ?? "");
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selected, relevant, autoSelected]);
+  }, [selectedShareCents, relevant.length, autoSelected]);
 
   if (group.isLoading || expensesQ.isLoading) return <PageLoader />;
   if (members.length < 2)
