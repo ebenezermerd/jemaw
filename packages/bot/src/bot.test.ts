@@ -24,6 +24,7 @@ describe("createBot", () => {
       miniAppUrl: undefined,
       botUsername: undefined,
       miniAppShortName: undefined,
+      scanLimiter: { tryAcquire: () => true } as never,
     });
     expect(bot).toBeDefined();
     expect(bot.token).toBe("123:abc");

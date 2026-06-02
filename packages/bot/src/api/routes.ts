@@ -51,6 +51,7 @@ import type {
   SuggestionsResponse,
   MeSummaryDto,
 } from "@jemaw/shared/types";
+import type { ScanRateLimiter } from "../ai/rateLimit.js";
 
 /**
  * Compute the current net balances for a group from live expenses + paid
@@ -165,6 +166,7 @@ export interface ApiDeps {
   now: () => number;
   /** Present when GEMINI_API_KEY is set — enables the manual re-scan endpoint. */
   gemini?: import("../ai/geminiClient.js").GeminiClient;
+  scanLimiter: ScanRateLimiter;
 }
 
 export async function registerApi(
@@ -622,7 +624,7 @@ export async function registerApi(
     },
   );
 
-  // POST manual re-scan: run a Gemini scan on demand (the app's "Re-scan").
+  // POST manual re-scan: run a Gemini scan on demand (pull-to-refresh).
   app.post(
     "/api/groups/:groupId/scan",
     { preHandler: auth },
@@ -630,6 +632,9 @@ export async function registerApi(
       const { group, member } = req.jemaw!;
       if (!deps.gemini) {
         return reply.code(503).send({ error: "AI scanning is not configured" });
+      }
+      if (!deps.scanLimiter.tryAcquire(group.id)) {
+        return reply.code(429).send({ error: "rate limited — wait 60s" });
       }
       const { scanGroup } = await import("../ai/scan.js");
       const result = await scanGroup(

@@ -57,7 +57,7 @@ d("Phase 2 settle integration", () => {
     saraId = (await upsertMember(db, groupId, saraTg, "Sara", null)).id;
     tomId = (await upsertMember(db, groupId, tomTg, "Tom", null)).id;
     app = await buildServer({
-      api: { db, botToken: BOT_TOKEN, now: () => NOW },
+      api: { db, botToken: BOT_TOKEN, now: () => NOW, scanLimiter: { tryAcquire: () => true } as never },
       corsOrigin: undefined,
     });
   });

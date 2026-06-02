@@ -55,7 +55,7 @@ d("API integration", () => {
     tomMemberId = tom.id;
 
     app = await buildServer({
-      api: { db, botToken: BOT_TOKEN, now: () => NOW },
+      api: { db, botToken: BOT_TOKEN, now: () => NOW, scanLimiter: { tryAcquire: () => true } as never },
       corsOrigin: undefined,
     });
   });

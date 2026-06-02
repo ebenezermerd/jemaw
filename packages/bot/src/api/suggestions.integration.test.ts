@@ -88,7 +88,7 @@ d("Suggestions API integration", () => {
     saraId = (await upsertMember(db, groupId, saraTg, "Sara", null)).id;
     tomId = (await upsertMember(db, groupId, base - 2n, "Tom", null)).id;
     app = await buildServer({
-      api: { db, botToken: BOT_TOKEN, now: () => NOW },
+      api: { db, botToken: BOT_TOKEN, now: () => NOW, scanLimiter: { tryAcquire: () => true } as never },
       corsOrigin: undefined,
     });
   });
