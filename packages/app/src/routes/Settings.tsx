@@ -49,7 +49,7 @@ export function Settings() {
   return (
     <div>
       <PageHeader title="Settings" fallback="/" />
-      <div style={{ padding: "0 16px 16px", display: "grid", gap: 28 }}>
+      <div style={{ padding: "0 16px 16px", display: "grid", gap: 28, minWidth: 0 }}>
       {/* Appearance */}
       <Section title="Appearance">
         <Row label="Theme">
@@ -105,7 +105,13 @@ export function Settings() {
           {g.members.map((m) => (
             <div
               key={m.id}
-              style={{ display: "flex", alignItems: "center", gap: 8, height: 48 }}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 8,
+                minHeight: 48,
+                minWidth: 0,
+              }}
             >
               <MemberAvatar
                 name={m.displayName}
@@ -119,18 +125,19 @@ export function Settings() {
                   if (v && v !== m.displayName)
                     rename.mutate({ memberId: m.id, displayName: v });
                 }}
-                style={{ ...memberInput, flex: 1, minWidth: 0 }}
+                style={{ ...memberInput, flex: 1, minWidth: 0, width: 0 }}
               />
               {m.role === "admin" && (
                 <span
                   className="t-caption"
                   style={{
                     flexShrink: 0,
-                    padding: "2px 8px",
+                    padding: "2px 7px",
                     borderRadius: "var(--r-full)",
                     background: "var(--accent-soft)",
                     color: "var(--accent)",
                     fontWeight: 600,
+                    fontSize: 10,
                     textTransform: "uppercase",
                     letterSpacing: "0.04em",
                   }}
@@ -150,13 +157,16 @@ export function Settings() {
                   className="t-label"
                   style={{
                     flexShrink: 0,
-                    border: "none",
+                    whiteSpace: "nowrap",
+                    padding: "4px 8px",
+                    border: "1px solid var(--border)",
+                    borderRadius: "var(--r-md)",
                     background: "transparent",
                     color: "var(--text-muted)",
                     cursor: "pointer",
                   }}
                 >
-                  {m.role === "admin" ? "Demote" : "Make admin"}
+                  {m.role === "admin" ? "Demote" : "Promote"}
                 </button>
               )}
             </div>
@@ -248,6 +258,7 @@ function Section({ title, children }: { title: string; children: React.ReactNode
           padding: 16,
           display: "grid",
           gap: 12,
+          minWidth: 0,
         }}
       >
         {children}
