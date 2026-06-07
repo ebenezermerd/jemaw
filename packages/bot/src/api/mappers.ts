@@ -28,6 +28,7 @@ export function toMemberDto(m: Member): MemberDto {
     displayName: m.displayName,
     username: m.username,
     telegramUserId: telegramIdToString(m.telegramUserId),
+    role: m.role,
     isActive: m.isActive,
   };
 }
@@ -37,6 +38,8 @@ export function toGroupDto(
   members: Member[],
   hasExpenses: boolean,
   canScan: boolean,
+  /** the calling member, to expose their own admin flag */
+  caller: Member,
 ): GroupDto {
   return {
     id: g.id,
@@ -45,6 +48,7 @@ export function toGroupDto(
     members: members.map(toMemberDto),
     hasExpenses,
     canScan,
+    isAdmin: caller.role === "admin",
   };
 }
 
