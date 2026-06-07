@@ -58,6 +58,15 @@ export function useUpdateGroup() {
   });
 }
 
+/** Admin only: clear this group's ledger, then refresh everything. */
+export function useResetGroup() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () => api.post<GroupDto>(`/api/groups/${gid()}/reset`, {}),
+    onSuccess: () => qc.invalidateQueries(),
+  });
+}
+
 export function useExpenses() {
   return useQuery({
     queryKey: ["expenses"],

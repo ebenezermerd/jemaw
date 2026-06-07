@@ -6,6 +6,7 @@ import {
   captureMessage,
   countPendingSuggestions,
   findMemberByTelegramId,
+  setMemberRole,
 } from "./repo.js";
 import { registerUser, seedAdmins } from "./telegram/memberSync.js";
 import { ensurePinnedMessage } from "./telegram/pinnedMessage.js";
@@ -167,7 +168,19 @@ export function createBot(token: string, deps: BotDeps): Bot {
       return;
     }
     if (ctx.from) await registerUser(db, groupId, ctx.from);
-    await seedAdmins(ctx.api, db, groupId, BigInt(ctx.chat.id)).catch(() => {});
+    const seeded = await seedAdmins(
+      ctx.api,
+      db,
+      groupId,
+      BigInt(ctx.chat.id),
+    ).catch(() => false);
+    // Fallback: if we couldn't read any admin from Telegram, make the person who
+    // ran /start an admin so the group always has at least one.
+    if (!seeded && ctx.from) {
+      await setMemberRole(db, groupId, BigInt(ctx.from.id), "admin").catch(
+        () => {},
+      );
+    }
     const group = await getGroupById(db, groupId);
     await ensurePinnedMessage(ctx.api, db, {
       groupId,

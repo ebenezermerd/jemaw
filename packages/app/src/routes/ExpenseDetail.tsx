@@ -12,6 +12,7 @@ import { Modal } from "../motion/Modal.js";
 import { PageHeader } from "../ui/PageHeader.js";
 import { PageLoader } from "../motion/Loader.js";
 import { Centered } from "./Balances.js";
+import { currentTelegramId } from "../telegram.js";
 
 /**
  * View + edit an existing expense (Phase 2). Equal-split editor for simplicity;
@@ -45,6 +46,15 @@ export function ExpenseDetail() {
   if (expense.isLoading || group.isLoading) return <PageLoader />;
   if (!expense.data) return <Centered>Expense not found.</Centered>;
   if (expense.data.voidedAt) return <Centered>This expense was removed.</Centered>;
+
+  // Only the creator or a group admin may edit/remove an expense.
+  const myTgId = currentTelegramId();
+  const myMemberId = group.data?.members.find(
+    (m) => m.telegramUserId === myTgId,
+  )?.id;
+  const canModify =
+    group.data?.isAdmin === true ||
+    expense.data.createdByMemberId === myMemberId;
 
   const participants = [...splitWith];
   const valid =
@@ -131,14 +141,20 @@ export function ExpenseDetail() {
         </div>
       </Field>
 
-      <div style={{ display: "flex", gap: 8 }}>
-        <Button variant="danger" onClick={() => setConfirmVoid(true)} style={{ flex: 1 }}>
-          Remove
-        </Button>
-        <Button onClick={save} disabled={!valid || edit.isPending} style={{ flex: 1 }}>
-          {edit.isPending ? "Saving…" : "Save"}
-        </Button>
-      </div>
+      {canModify ? (
+        <div style={{ display: "flex", gap: 8 }}>
+          <Button variant="danger" onClick={() => setConfirmVoid(true)} style={{ flex: 1 }}>
+            Remove
+          </Button>
+          <Button onClick={save} disabled={!valid || edit.isPending} style={{ flex: 1 }}>
+            {edit.isPending ? "Saving…" : "Save"}
+          </Button>
+        </div>
+      ) : (
+        <p className="t-caption" style={{ color: "var(--text-faint)", margin: 0, textAlign: "center" }}>
+          Only the person who added this expense or a group admin can edit or remove it.
+        </p>
+      )}
 
       <Modal open={confirmVoid} onClose={() => setConfirmVoid(false)}>
         <h2 className="t-heading" style={{ marginTop: 0 }}>

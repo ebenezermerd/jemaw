@@ -54,6 +54,7 @@ export interface MemberDto {
   displayName: string;
   username: string | null;
   telegramUserId: TelegramIdString;
+  role: "admin" | "member";
   isActive: boolean;
 }
 
@@ -65,6 +66,8 @@ export interface GroupDto {
   hasExpenses: boolean;
   /** True when new chat messages arrived since the last AI scan. */
   canScan: boolean;
+  /** Whether the calling member is an admin of this group. */
+  isAdmin: boolean;
 }
 
 export interface ExpenseShareDto {

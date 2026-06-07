@@ -2,7 +2,7 @@
  * Phase 1 REST API. All routes live under /api/groups/:groupId and run behind
  * the initData auth hook. Bodies validated with zod.
  */
-import type { FastifyInstance } from "fastify";
+import type { FastifyInstance, FastifyRequest, FastifyReply } from "fastify";
 import { z } from "zod";
 import type { Db } from "../db.js";
 import { makeAuthHook, type AuthDeps } from "../auth/authHook.js";
@@ -23,6 +23,7 @@ import {
   addManualMember,
   renameMember,
   updateGroupCurrency,
+  resetGroupData,
 } from "../repo.js";
 import { computeSplit } from "../domain/splits.js";
 import {
@@ -182,27 +183,37 @@ export async function registerApi(
   };
   const auth = makeAuthHook(authDeps);
 
+  // Admin guard: returns true if the caller is a group admin, else sends 403.
+  // Relies on req.jemaw.member.role, which the auth hook resolves from verified
+  // initData — the client cannot forge it.
+  function requireAdmin(req: FastifyRequest, reply: FastifyReply): boolean {
+    if (req.jemaw!.member.role === "admin") return true;
+    reply.code(403).send({ error: "admin only" });
+    return false;
+  }
+
   // GET group meta + members
   app.get(
     "/api/groups/:groupId",
     { preHandler: auth },
     async (req) => {
-      const { group } = req.jemaw!;
+      const { group, member } = req.jemaw!;
       const members = await listMembers(db, group.id);
       const hasExpenses = await groupHasExpenses(db, group.id);
       const canScan = deps.gemini
         ? await groupHasNewMessages(db, group.id)
         : false;
-      return toGroupDto(group, members, hasExpenses, canScan);
+      return toGroupDto(group, members, hasExpenses, canScan, member);
     },
   );
 
-  // PATCH group settings (currency) — blocked once expenses exist.
+  // PATCH group settings (currency) — admin only; blocked once expenses exist.
   app.patch(
     "/api/groups/:groupId",
     { preHandler: auth },
     async (req, reply) => {
-      const { group } = req.jemaw!;
+      if (!requireAdmin(req, reply)) return;
+      const { group, member } = req.jemaw!;
       const parsed = updateGroupSchema.safeParse(req.body);
       if (!parsed.success) return reply.code(400).send({ error: "invalid body" });
       if (parsed.data.defaultCurrency) {
@@ -218,14 +229,28 @@ export async function registerApi(
         );
         if (!updated) return reply.code(404).send({ error: "group not found" });
         const members = await listMembers(db, group.id);
-        return toGroupDto(updated, members, false, false);
+        return toGroupDto(updated, members, false, false, member);
       }
       const members = await listMembers(db, group.id);
       const hasExpenses = await groupHasExpenses(db, group.id);
       const canScan = deps.gemini
         ? await groupHasNewMessages(db, group.id)
         : false;
-      return toGroupDto(group, members, hasExpenses, canScan);
+      return toGroupDto(group, members, hasExpenses, canScan, member);
+    },
+  );
+
+  // POST reset — admin only. Clears this group's ledger (expenses, shares,
+  // settlements, suggestions, messages, ai_runs); keeps the group and members.
+  app.post(
+    "/api/groups/:groupId/reset",
+    { preHandler: auth },
+    async (req, reply) => {
+      if (!requireAdmin(req, reply)) return;
+      const { group, member } = req.jemaw!;
+      await resetGroupData(db, group.id);
+      const members = await listMembers(db, group.id);
+      return toGroupDto(group, members, false, false, member);
     },
   );
 
@@ -376,13 +401,22 @@ export async function registerApi(
     },
   );
 
-  // PATCH edit an expense (recompute shares)
+  // PATCH edit an expense (recompute shares). Allowed for the expense's creator
+  // or a group admin; others get 403.
   app.patch(
     "/api/groups/:groupId/expenses/:expenseId",
     { preHandler: auth },
     async (req, reply) => {
-      const { group } = req.jemaw!;
+      const { group, member } = req.jemaw!;
       const { expenseId } = req.params as { expenseId: string };
+      const existing = await getExpense(db, group.id, expenseId);
+      if (!existing) return reply.code(404).send({ error: "not found" });
+      if (
+        member.role !== "admin" &&
+        existing.expense.createdByMemberId !== member.id
+      ) {
+        return reply.code(403).send({ error: "only the creator or an admin can edit this" });
+      }
       const parsed = createExpenseSchema.safeParse(req.body);
       if (!parsed.success) {
         return reply.code(400).send({ error: "invalid body" });
@@ -420,13 +454,21 @@ export async function registerApi(
     },
   );
 
-  // POST void an expense (soft delete)
+  // POST void an expense (soft delete). Creator or admin only.
   app.post(
     "/api/groups/:groupId/expenses/:expenseId/void",
     { preHandler: auth },
     async (req, reply) => {
-      const { group } = req.jemaw!;
+      const { group, member } = req.jemaw!;
       const { expenseId } = req.params as { expenseId: string };
+      const existing = await getExpense(db, group.id, expenseId);
+      if (!existing) return reply.code(404).send({ error: "not found" });
+      if (
+        member.role !== "admin" &&
+        existing.expense.createdByMemberId !== member.id
+      ) {
+        return reply.code(403).send({ error: "only the creator or an admin can remove this" });
+      }
       const result = await voidExpense(db, group.id, expenseId, new Date());
       if (result === "not_found") {
         return reply.code(404).send({ error: "not found" });

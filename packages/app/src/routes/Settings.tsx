@@ -1,14 +1,17 @@
 import { useState } from "react";
+import { useNavigate } from "react-router-dom";
 import {
   useGroup,
   useAddMember,
   useRenameMember,
   useUpdateGroup,
+  useResetGroup,
 } from "../lib/hooks.js";
 import { Button } from "../ui/primitives.js";
 import { MemberAvatar } from "../ui/MemberAvatar.js";
 import { PageHeader } from "../ui/PageHeader.js";
 import { PageLoader } from "../motion/Loader.js";
+import { Modal } from "../motion/Modal.js";
 import { Centered } from "./Balances.js";
 import { getThemePref, setThemePref, type ThemePref } from "../lib/theme.js";
 
@@ -19,12 +22,22 @@ export function Settings() {
   const addMember = useAddMember();
   const rename = useRenameMember();
   const updateGroup = useUpdateGroup();
+  const resetGroup = useResetGroup();
+  const nav = useNavigate();
   const [newName, setNewName] = useState("");
   const [theme, setTheme] = useState<ThemePref>(getThemePref());
+  const [confirmReset, setConfirmReset] = useState(false);
 
   if (group.isLoading) return <PageLoader />;
   const g = group.data;
   if (!g) return <Centered>Couldn't load settings.</Centered>;
+  const isAdmin = g.isAdmin;
+
+  async function doReset() {
+    await resetGroup.mutateAsync();
+    setConfirmReset(false);
+    nav("/");
+  }
 
   function pickTheme(p: ThemePref) {
     setTheme(p);
@@ -56,9 +69,10 @@ export function Settings() {
           <span className="t-body-strong">{g.name}</span>
         </Row>
         <Row label="Currency">
-          {g.hasExpenses ? (
+          {g.hasExpenses || !isAdmin ? (
             <span className="t-body" style={{ color: "var(--text-muted)" }}>
-              {g.defaultCurrency} · locked
+              {g.defaultCurrency}
+              {g.hasExpenses ? " · locked" : ""}
             </span>
           ) : (
             <select
@@ -127,6 +141,48 @@ export function Settings() {
           </Button>
         </div>
       </Section>
+
+      {/* Danger zone — admins only */}
+      {isAdmin && (
+        <Section title="Danger zone">
+          <Row label="Reset group data">
+            <Button variant="danger" onClick={() => setConfirmReset(true)}>
+              Reset
+            </Button>
+          </Row>
+          <p className="t-caption" style={{ color: "var(--text-faint)", margin: 0 }}>
+            Clears all expenses, settlements, and balances for this group. Members
+            are kept. This can't be undone.
+          </p>
+        </Section>
+      )}
+
+      <Modal open={confirmReset} onClose={() => setConfirmReset(false)}>
+        <h2 className="t-heading" style={{ marginTop: 0 }}>
+          Reset group data?
+        </h2>
+        <p className="t-body" style={{ color: "var(--text-muted)" }}>
+          Every expense, settlement, and balance in this group will be permanently
+          removed. Members stay. This can't be undone.
+        </p>
+        <div style={{ display: "flex", gap: 8, marginTop: 16 }}>
+          <Button
+            variant="ghost"
+            onClick={() => setConfirmReset(false)}
+            style={{ flex: 1 }}
+          >
+            Cancel
+          </Button>
+          <Button
+            variant="danger"
+            onClick={doReset}
+            disabled={resetGroup.isPending}
+            style={{ flex: 1 }}
+          >
+            {resetGroup.isPending ? "Resetting…" : "Reset"}
+          </Button>
+        </div>
+      </Modal>
       </div>
     </div>
   );

@@ -2,7 +2,7 @@
  * Data-access layer. Thin typed queries over Drizzle so routes and Telegram
  * handlers share one set of operations.
  */
-import { and, eq, desc, gt, isNull } from "drizzle-orm";
+import { and, eq, desc, gt, isNull, inArray, notInArray } from "drizzle-orm";
 import type { Db } from "./db.js";
 import {
   groups,
@@ -100,6 +100,57 @@ export async function upsertMember(
     .values({ groupId, telegramUserId, displayName, username })
     .returning();
   return inserted[0]!;
+}
+
+/**
+ * Sync admin roles for a group from a set of Telegram user ids: anyone in the
+ * set becomes `admin`, anyone in the group not in the set is demoted to
+ * `member`. Callers must only invoke this with a list they actually fetched
+ * (never an empty list from a failed read) so a transient API error can't strip
+ * everyone's admin.
+ */
+export async function syncMemberRoles(
+  db: Db,
+  groupId: string,
+  adminTelegramIds: bigint[],
+): Promise<void> {
+  if (adminTelegramIds.length === 0) return;
+  await db
+    .update(members)
+    .set({ role: "admin" })
+    .where(
+      and(
+        eq(members.groupId, groupId),
+        inArray(members.telegramUserId, adminTelegramIds),
+      ),
+    );
+  await db
+    .update(members)
+    .set({ role: "member" })
+    .where(
+      and(
+        eq(members.groupId, groupId),
+        notInArray(members.telegramUserId, adminTelegramIds),
+      ),
+    );
+}
+
+/** Promote a single member to admin (used for the /start fallback). */
+export async function setMemberRole(
+  db: Db,
+  groupId: string,
+  telegramUserId: bigint,
+  role: "admin" | "member",
+): Promise<void> {
+  await db
+    .update(members)
+    .set({ role })
+    .where(
+      and(
+        eq(members.groupId, groupId),
+        eq(members.telegramUserId, telegramUserId),
+      ),
+    );
 }
 
 export async function addManualMember(
@@ -504,4 +555,35 @@ export async function resolveSuggestion(
     .update(suggestions)
     .set({ status, resolvedByMemberId, resolvedAt: when })
     .where(eq(suggestions.id, suggestionId));
+}
+
+/**
+ * Clear a group's ledger: expenses, shares, settlements, suggestions, messages,
+ * and ai_runs. Keeps the group row and its members. Ordered to respect foreign
+ * keys (children before parents) and run in one transaction so it's all-or-
+ * nothing. Also resets the group's last-scan pointer so a fresh scan re-examines
+ * the (now empty) chat without tripping over a stale message id.
+ */
+export async function resetGroupData(db: Db, groupId: string): Promise<void> {
+  await db.transaction(async (tx) => {
+    // expense_shares has no group_id — delete via its parent expenses.
+    await tx.delete(expenseShares).where(
+      inArray(
+        expenseShares.expenseId,
+        tx
+          .select({ id: expenses.id })
+          .from(expenses)
+          .where(eq(expenses.groupId, groupId)),
+      ),
+    );
+    await tx.delete(settlements).where(eq(settlements.groupId, groupId));
+    await tx.delete(suggestions).where(eq(suggestions.groupId, groupId));
+    await tx.delete(expenses).where(eq(expenses.groupId, groupId));
+    await tx.delete(aiRuns).where(eq(aiRuns.groupId, groupId));
+    await tx.delete(messages).where(eq(messages.groupId, groupId));
+    await tx
+      .update(groups)
+      .set({ lastScanMessageId: null })
+      .where(eq(groups.id, groupId));
+  });
 }
