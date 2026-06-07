@@ -4,7 +4,7 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { createDb, type Db } from "../db.js";
 import { buildServer } from "../server.js";
-import { upsertGroup, upsertMember } from "../repo.js";
+import { upsertGroup, upsertMember, setMemberRole } from "../repo.js";
 import { signInitDataForTest } from "../auth/initData.js";
 import { groups, members, expenses, expenseShares } from "@jemaw/shared/schema";
 import { eq } from "drizzle-orm";
@@ -42,6 +42,8 @@ d("me/summary + currency PATCH", () => {
     groupId = g.id;
     saraId = (await upsertMember(db, groupId, saraTg, "Sara", null)).id;
     tomId = (await upsertMember(db, groupId, base - 2n, "Tom", null)).id;
+    // Currency PATCH is admin-only; Sara acts as the admin in these tests.
+    await setMemberRole(db, groupId, saraTg, "admin");
     app = await buildServer({
       api: { db, botToken: BOT_TOKEN, now: () => NOW, scanLimiter: { tryAcquire: () => true } as never },
       corsOrigin: undefined,
