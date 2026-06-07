@@ -184,6 +184,19 @@ export function useRenameMember() {
   });
 }
 
+/** Admin only: promote/demote a member. */
+export function useSetMemberRole() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (args: { memberId: string; role: "admin" | "member" }) =>
+      api.patch<MemberDto>(
+        `/api/groups/${gid()}/members/${args.memberId}/role`,
+        { role: args.role },
+      ),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["group"] }),
+  });
+}
+
 export function useSuggestions() {
   return useQuery({
     queryKey: ["suggestions"],
