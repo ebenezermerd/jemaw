@@ -146,5 +146,16 @@ function Booting({ children }: { children: React.ReactNode }) {
     }
   }, [canScan, scan]);
   if (group.isLoading && !group.data) return <Splash />;
+  // The group context is gone or unreachable (e.g. a stale deep link pointing at
+  // a group that no longer exists). Show the friendly entry splash rather than
+  // letting downstream screens crash into the error boundary.
+  if (group.error && !group.data) {
+    return (
+      <Splash
+        subtitle="open from your group"
+        hint="Tap the pinned “Open Jemaw” button in your group chat to get started."
+      />
+    );
+  }
   return <>{children}</>;
 }

@@ -63,6 +63,8 @@ export const paymentMethod = pgEnum("payment_method", [
   "other",
 ]);
 
+export const memberRole = pgEnum("member_role", ["admin", "member"]);
+
 // ─── groups ───────────────────────────────────────────────────────────
 export const groups = pgTable("groups", {
   id: uuid("id").primaryKey().defaultRandom(),
@@ -90,6 +92,7 @@ export const members = pgTable(
     telegramUserId: bigint("telegram_user_id", { mode: "bigint" }).notNull(),
     displayName: text("display_name").notNull(),
     username: text("username"),
+    role: memberRole("role").notNull().default("member"),
     isActive: boolean("is_active").notNull().default(true),
     joinedAt: timestamp("joined_at", { withTimezone: true })
       .notNull()

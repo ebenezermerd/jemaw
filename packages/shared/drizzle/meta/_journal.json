@@ -22,6 +22,13 @@
       "when": 1780337591199,
       "tag": "0002_swift_felicia_hardy",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1780859821321,
+      "tag": "0003_numerous_overlord",
+      "breakpoints": true
     }
   ]
 }

@@ -8,7 +8,7 @@
  */
 import type { Api } from "grammy";
 import type { Db } from "../db.js";
-import { upsertMember } from "../repo.js";
+import { upsertMember, syncMemberRoles } from "../repo.js";
 
 function displayNameOf(u: {
   first_name?: string;
@@ -41,19 +41,30 @@ export async function registerUser(
   );
 }
 
-/** Seed members from the chat's administrators (best-effort). */
+/**
+ * Seed members from the chat's administrators and sync their roles: every human
+ * admin Telegram returns becomes a Jemaw `admin`, everyone else a `member`.
+ * Returns true when the admin list was read successfully (so callers can apply a
+ * fallback when it wasn't). Best-effort: never throws.
+ */
 export async function seedAdmins(
   api: Api,
   db: Db,
   groupId: string,
   telegramChatId: bigint,
-): Promise<void> {
+): Promise<boolean> {
   try {
     const admins = await api.getChatAdministrators(Number(telegramChatId));
+    const adminTgIds: bigint[] = [];
     for (const a of admins) {
+      if (a.user.is_bot) continue; // bots never get a role
       await registerUser(db, groupId, a.user);
+      adminTgIds.push(BigInt(a.user.id));
     }
+    await syncMemberRoles(db, groupId, adminTgIds);
+    return adminTgIds.length > 0;
   } catch {
-    // Private chats / insufficient rights — ignore.
+    // Private chats / insufficient rights — caller applies a fallback.
+    return false;
   }
 }
