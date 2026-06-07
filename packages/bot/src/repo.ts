@@ -2,7 +2,7 @@
  * Data-access layer. Thin typed queries over Drizzle so routes and Telegram
  * handlers share one set of operations.
  */
-import { and, eq, desc, gt, isNull, inArray, notInArray } from "drizzle-orm";
+import { and, eq, desc, gt, isNull, inArray } from "drizzle-orm";
 import type { Db } from "./db.js";
 import {
   groups,
@@ -103,11 +103,10 @@ export async function upsertMember(
 }
 
 /**
- * Sync admin roles for a group from a set of Telegram user ids: anyone in the
- * set becomes `admin`, anyone in the group not in the set is demoted to
- * `member`. Callers must only invoke this with a list they actually fetched
- * (never an empty list from a failed read) so a transient API error can't strip
- * everyone's admin.
+ * Promote a group's Telegram admins to the `admin` role. Promote-only: it never
+ * demotes, so manual in-app promotions stick across syncs and a Telegram admin
+ * is always at least an admin. Callers pass only a list they actually fetched
+ * (never an empty list from a failed read).
  */
 export async function syncMemberRoles(
   db: Db,
@@ -122,15 +121,6 @@ export async function syncMemberRoles(
       and(
         eq(members.groupId, groupId),
         inArray(members.telegramUserId, adminTelegramIds),
-      ),
-    );
-  await db
-    .update(members)
-    .set({ role: "member" })
-    .where(
-      and(
-        eq(members.groupId, groupId),
-        notInArray(members.telegramUserId, adminTelegramIds),
       ),
     );
 }
@@ -151,6 +141,36 @@ export async function setMemberRole(
         eq(members.telegramUserId, telegramUserId),
       ),
     );
+}
+
+/** Set a member's role by member id; returns the updated row (or null). */
+export async function setMemberRoleById(
+  db: Db,
+  groupId: string,
+  memberId: string,
+  role: "admin" | "member",
+): Promise<Member | null> {
+  const rows = await db
+    .update(members)
+    .set({ role })
+    .where(and(eq(members.groupId, groupId), eq(members.id, memberId)))
+    .returning();
+  return rows[0] ?? null;
+}
+
+/** How many active admins a group currently has (to block removing the last). */
+export async function countAdmins(db: Db, groupId: string): Promise<number> {
+  const rows = await db
+    .select({ id: members.id })
+    .from(members)
+    .where(
+      and(
+        eq(members.groupId, groupId),
+        eq(members.role, "admin"),
+        eq(members.isActive, true),
+      ),
+    );
+  return rows.length;
 }
 
 export async function addManualMember(

@@ -4,6 +4,7 @@ import {
   useGroup,
   useAddMember,
   useRenameMember,
+  useSetMemberRole,
   useUpdateGroup,
   useResetGroup,
 } from "../lib/hooks.js";
@@ -21,6 +22,7 @@ export function Settings() {
   const group = useGroup();
   const addMember = useAddMember();
   const rename = useRenameMember();
+  const setRole = useSetMemberRole();
   const updateGroup = useUpdateGroup();
   const resetGroup = useResetGroup();
   const nav = useNavigate();
@@ -103,7 +105,7 @@ export function Settings() {
           {g.members.map((m) => (
             <div
               key={m.id}
-              style={{ display: "flex", alignItems: "center", gap: 10, height: 48 }}
+              style={{ display: "flex", alignItems: "center", gap: 8, height: 48 }}
             >
               <MemberAvatar
                 name={m.displayName}
@@ -117,11 +119,55 @@ export function Settings() {
                   if (v && v !== m.displayName)
                     rename.mutate({ memberId: m.id, displayName: v });
                 }}
-                style={memberInput}
+                style={{ ...memberInput, flex: 1, minWidth: 0 }}
               />
+              {m.role === "admin" && (
+                <span
+                  className="t-caption"
+                  style={{
+                    flexShrink: 0,
+                    padding: "2px 8px",
+                    borderRadius: "var(--r-full)",
+                    background: "var(--accent-soft)",
+                    color: "var(--accent)",
+                    fontWeight: 600,
+                    textTransform: "uppercase",
+                    letterSpacing: "0.04em",
+                  }}
+                >
+                  Admin
+                </span>
+              )}
+              {isAdmin && (
+                <button
+                  onClick={() =>
+                    setRole.mutate({
+                      memberId: m.id,
+                      role: m.role === "admin" ? "member" : "admin",
+                    })
+                  }
+                  disabled={setRole.isPending}
+                  className="t-label"
+                  style={{
+                    flexShrink: 0,
+                    border: "none",
+                    background: "transparent",
+                    color: "var(--text-muted)",
+                    cursor: "pointer",
+                  }}
+                >
+                  {m.role === "admin" ? "Demote" : "Make admin"}
+                </button>
+              )}
             </div>
           ))}
         </div>
+        {isAdmin && (
+          <p className="t-caption" style={{ color: "var(--text-faint)", margin: 0 }}>
+            Group admins from Telegram are always admins; you can also promote
+            others here.
+          </p>
+        )}
         <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
           <input
             value={newName}
