@@ -54,7 +54,7 @@ export async function ensurePinnedMessage(
   state: PinnedState,
   suggestionCount = 0,
 ): Promise<void> {
-  const text = "Jemaw — your group's quiet bookkeeper.";
+  const text = "Jemaw — your group's expense tracker.";
   // `web_app` inline buttons are rejected in GROUPS (BUTTON_TYPE_INVALID). A
   // t.me deep link opens the Mini App in Telegram with group context; see
   // openButton().

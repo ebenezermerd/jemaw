@@ -18,13 +18,9 @@ import { scanGroup } from "./ai/scan.js";
 const JEMAW_RE = /(?<![a-z0-9])jemaw(?![a-z0-9])/i;
 
 // ─── Reply copy (pure, testable) ──────────────────────────────────────
+/** Fallback reply, used only when the pinned message can't be posted. */
 export function startGroupText(): string {
-  return [
-    "Jemaw is here.",
-    "",
-    'I\'ll listen for the word "jemaw" and suggest expenses from your chat.',
-    "Tap the pinned button to open Jemaw and start tracking.",
-  ].join("\n");
+  return "Jemaw — your group's expense tracker.";
 }
 
 export function startPrivateText(): string {
@@ -193,7 +189,7 @@ export function createBot(token: string, deps: BotDeps): Bot {
       // Don't crash /start, but DO log — a silent pin failure hid a real bug.
       console.error("ensurePinnedMessage failed:", err?.message ?? err),
     );
-    await ctx.reply(startGroupText());
+    // Success posts only the pinned message — no extra chat copy.
   });
 
   bot.command("help", async (ctx) => {
