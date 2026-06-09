@@ -5,30 +5,29 @@
  * the pinned-message badge).
  */
 import type { Db } from "../db.js";
-import type { GeminiClient } from "./geminiClient.js";
+import type { ScanClient } from "./geminiClient.js";
 import { SYSTEM_PROMPT, buildUserPrompt, type ScanData } from "./prompt.js";
 import { scanResponseSchema, tierFor } from "./scanSchema.js";
 import { centsToDecimal, decimalToCents } from "@jemaw/shared/types";
 import {
   listMembers,
   lastNMessages,
-  listLiveExpenses,
-  listSettlements,
   createAiRun,
   insertSuggestions,
   setLastScanMessageId,
   countPendingSuggestions,
   handledEvidenceMessageIds,
+  countLiveExpenses,
+  countSettlements,
 } from "../repo.js";
-import { computeBalances } from "../domain/balances.js";
-import { computeSettlement } from "../domain/settle.js";
+import { getSummaryForScan } from "./summary.js";
 import type { Group } from "@jemaw/shared/schema";
 
-const MAX_MESSAGES = 50;
+const MAX_MESSAGES = 10;
 
 export interface ScanDeps {
   db: Db;
-  gemini: GeminiClient;
+  gemini: ScanClient;
   now: () => number; // ms
 }
 
@@ -69,45 +68,16 @@ export async function scanGroup(
     members.map((m) => [Number(m.telegramUserId), m]),
   );
 
-  const liveExpenses = await listLiveExpenses(db, group.id);
-  const recentExpenses = liveExpenses.slice(0, 5).map((e) => ({
-    description: e.expense.description,
-    amount: e.expense.amount,
-    payerName:
-      members.find((m) => m.id === e.expense.payerMemberId)?.displayName ??
-      "Member",
-  }));
-  const nameOfMember = (id: string) =>
-    members.find((m) => m.id === id)?.displayName ?? "Member";
-
-  // Ground the AI with the real open debts + recent settlements.
-  const settlementRows = await listSettlements(db, group.id);
-  const nets = computeBalances(
-    members.map((m) => m.id),
-    liveExpenses.map((e) => ({
-      payerMemberId: e.expense.payerMemberId,
-      amountCents: decimalToCents(e.expense.amount),
-      shares: e.shares.map((s) => ({
-        memberId: s.memberId,
-        shareCents: decimalToCents(s.shareAmount),
-      })),
-    })),
-    settlementRows.map((s) => ({
-      fromMemberId: s.fromMemberId,
-      toMemberId: s.toMemberId,
-      amountCents: decimalToCents(s.amount),
-    })),
+  // Read the persisted group-state summary (balances, open debts, recent items)
+  // instead of recomputing the whole ledger here. Verify its stamp against the
+  // live counts and self-heal if stale/missing — read-only when in sync.
+  const summary = await getSummaryForScan(
+    db,
+    group.id,
+    group.settings,
+    await countLiveExpenses(db, group.id),
+    await countSettlements(db, group.id),
   );
-  const openDebts = computeSettlement(nets).map((t) => ({
-    fromName: nameOfMember(t.fromMemberId),
-    toName: nameOfMember(t.toMemberId),
-    amount: centsToDecimal(t.amountCents),
-  }));
-  const recentSettlements = settlementRows.slice(0, 5).map((s) => ({
-    fromName: nameOfMember(s.fromMemberId),
-    toName: nameOfMember(s.toMemberId),
-    amount: s.amount,
-  }));
 
   const data: ScanData = {
     currency: group.defaultCurrency,
@@ -115,9 +85,21 @@ export async function scanGroup(
       telegramUserId: Number(m.telegramUserId),
       displayName: m.displayName,
     })),
-    recentExpenses,
-    openDebts,
-    recentSettlements,
+    recentExpenses: (summary?.recentExpenses ?? []).map((e) => ({
+      description: e.desc,
+      amount: e.amount,
+      payerName: e.payer,
+    })),
+    openDebts: (summary?.openDebts ?? []).map((d) => ({
+      fromName: d.from,
+      toName: d.to,
+      amount: d.amount,
+    })),
+    recentSettlements: (summary?.recentSettlements ?? []).map((s) => ({
+      fromName: s.from,
+      toName: s.to,
+      amount: s.amount,
+    })),
     messages: msgs.map((m) => ({
       telegramMessageId: Number(m.telegramMessageId),
       senderName: nameByTgId.get(m.senderTelegramUserId.toString()) ?? "Member",
