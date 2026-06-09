@@ -1,4 +1,4 @@
-import { Bot, type Context, type Api } from "grammy";
+import { Bot, type Context } from "grammy";
 import type { Db } from "./db.js";
 import {
   upsertGroup,
@@ -10,6 +10,7 @@ import {
 } from "./repo.js";
 import { registerUser, seedAdmins } from "./telegram/memberSync.js";
 import { ensurePinnedMessage } from "./telegram/pinnedMessage.js";
+import { badgeEvidence } from "./telegram/reactions.js";
 import type { GeminiClient } from "./ai/geminiClient.js";
 import type { ScanRateLimiter } from "./ai/rateLimit.js";
 import { scanGroup } from "./ai/scan.js";
@@ -42,23 +43,6 @@ export function helpText(): string {
     "/history — open the history",
     "/help — this message",
   ].join("\n");
-}
-
-/**
- * React with 👀 to each source message the AI used, so the chat shows it
- * noticed and acted. Best-effort per message — a missing/old message or lack of
- * reaction rights never fails the scan.
- */
-async function badgeEvidence(
-  api: Api,
-  chatId: number,
-  messageIds: number[],
-): Promise<void> {
-  for (const id of messageIds) {
-    await api
-      .setMessageReaction(chatId, id, [{ type: "emoji", emoji: "👀" }])
-      .catch(() => {});
-  }
 }
 
 export interface BotDeps {
