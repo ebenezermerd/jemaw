@@ -722,7 +722,7 @@ export async function registerApi(
         return reply.code(503).send({ error: "AI scanning is not configured" });
       }
       if (!deps.scanLimiter.tryAcquire(group.id)) {
-        return reply.code(429).send({ error: "rate limited — wait 60s" });
+        return reply.code(429).send({ error: "rate limited — try again shortly" });
       }
       const { scanGroup } = await import("../ai/scan.js");
       const result = await scanGroup(

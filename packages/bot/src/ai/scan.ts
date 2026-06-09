@@ -141,7 +141,11 @@ export async function scanGroup(
     raw = res.json;
     inputTokens = res.inputTokens;
     outputTokens = res.outputTokens;
-  } catch {
+  } catch (err) {
+    console.error(
+      `[scan] api_error:`,
+      err instanceof Error ? err.message : err,
+    );
     await createAiRun(db, {
       groupId: group.id,
       triggeredByMemberId,
