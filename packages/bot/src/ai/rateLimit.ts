@@ -3,7 +3,7 @@
  * 60 seconds per group. In-memory map keyed by group id — good enough for a
  * single Cloud Run instance. `now`/`windowMs` are injectable for tests.
  */
-export const SCAN_WINDOW_MS = 60_000;
+export const SCAN_WINDOW_MS = 10_000;
 
 export class ScanRateLimiter {
   private readonly last = new Map<string, number>();

@@ -3,7 +3,12 @@ import { createDb } from "./db.js";
 import { createBot } from "./bot.js";
 import { buildServer } from "./server.js";
 import { mountWebhookRoute, registerWebhook } from "./webhook.js";
-import { createGeminiClient } from "./ai/geminiClient.js";
+import {
+  createGeminiClient,
+  createGroqClient,
+  withFallback,
+  type ScanClient,
+} from "./ai/geminiClient.js";
 import { ScanRateLimiter } from "./ai/rateLimit.js";
 
 async function main(): Promise<void> {
@@ -17,10 +22,20 @@ async function main(): Promise<void> {
   // arrives with onboarding UI; EUR is the v1 default).
   const defaultCurrency = "EUR";
 
-  // Gemini scans run only when a key is configured.
-  const gemini = env.GEMINI_API_KEY
+  // Scan client: Groq preferred (fast), Gemini fallback. Either alone works.
+  const groq = env.GROQ_API_KEY
+    ? createGroqClient(env.GROQ_API_KEY, env.GROQ_MODEL)
+    : undefined;
+  const geminiOnly = env.GEMINI_API_KEY
     ? createGeminiClient(env.GEMINI_API_KEY)
     : undefined;
+  const gemini: ScanClient | undefined =
+    groq && geminiOnly
+      ? withFallback(groq, geminiOnly)
+      : (groq ?? geminiOnly);
+  if (groq) console.log(`[scan] using Groq${geminiOnly ? " (Gemini fallback)" : ""}`);
+  else if (geminiOnly) console.log(`[scan] using Gemini`);
+  else console.log(`[scan] no AI key configured — scans disabled`);
   const scanLimiter = new ScanRateLimiter();
 
   const bot = createBot(env.TELEGRAM_BOT_TOKEN, {
