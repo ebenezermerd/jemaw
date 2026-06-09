@@ -1,4 +1,4 @@
-import { Bot, type Context } from "grammy";
+import { Bot, type Context, type Api } from "grammy";
 import type { Db } from "./db.js";
 import {
   upsertGroup,
@@ -42,6 +42,23 @@ export function helpText(): string {
     "/history — open the history",
     "/help — this message",
   ].join("\n");
+}
+
+/**
+ * React with 👀 to each source message the AI used, so the chat shows it
+ * noticed and acted. Best-effort per message — a missing/old message or lack of
+ * reaction rights never fails the scan.
+ */
+async function badgeEvidence(
+  api: Api,
+  chatId: number,
+  messageIds: number[],
+): Promise<void> {
+  for (const id of messageIds) {
+    await api
+      .setMessageReaction(chatId, id, [{ type: "emoji", emoji: "👀" }])
+      .catch(() => {});
+  }
 }
 
 export interface BotDeps {
@@ -120,6 +137,12 @@ export function createBot(token: string, deps: BotDeps): Bot {
       );
       console.log(
         `[scan] done: status=${res.status} written=${res.written} pending=${res.pendingCount}`,
+      );
+      // Badge the source messages the AI used, so the chat shows it noticed.
+      await badgeEvidence(
+        api,
+        Number(group.telegramChatId),
+        res.evidenceMessageIds,
       );
       await refreshPinned(api, group.id, Number(group.telegramChatId));
     })().catch((err) =>

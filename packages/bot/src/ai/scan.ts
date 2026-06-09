@@ -35,6 +35,9 @@ export interface ScanResult {
   status: "success" | "parse_error" | "api_error" | "no_messages";
   written: number;
   pendingCount: number;
+  /** Telegram message ids the AI used as evidence for the new suggestions, so
+   *  the caller can badge those source messages with a reaction. */
+  evidenceMessageIds: number[];
 }
 
 export async function scanGroup(
@@ -58,6 +61,7 @@ export async function scanGroup(
       status: "no_messages",
       written: 0,
       pendingCount: await countPendingSuggestions(db, group.id),
+      evidenceMessageIds: [],
     };
   }
 
@@ -141,6 +145,7 @@ export async function scanGroup(
       status: "api_error",
       written: 0,
       pendingCount: await countPendingSuggestions(db, group.id),
+      evidenceMessageIds: [],
     };
   }
 
@@ -167,6 +172,7 @@ export async function scanGroup(
       status: "parse_error",
       written: 0,
       pendingCount: await countPendingSuggestions(db, group.id),
+      evidenceMessageIds: [],
     };
   }
 
@@ -307,10 +313,16 @@ export async function scanGroup(
     `[scan] inserted ${inserted.length}, dropped ${dropped}, deduped ${deduped} (expenses=${parsed.data.suggestions.length} settlements=${parsed.data.settlements.length})`,
   );
 
+  // The source messages behind the new suggestions, deduped, for badging.
+  const evidenceMessageIds = [
+    ...new Set(rows.flatMap((r) => r.evidenceMessageIds as number[])),
+  ];
+
   return {
     status: "success",
     written: inserted.length,
     pendingCount: await countPendingSuggestions(db, group.id),
+    evidenceMessageIds,
   };
 }
 
