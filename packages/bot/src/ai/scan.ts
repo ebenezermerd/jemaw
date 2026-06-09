@@ -246,7 +246,7 @@ export async function scanGroup(
       aiRunId: run.id,
       kind: "expense" as const,
       confidence: s.confidence.toFixed(2),
-      description: s.description,
+      description: capitalize(s.description),
       amount: centsToDecimal(decimalToCents(s.amount.toFixed(2))),
       payerMemberId: payer?.id ?? null,
       fromMemberId: null,
@@ -312,4 +312,9 @@ export async function scanGroup(
     written: inserted.length,
     pendingCount: await countPendingSuggestions(db, group.id),
   };
+}
+
+/** Capitalize the first letter of an AI description (often returned lowercase). */
+function capitalize(s: string): string {
+  return s ? s.charAt(0).toUpperCase() + s.slice(1) : s;
 }

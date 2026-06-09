@@ -118,7 +118,7 @@ function Card({
       </span>
 
       <div style={{ display: "flex", flexDirection: "column", gap: 2, paddingRight: 56 }}>
-        <span className="t-body-strong">{s.description}</span>
+        <span className="t-body-strong">{capitalize(s.description)}</span>
         <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
           <span className="t-heading">
             <Money value={s.amount ?? "0.00"} currency={currency} />
@@ -157,4 +157,9 @@ function Card({
       </div>
     </motion.div>
   );
+}
+
+/** Capitalize the first letter (for AI descriptions that come back lowercase). */
+function capitalize(s: string): string {
+  return s ? s.charAt(0).toUpperCase() + s.slice(1) : s;
 }
