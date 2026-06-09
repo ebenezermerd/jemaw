@@ -55,6 +55,7 @@ async function main(): Promise<void> {
       now: () => Math.floor(Date.now() / 1000),
       gemini,
       scanLimiter,
+      botApi: bot.api,
     },
     corsOrigin: env.MINI_APP_URL,
   });

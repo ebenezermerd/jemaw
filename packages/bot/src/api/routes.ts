@@ -173,6 +173,8 @@ export interface ApiDeps {
   /** Present when GEMINI_API_KEY is set — enables the manual re-scan endpoint. */
   gemini?: import("../ai/geminiClient.js").GeminiClient;
   scanLimiter: ScanRateLimiter;
+  /** The bot Api, so app-triggered scans can badge the source messages. */
+  botApi?: import("grammy").Api;
 }
 
 export async function registerApi(
@@ -737,6 +739,14 @@ export async function registerApi(
         member.id,
         "manual",
       );
+      if (deps.botApi) {
+        const { badgeEvidence } = await import("../telegram/reactions.js");
+        await badgeEvidence(
+          deps.botApi,
+          Number(group.telegramChatId),
+          result.evidenceMessageIds,
+        );
+      }
       return reply.send(result);
     },
   );
