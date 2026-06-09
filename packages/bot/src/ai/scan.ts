@@ -24,7 +24,7 @@ import { computeBalances } from "../domain/balances.js";
 import { computeSettlement } from "../domain/settle.js";
 import type { Group } from "@jemaw/shared/schema";
 
-const MAX_MESSAGES = 50;
+const MAX_MESSAGES = 10;
 
 export interface ScanDeps {
   db: Db;
