@@ -1,8 +1,10 @@
 /**
- * Gemini client abstraction. The interface lets tests inject a mock and the
- * deployed bot use the real API. Model gemini-2.5-flash (plan §6).
+ * Scan client abstraction. One interface, two backends (Groq and Gemini), so the
+ * scan code and tests stay provider-agnostic. The name `GeminiClient` is kept as
+ * an alias for back-compat; new code can use `ScanClient`.
  */
 import { GoogleGenerativeAI } from "@google/generative-ai";
+import OpenAI from "openai";
 
 export interface ScanPromptInput {
   systemPrompt: string;
@@ -16,19 +18,20 @@ export interface GeminiResult {
   outputTokens?: number;
 }
 
-export interface GeminiClient {
+export interface ScanClient {
   suggest(input: ScanPromptInput): Promise<GeminiResult>;
 }
 
-/** Real client backed by @google/generative-ai. */
-export function createGeminiClient(apiKey: string): GeminiClient {
+/** @deprecated use ScanClient — kept so existing imports keep working. */
+export type GeminiClient = ScanClient;
+
+/** Gemini backend (gemini-2.0-flash — fast extraction, JSON mode). */
+export function createGeminiClient(apiKey: string): ScanClient {
   const genAI = new GoogleGenerativeAI(apiKey);
   return {
     async suggest({ systemPrompt, userPrompt }) {
-      // The stable system instruction is passed separately so Gemini can cache
-      // it across calls; temperature 0 for deterministic, reliable extraction.
       const model = genAI.getGenerativeModel({
-        model: "gemini-2.5-flash",
+        model: "gemini-2.0-flash",
         systemInstruction: systemPrompt,
         generationConfig: {
           responseMimeType: "application/json",
@@ -36,13 +39,68 @@ export function createGeminiClient(apiKey: string): GeminiClient {
         },
       });
       const result = await model.generateContent(userPrompt);
-      const text = result.response.text();
       const usage = result.response.usageMetadata;
       return {
-        json: JSON.parse(text),
+        json: JSON.parse(result.response.text()),
         inputTokens: usage?.promptTokenCount,
         outputTokens: usage?.candidatesTokenCount,
       };
+    },
+  };
+}
+
+/**
+ * Groq backend via its OpenAI-compatible API. Much higher tokens/sec and a
+ * generous free tier; the model runs JSON mode at temperature 0 for stable
+ * extraction. Default model is overridable with GROQ_MODEL.
+ */
+export function createGroqClient(apiKey: string, model?: string): ScanClient {
+  const client = new OpenAI({
+    apiKey,
+    baseURL: "https://api.groq.com/openai/v1",
+  });
+  const modelName = model ?? "llama-3.3-70b-versatile";
+  return {
+    async suggest({ systemPrompt, userPrompt }) {
+      const res = await client.chat.completions.create({
+        model: modelName,
+        temperature: 0,
+        response_format: { type: "json_object" },
+        messages: [
+          { role: "system", content: systemPrompt },
+          { role: "user", content: userPrompt },
+        ],
+      });
+      const text = res.choices[0]?.message?.content ?? "{}";
+      return {
+        json: JSON.parse(text),
+        inputTokens: res.usage?.prompt_tokens,
+        outputTokens: res.usage?.completion_tokens,
+      };
+    },
+  };
+}
+
+/**
+ * Compose a primary client with a fallback: if the primary throws (rate limit,
+ * outage), retry once on the fallback so a single provider hiccup doesn't drop
+ * the scan.
+ */
+export function withFallback(
+  primary: ScanClient,
+  fallback: ScanClient,
+): ScanClient {
+  return {
+    async suggest(input) {
+      try {
+        return await primary.suggest(input);
+      } catch (err) {
+        console.warn(
+          `[scan] primary client failed, falling back:`,
+          err instanceof Error ? err.message : err,
+        );
+        return fallback.suggest(input);
+      }
     },
   };
 }
