@@ -52,6 +52,42 @@ export async function getGroupById(db: Db, id: string): Promise<Group | null> {
   return rows[0] ?? null;
 }
 
+/** Shallow-merge keys into groups.settings without clobbering other keys. */
+export async function mergeGroupSettings(
+  db: Db,
+  groupId: string,
+  patch: Record<string, unknown>,
+): Promise<void> {
+  const group = await getGroupById(db, groupId);
+  if (!group) return;
+  const next = { ...(group.settings as Record<string, unknown>), ...patch };
+  await db.update(groups).set({ settings: next }).where(eq(groups.id, groupId));
+}
+
+/** Count of non-voided expenses in a group (cheap stamp input). */
+export async function countLiveExpenses(
+  db: Db,
+  groupId: string,
+): Promise<number> {
+  const rows = await db
+    .select({ id: expenses.id })
+    .from(expenses)
+    .where(and(eq(expenses.groupId, groupId), isNull(expenses.voidedAt)));
+  return rows.length;
+}
+
+/** Count of settlements in a group. */
+export async function countSettlements(
+  db: Db,
+  groupId: string,
+): Promise<number> {
+  const rows = await db
+    .select({ id: settlements.id })
+    .from(settlements)
+    .where(eq(settlements.groupId, groupId));
+  return rows.length;
+}
+
 export async function setPinnedMessageId(
   db: Db,
   groupId: string,

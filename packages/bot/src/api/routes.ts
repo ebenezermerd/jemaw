@@ -34,6 +34,7 @@ import {
   type MemberNet,
 } from "../domain/balances.js";
 import { computeSettlement } from "../domain/settle.js";
+import { refreshGroupSummarySafe } from "../ai/summary.js";
 import {
   decimalToCents,
   centsToDecimal,
@@ -252,6 +253,7 @@ export async function registerApi(
       if (!requireAdmin(req, reply)) return;
       const { group, member } = req.jemaw!;
       await resetGroupData(db, group.id);
+      await refreshGroupSummarySafe(db, group.id); // empty ledger → empty summary
       const members = await listMembers(db, group.id);
       return toGroupDto(group, members, false, false, member);
     },
@@ -376,6 +378,7 @@ export async function registerApi(
         markedPaidAt: new Date(),
         markedPaidByMemberId: member.id,
       });
+      await refreshGroupSummarySafe(db, group.id);
       return reply.code(201).send(toSettlementDto(created));
     },
   );
@@ -448,6 +451,7 @@ export async function registerApi(
           built.shares,
         );
         if (!updated) return reply.code(404).send({ error: "not found" });
+        await refreshGroupSummarySafe(db, group.id);
         return toExpenseDto(updated);
       } catch (err) {
         return reply.code(409).send({
@@ -479,6 +483,7 @@ export async function registerApi(
       if (result === "already_voided") {
         return reply.code(409).send({ error: "already voided" });
       }
+      await refreshGroupSummarySafe(db, group.id);
       return reply.code(200).send({ ok: true });
     },
   );
@@ -556,6 +561,7 @@ export async function registerApi(
         })),
       );
 
+      await refreshGroupSummarySafe(db, group.id);
       return reply.code(201).send(toExpenseDto(created));
     },
   );
@@ -784,6 +790,7 @@ export async function registerApi(
           markedPaidByMemberId: member.id,
         });
         await resolveSuggestion(db, s.id, "confirmed", member.id, new Date());
+        await refreshGroupSummarySafe(db, group.id);
         return reply.code(201).send(toSettlementDto(created));
       }
 
@@ -831,6 +838,7 @@ export async function registerApi(
         })),
       );
       await resolveSuggestion(db, s.id, "confirmed", member.id, new Date());
+      await refreshGroupSummarySafe(db, group.id);
       return reply.code(201).send(toExpenseDto(created));
     },
   );
@@ -875,6 +883,7 @@ export async function registerApi(
         built.shares,
       );
       await resolveSuggestion(db, s.id, "edited", member.id, new Date());
+      await refreshGroupSummarySafe(db, group.id);
       return reply.code(201).send(toExpenseDto(created));
     },
   );
