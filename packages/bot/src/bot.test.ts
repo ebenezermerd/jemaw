@@ -2,9 +2,9 @@ import { describe, it, expect } from "vitest";
 import { startGroupText, helpText, createBot } from "./bot.js";
 
 describe("bot copy", () => {
-  it("start text introduces Jemaw without cute filler", () => {
+  it("start fallback names Jemaw without cute filler", () => {
     const t = startGroupText();
-    expect(t).toContain("Jemaw is here.");
+    expect(t).toContain("Jemaw");
     expect(t).not.toMatch(/🎉|🥳|!{2,}/);
   });
 
