@@ -54,7 +54,7 @@ export async function ensurePinnedMessage(
   state: PinnedState,
   suggestionCount = 0,
 ): Promise<void> {
-  const text = "Jemaw — your group's expense tracker.";
+  const text = "<b>Jemaw</b>\nYour group's expense tracker";
   // `web_app` inline buttons are rejected in GROUPS (BUTTON_TYPE_INVALID). A
   // t.me deep link opens the Mini App in Telegram with group context; see
   // openButton().
@@ -68,7 +68,7 @@ export async function ensurePinnedMessage(
         chatId,
         Number(state.existingPinnedMessageId),
         text,
-        { reply_markup: replyMarkup },
+        { reply_markup: replyMarkup, parse_mode: "HTML" },
       );
       return;
     } catch {
@@ -78,6 +78,7 @@ export async function ensurePinnedMessage(
 
   const sent = await api.sendMessage(chatId, text, {
     reply_markup: replyMarkup,
+    parse_mode: "HTML",
   });
   try {
     await api.pinChatMessage(chatId, sent.message_id, {
