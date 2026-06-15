@@ -71,6 +71,7 @@ export async function scanGroup(
   const memberByTgId = new Map(
     members.map((m) => [Number(m.telegramUserId), m]),
   );
+  const allMemberIds = members.map((m) => m.id);
 
   // Read the persisted group-state summary (balances, open debts, recent items)
   // instead of recomputing the whole ledger here. Verify its stamp against the
@@ -219,18 +220,28 @@ export async function scanGroup(
 
     const splitMemberIds: string[] = [];
     let unknown = false;
+    let sawUnknownSplit = false;
     for (const tid of s.split_with) {
       const m = memberByTgId.get(tid);
       if (!m) {
-        unknown = true;
-        console.log(`[scan] drop "${s.description}": unknown split member ${tid}`);
-        break;
+        console.log(`[scan] unknown split member for "${s.description}": ${tid}`);
+        if (s.kind === "loan") {
+          unknown = true;
+          break;
+        }
+        sawUnknownSplit = true;
+        continue;
       }
       splitMemberIds.push(m.id);
     }
-    if (unknown || splitMemberIds.length === 0) {
+    if (unknown) {
       dropped++;
       continue;
+    }
+    if (splitMemberIds.length === 0) {
+      splitMemberIds.push(...allMemberIds);
+      sawUnknownSplit = true;
+      console.log(`[scan] fallback "${s.description}": split defaulted to all members`);
     }
     if (
       s.kind === "loan" &&
@@ -243,7 +254,9 @@ export async function scanGroup(
 
     // Map shares keys (telegram ids as strings) → member ids.
     let shares: Record<string, number> | null = null;
-    if (s.split_type === "shares" && s.shares) {
+    const normalizedSplitType =
+      s.kind === "loan" ? "exact" : sawUnknownSplit ? "equal" : s.split_type;
+    if (normalizedSplitType === "shares" && s.shares) {
       shares = {};
       let bad = false;
       for (const [tidStr, count] of Object.entries(s.shares)) {
@@ -270,7 +283,7 @@ export async function scanGroup(
       payerMemberId: payer?.id ?? null,
       fromMemberId: null,
       toMemberId: null,
-      splitType: s.kind === "loan" ? "exact" : s.split_type,
+      splitType: normalizedSplitType,
       splitWith: splitMemberIds,
       shares: s.kind === "loan" ? null : shares,
       evidenceMessageIds: s.evidence_message_ids,
