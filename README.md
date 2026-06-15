@@ -1,5 +1,7 @@
 # Jemaw
-
+---
+https://huggingface.co/datasets/ebenezermerd/multimedia/resolve/main/_-640x360.jpg
+---
 A Telegram native expense companion for friend groups. Drop "jemaw" in your
 group chat, confirm AI suggested expenses in a Mini App, and settle off platform.
 
