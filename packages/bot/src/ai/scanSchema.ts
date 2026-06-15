@@ -5,6 +5,7 @@
 import { z } from "zod";
 
 export const suggestionSchema = z.object({
+  kind: z.enum(["expense", "loan"]).optional().default("expense"),
   confidence: z.number().min(0).max(1),
   description: z.string().min(1).max(200),
   amount: z.number().positive(),

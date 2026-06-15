@@ -55,6 +55,7 @@ export function toGroupDto(
 export function toExpenseDto(e: ExpenseWithShares): ExpenseDto {
   return {
     id: e.expense.id,
+    kind: e.expense.kind,
     description: e.expense.description,
     amount: e.expense.amount, // already numeric string from pg
     currency: e.expense.currency,

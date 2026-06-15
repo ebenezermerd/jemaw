@@ -30,6 +30,8 @@ export const expenseSource = pgEnum("expense_source", [
   "ai_edited",
 ]);
 
+export const expenseKind = pgEnum("expense_kind", ["expense", "loan"]);
+
 export const splitType = pgEnum("split_type", ["equal", "shares", "exact"]);
 
 export const suggestionStatus = pgEnum("suggestion_status", [
@@ -41,6 +43,7 @@ export const suggestionStatus = pgEnum("suggestion_status", [
 
 export const suggestionKind = pgEnum("suggestion_kind", [
   "expense",
+  "loan",
   "settlement",
 ]);
 
@@ -165,6 +168,7 @@ export const expenses = pgTable("expenses", {
     .notNull()
     .references(() => members.id),
   amount: numeric("amount", { precision: 12, scale: 2 }).notNull(),
+  kind: expenseKind("kind").notNull().default("expense"),
   currency: text("currency").notNull(),
   description: text("description").notNull(),
   createdByMemberId: uuid("created_by_member_id")

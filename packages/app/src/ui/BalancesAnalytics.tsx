@@ -1,7 +1,7 @@
 /**
  * Balances analytics (Recharts): summary stat cards, net-per-member diverging
- * bars, share-of-spend donut, and spending-over-time area. All derived
- * client-side from balances + the live expense list. Themed to our tokens.
+ * bars, share-of-spend donut, and spending-over-time area. Loans affect
+ * balances but are excluded from spend charts.
  */
 import {
   ResponsiveContainer,
@@ -46,8 +46,9 @@ export function BalancesAnalytics({
     members.find((m) => m.id === id)?.displayName ?? "Member";
 
   // ── derived data ──
-  const totalSpend = expenses.reduce((a, e) => a + Number(e.amount), 0);
-  const avg = expenses.length ? totalSpend / expenses.length : 0;
+  const spendEntries = expenses.filter((e) => e.kind === "expense");
+  const totalSpend = spendEntries.reduce((a, e) => a + Number(e.amount), 0);
+  const avg = spendEntries.length ? totalSpend / spendEntries.length : 0;
 
   const netData = [...balances]
     .map((b) => ({ name: b.displayName, net: Number(b.net) }))
@@ -55,7 +56,7 @@ export function BalancesAnalytics({
 
   // share of spend = sum each member paid
   const paidBy = new Map<string, number>();
-  for (const e of expenses) {
+  for (const e of spendEntries) {
     paidBy.set(
       e.payerMemberId,
       (paidBy.get(e.payerMemberId) ?? 0) + Number(e.amount),
@@ -68,7 +69,7 @@ export function BalancesAnalytics({
 
   // spending over time by day
   const byDay = new Map<string, number>();
-  for (const e of expenses) {
+  for (const e of spendEntries) {
     const day = e.occurredAt.slice(0, 10);
     byDay.set(day, (byDay.get(day) ?? 0) + Number(e.amount));
   }
@@ -83,7 +84,7 @@ export function BalancesAnalytics({
       {/* summary stat cards */}
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
         <StatCard label="Total spend" value={fmt(totalSpend)} />
-        <StatCard label="Expenses" value={String(expenses.length)} />
+        <StatCard label="Expenses" value={String(spendEntries.length)} />
         <StatCard label="Members" value={String(members.length)} />
         <StatCard label="Avg / expense" value={fmt(avg)} />
       </div>
