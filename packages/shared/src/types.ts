@@ -48,6 +48,7 @@ export function centsToDecimal(cents: number): string {
 
 // ─── Domain DTOs ──────────────────────────────────────────────────────
 export type SplitType = "equal" | "shares" | "exact";
+export type ExpenseKind = "expense" | "loan";
 
 export interface MemberDto {
   id: string;
@@ -78,6 +79,7 @@ export interface ExpenseShareDto {
 
 export interface ExpenseDto {
   id: string;
+  kind: ExpenseKind;
   description: string;
   /** decimal string */
   amount: string;
@@ -108,7 +110,7 @@ export interface MeSummaryDto {
   totalPaid: string;
   /** sum of this member's shares (decimal) */
   totalShare: string;
-  /** number of live expenses they're involved in */
+  /** number of live expense or loan entries they're involved in */
   expenseCount: number;
   currency: string;
 }
@@ -119,6 +121,7 @@ export interface UpdateGroupInput {
 
 // ─── Request bodies ───────────────────────────────────────────────────
 export interface CreateExpenseInput {
+  kind?: ExpenseKind;
   description: string;
   /** decimal string */
   amount: string;
@@ -190,7 +193,7 @@ export interface CreateSettlementInput {
 }
 
 // ─── Suggestions (Phase 3) ────────────────────────────────────────────
-export type SuggestionKind = "expense" | "settlement";
+export type SuggestionKind = "expense" | "loan" | "settlement";
 
 export interface SuggestionDto {
   id: string;

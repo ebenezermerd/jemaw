@@ -105,10 +105,23 @@ function buildShareRows(
   seedSuffix: string,
 ): { shares: { memberId: string; shareAmount: string }[] } | { error: string } {
   if (!memberIds.has(input.payerMemberId)) return { error: "payer not in group" };
+  const totalCents = decimalToCents(input.amount);
+  if (input.kind === "loan") {
+    if (input.splitWith.length !== 1) {
+      return { error: "loan must have one borrower" };
+    }
+    const borrower = input.splitWith[0]!;
+    if (!memberIds.has(borrower)) return { error: `member ${borrower} not in group` };
+    if (borrower === input.payerMemberId) {
+      return { error: "lender and borrower must differ" };
+    }
+    return {
+      shares: [{ memberId: borrower, shareAmount: centsToDecimal(totalCents) }],
+    };
+  }
   for (const id of input.splitWith) {
     if (!memberIds.has(id)) return { error: `member ${id} not in group` };
   }
-  const totalCents = decimalToCents(input.amount);
   try {
     const computed = computeSplit({
       totalCents,
@@ -134,6 +147,7 @@ function buildShareRows(
 }
 
 const createExpenseSchema = z.object({
+  kind: z.enum(["expense", "loan"]).optional().default("expense"),
   description: z.string().min(1).max(200),
   amount: z.string().regex(/^\d+(\.\d{1,2})?$/),
   payerMemberId: z.string().uuid(),
@@ -447,6 +461,7 @@ export async function registerApi(
           {
             payerMemberId: body.payerMemberId,
             amount: centsToDecimal(decimalToCents(body.amount)),
+            kind: body.kind,
             description: body.description,
             occurredAt: body.occurredAt ? new Date(body.occurredAt) : undefined,
           },
@@ -505,41 +520,14 @@ export async function registerApi(
       const body = parsed.data;
 
       const members = await listMembers(db, group.id);
-      const memberIds = new Set(members.map((m) => m.id));
-      if (!memberIds.has(body.payerMemberId)) {
-        return reply.code(400).send({ error: "payer not in group" });
-      }
-      for (const id of body.splitWith) {
-        if (!memberIds.has(id)) {
-          return reply.code(400).send({ error: `member ${id} not in group` });
-        }
-      }
-
+      const built = buildShareRows(
+        body,
+        group.id,
+        new Set(members.map((m) => m.id)),
+        "create",
+      );
+      if ("error" in built) return reply.code(400).send({ error: built.error });
       const totalCents = decimalToCents(body.amount);
-
-      let computed;
-      try {
-        computed = computeSplit({
-          totalCents,
-          splitType: body.splitType,
-          memberIds: body.splitWith,
-          shares: body.shares,
-          exactCents: body.exact
-            ? Object.fromEntries(
-                Object.entries(body.exact).map(([k, v]) => [
-                  k,
-                  decimalToCents(v),
-                ]),
-              )
-            : undefined,
-          // expense id not yet known; use a stable seed from inputs.
-          expenseSeed: `${group.id}:${body.description}:${body.amount}`,
-        });
-      } catch (err) {
-        return reply
-          .code(400)
-          .send({ error: err instanceof Error ? err.message : "bad split" });
-      }
 
       const occurredAt = body.occurredAt
         ? new Date(body.occurredAt)
@@ -551,16 +539,14 @@ export async function registerApi(
           groupId: group.id,
           payerMemberId: body.payerMemberId,
           amount: centsToDecimal(totalCents),
+          kind: body.kind,
           currency: group.defaultCurrency,
           description: body.description,
           createdByMemberId: member.id,
           source: "manual",
           occurredAt,
         },
-        computed.map((c) => ({
-          memberId: c.memberId,
-          shareAmount: centsToDecimal(c.shareCents),
-        })),
+        built.shares,
       );
 
       await refreshGroupSummarySafe(db, group.id);
@@ -804,7 +790,7 @@ export async function registerApi(
         return reply.code(201).send(toSettlementDto(created));
       }
 
-      // ── expense suggestion → create an expense ──
+      // ── expense or loan suggestion → create a ledger entry ──
       if (!s.payerMemberId) {
         return reply.code(400).send({ error: "suggestion has no payer; edit it" });
       }
@@ -814,15 +800,26 @@ export async function registerApi(
 
       const splitWith = (s.splitWith as string[]) ?? [];
       const totalCents = decimalToCents(s.amount);
-      let computed;
+      let shares: { memberId: string; shareAmount: string }[];
       try {
-        computed = computeSplit({
-          totalCents,
-          splitType: s.splitType,
-          memberIds: splitWith,
-          shares: (s.shares as Record<string, number> | null) ?? undefined,
-          expenseSeed: s.id,
-        });
+        if (s.kind === "loan") {
+          if (splitWith.length !== 1 || splitWith[0] === s.payerMemberId) {
+            return reply.code(400).send({ error: "loan suggestion has invalid parties" });
+          }
+          shares = [{ memberId: splitWith[0]!, shareAmount: centsToDecimal(totalCents) }];
+        } else {
+          const computed = computeSplit({
+            totalCents,
+            splitType: s.splitType,
+            memberIds: splitWith,
+            shares: (s.shares as Record<string, number> | null) ?? undefined,
+            expenseSeed: s.id,
+          });
+          shares = computed.map((c) => ({
+            memberId: c.memberId,
+            shareAmount: centsToDecimal(c.shareCents),
+          }));
+        }
       } catch (err) {
         return reply
           .code(400)
@@ -835,6 +832,7 @@ export async function registerApi(
           groupId: group.id,
           payerMemberId: s.payerMemberId,
           amount: centsToDecimal(totalCents),
+          kind: s.kind,
           currency: group.defaultCurrency,
           description: s.description,
           createdByMemberId: member.id,
@@ -842,10 +840,7 @@ export async function registerApi(
           sourceSuggestionId: s.id,
           occurredAt: new Date(),
         },
-        computed.map((c) => ({
-          memberId: c.memberId,
-          shareAmount: centsToDecimal(c.shareCents),
-        })),
+        shares,
       );
       await resolveSuggestion(db, s.id, "confirmed", member.id, new Date());
       await refreshGroupSummarySafe(db, group.id);
@@ -883,6 +878,7 @@ export async function registerApi(
           groupId: group.id,
           payerMemberId: body.payerMemberId,
           amount: centsToDecimal(decimalToCents(body.amount)),
+          kind: body.kind,
           currency: group.defaultCurrency,
           description: body.description,
           createdByMemberId: member.id,
