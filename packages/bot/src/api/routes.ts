@@ -399,6 +399,44 @@ export async function registerApi(
     },
   );
 
+  async function recordSettlementFromInput(
+    group: { id: string; defaultCurrency: string },
+    member: Member,
+    input: z.infer<typeof createSettlementSchema>,
+  ): Promise<{ settlement: Awaited<ReturnType<typeof createSettlement>> } | { error: string; transfers?: unknown[] }> {
+    const fromMemberId = input.fromMemberId ?? member.id;
+    const { toMemberId } = input;
+    const { nets } = await loadBalances(db, group.id);
+    const plan = computeSettlement(nets);
+    const transfer = plan.find(
+      (t) => t.fromMemberId === fromMemberId && t.toMemberId === toMemberId,
+    );
+    if (!transfer) {
+      return {
+        error: "no current debt between these members",
+        transfers: plan.map(toTransferDto),
+      };
+    }
+    const requestedCents = input.amount
+      ? decimalToCents(input.amount)
+      : transfer.amountCents;
+    const amountCents = Math.min(requestedCents, transfer.amountCents);
+    const settlement = await createSettlement(db, {
+      groupId: group.id,
+      fromMemberId,
+      toMemberId,
+      amount: centsToDecimal(amountCents),
+      currency: group.defaultCurrency,
+      method: input.method ?? "cash",
+      description: input.description ?? null,
+      expenseIds: input.expenseIds ?? null,
+      occurredAt: input.occurredAt ? new Date(input.occurredAt) : new Date(),
+      markedPaidAt: new Date(),
+      markedPaidByMemberId: member.id,
+    });
+    return { settlement };
+  }
+
   // GET expenses list
   app.get(
     "/api/groups/:groupId/expenses",
@@ -713,11 +751,14 @@ export async function registerApi(
     async (req, reply) => {
       const { group, member } = req.jemaw!;
       if (!deps.gemini) {
+        console.warn(`[scan] manual skipped: AI scanning is not configured for group ${group.id}`);
         return reply.code(503).send({ error: "AI scanning is not configured" });
       }
       if (!deps.scanLimiter.tryAcquire(group.id)) {
+        console.log(`[scan] manual rate-limited for group ${group.id}`);
         return reply.code(429).send({ error: "rate limited — try again shortly" });
       }
+      console.log(`[scan] manual requested by member ${member.id} for group ${group.id}`);
       const { scanGroup } = await import("../ai/scan.js");
       const result = await scanGroup(
         { db, gemini: deps.gemini, now: () => Date.now() },
@@ -725,12 +766,17 @@ export async function registerApi(
         member.id,
         "manual",
       );
+      console.log(
+        `[scan] manual result group=${group.id} status=${result.status} written=${result.written} pending=${result.pendingCount}`,
+      );
       if (deps.botApi) {
         const { badgeEvidence } = await import("../telegram/reactions.js");
         await badgeEvidence(
           deps.botApi,
           Number(group.telegramChatId),
           result.evidenceMessageIds,
+        ).catch((err) =>
+          console.warn(`[scan] badge evidence failed: ${err?.message ?? err}`),
         );
       }
       return reply.send(result);
@@ -859,6 +905,20 @@ export async function registerApi(
       if (!s) return reply.code(404).send({ error: "not found" });
       if (s.status !== "pending") {
         return reply.code(409).send({ error: "already resolved" });
+      }
+      if (s.kind === "settlement") {
+        const parsed = createSettlementSchema.safeParse(req.body);
+        if (!parsed.success) return reply.code(400).send({ error: "invalid body" });
+        const recorded = await recordSettlementFromInput(group, member, parsed.data);
+        if ("error" in recorded) {
+          return reply.code(409).send({
+            error: recorded.error,
+            transfers: recorded.transfers,
+          });
+        }
+        await resolveSuggestion(db, s.id, "edited", member.id, new Date());
+        await refreshGroupSummarySafe(db, group.id);
+        return reply.code(201).send(toSettlementDto(recorded.settlement));
       }
       const parsed = createExpenseSchema.safeParse(req.body);
       if (!parsed.success) return reply.code(400).send({ error: "invalid body" });

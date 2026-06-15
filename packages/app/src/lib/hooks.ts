@@ -280,3 +280,15 @@ export function useEditSuggestion() {
     onSuccess: () => invalidateLedger(qc),
   });
 }
+
+export function useEditSettlementSuggestion() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (args: { id: string; input: CreateSettlementInput }) =>
+      api.post<SettlementDto>(
+        `/api/groups/${gid()}/suggestions/${args.id}/edit`,
+        args.input,
+      ),
+    onSuccess: () => invalidateLedger(qc),
+  });
+}
