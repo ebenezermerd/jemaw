@@ -43,4 +43,9 @@ describe("buildUserPrompt", () => {
   it("system prompt forbids inventing amounts", () => {
     expect(SYSTEM_PROMPT).toMatch(/never invent amounts/i);
   });
+
+  it("system prompt distinguishes loans from settlements", () => {
+    expect(SYSTEM_PROMPT).toContain("LOAN");
+    expect(SYSTEM_PROMPT).toMatch(/paid you back/i);
+  });
 });

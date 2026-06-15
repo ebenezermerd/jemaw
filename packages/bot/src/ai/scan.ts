@@ -211,6 +211,11 @@ export async function scanGroup(
       console.log(`[scan] drop "${s.description}": unknown payer ${s.payer_telegram_id}`);
       continue;
     }
+    if (s.kind === "loan" && !payer) {
+      dropped++;
+      console.log(`[scan] drop "${s.description}": loan missing lender`);
+      continue;
+    }
 
     const splitMemberIds: string[] = [];
     let unknown = false;
@@ -225,6 +230,14 @@ export async function scanGroup(
     }
     if (unknown || splitMemberIds.length === 0) {
       dropped++;
+      continue;
+    }
+    if (
+      s.kind === "loan" &&
+      (splitMemberIds.length !== 1 || splitMemberIds[0] === payer?.id)
+    ) {
+      dropped++;
+      console.log(`[scan] drop "${s.description}": invalid loan parties`);
       continue;
     }
 
@@ -250,16 +263,16 @@ export async function scanGroup(
     rows.push({
       groupId: group.id,
       aiRunId: run.id,
-      kind: "expense" as const,
+      kind: s.kind,
       confidence: s.confidence.toFixed(2),
       description: capitalize(s.description),
       amount: centsToDecimal(decimalToCents(s.amount.toFixed(2))),
       payerMemberId: payer?.id ?? null,
       fromMemberId: null,
       toMemberId: null,
-      splitType: s.split_type,
+      splitType: s.kind === "loan" ? "exact" : s.split_type,
       splitWith: splitMemberIds,
-      shares,
+      shares: s.kind === "loan" ? null : shares,
       evidenceMessageIds: s.evidence_message_ids,
       reasoning: s.reasoning,
       status: "pending" as const,
