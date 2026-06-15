@@ -33,6 +33,23 @@ describe("scanResponseSchema", () => {
     expect(r.success).toBe(true);
   });
 
+  it("accepts a loan suggestion kind", () => {
+    const r = scanResponseSchema.safeParse({
+      ...valid,
+      suggestions: [
+        {
+          ...valid.suggestions[0],
+          kind: "loan",
+          description: "Sara lent Tom money",
+          split_type: "exact",
+          split_with: [456],
+        },
+      ],
+    });
+    expect(r.success).toBe(true);
+    expect(r.success && r.data.suggestions[0]!.kind).toBe("loan");
+  });
+
   it("drops a suggestion with confidence out of range (keeps the response)", () => {
     const r = scanResponseSchema.safeParse({
       ...valid,
