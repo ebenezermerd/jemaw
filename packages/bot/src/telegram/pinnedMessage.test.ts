@@ -1,5 +1,5 @@
-import { describe, it, expect } from "vitest";
-import { buildOpenButton } from "./pinnedMessage.js";
+import { describe, it, expect, vi } from "vitest";
+import { buildOpenButton, ensurePinnedMessage } from "./pinnedMessage.js";
 
 describe("buildOpenButton", () => {
   const base = {
@@ -29,5 +29,20 @@ describe("buildOpenButton", () => {
       0,
     ) as { url: string };
     expect(b.url).toBe("https://jemaw-498106.web.app");
+  });
+
+  it("does not send a new message when creation is disabled", async () => {
+    const api = {
+      editMessageText: vi.fn(),
+      sendMessage: vi.fn(),
+      pinChatMessage: vi.fn(),
+    };
+
+    await ensurePinnedMessage(api as never, {} as never, base, 0, {
+      createIfMissing: false,
+    });
+
+    expect(api.sendMessage).not.toHaveBeenCalled();
+    expect(api.pinChatMessage).not.toHaveBeenCalled();
   });
 });
