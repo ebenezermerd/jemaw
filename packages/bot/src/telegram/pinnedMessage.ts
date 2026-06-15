@@ -19,6 +19,10 @@ export interface PinnedState {
   miniAppShortName: string | undefined;
 }
 
+export interface EnsurePinnedMessageOptions {
+  createIfMissing?: boolean;
+}
+
 function buttonText(suggestionCount: number): string {
   if (suggestionCount <= 0) return "Open Jemaw";
   return `Open Jemaw • ${suggestionCount} suggestion${
@@ -53,6 +57,7 @@ export async function ensurePinnedMessage(
   db: Db,
   state: PinnedState,
   suggestionCount = 0,
+  options: EnsurePinnedMessageOptions = {},
 ): Promise<void> {
   const text = "<b>Jemaw</b>\nYour group's expense tracker";
   // `web_app` inline buttons are rejected in GROUPS (BUTTON_TYPE_INVALID). A
@@ -75,6 +80,8 @@ export async function ensurePinnedMessage(
       // Existing message gone/uneditable — fall through to send a fresh one.
     }
   }
+
+  if (options.createIfMissing === false) return;
 
   const sent = await api.sendMessage(chatId, text, {
     reply_markup: replyMarkup,

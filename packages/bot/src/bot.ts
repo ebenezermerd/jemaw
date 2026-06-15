@@ -84,6 +84,7 @@ export function createBot(token: string, deps: BotDeps): Bot {
         miniAppShortName,
       },
       count,
+      { createIfMissing: false },
     ).catch(() => {});
   }
 
