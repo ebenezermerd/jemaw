@@ -19,7 +19,7 @@ describe("SummaryCard", () => {
     expect(container.textContent).toContain("you're owed");
     expect(container.textContent).toContain("Sara");
     expect(container.textContent).toContain("Paid");
-    expect(container.textContent).toContain("Expenses");
+    expect(container.textContent).toContain("Entries");
   });
 
   it("shows 'you owe' for a negative net", () => {

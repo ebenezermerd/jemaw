@@ -6,7 +6,7 @@ import {
   useSuggestions,
   useEditSuggestion,
 } from "../lib/hooks.js";
-import type { SplitType, CreateExpenseInput } from "@jemaw/shared/types";
+import type { SplitType, ExpenseKind, CreateExpenseInput } from "@jemaw/shared/types";
 import { decimalToCents, centsToDecimal } from "@jemaw/shared/types";
 import { Button } from "../ui/primitives.js";
 import { MemberAvatar } from "../ui/MemberAvatar.js";
@@ -30,6 +30,7 @@ export function Add() {
 
   const [description, setDescription] = useState("");
   const [amount, setAmount] = useState("");
+  const [kind, setKind] = useState<ExpenseKind>("expense");
   const [payer, setPayer] = useState<string>("");
   const [date, setDate] = useState<string>(todayISO());
   const [splitType, setSplitType] = useState<SplitType>("equal");
@@ -48,6 +49,7 @@ export function Add() {
   // Prefill from a suggestion when editing one.
   useEffect(() => {
     if (!source) return;
+    setKind(source.kind === "loan" ? "loan" : "expense");
     setDescription(source.description);
     setAmount(source.amount ?? "");
     if (source.payerMemberId) setPayer(source.payerMemberId);
@@ -56,14 +58,24 @@ export function Add() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [source?.id]);
 
+  useEffect(() => {
+    if (kind !== "loan" || !payer || members.length < 2) return;
+    const current = [...splitWith][0];
+    if (splitWith.size === 1 && current && current !== payer) return;
+    const borrower = members.find((m) => m.id !== payer)?.id;
+    if (borrower) setSplitWith(new Set([borrower]));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [kind, payer, group.data]);
+
   if (group.isLoading) return <PageLoader />;
   if (members.length === 0)
-    return <Centered>Add members before adding an expense.</Centered>;
+    return <Centered>Add members before adding an entry.</Centered>;
 
   const totalCents = amount && /^\d+(\.\d{1,2})?$/.test(amount)
     ? decimalToCents(amount)
     : 0;
   const participants = [...splitWith];
+  const borrower = kind === "loan" ? participants[0] : undefined;
 
   const exactSum = participants.reduce(
     (s, id) => s + (exact[id] && /^\d+(\.\d{1,2})?$/.test(exact[id]!) ? decimalToCents(exact[id]!) : 0),
@@ -75,10 +87,12 @@ export function Add() {
     description.trim().length > 0 &&
     totalCents > 0 &&
     payer &&
-    participants.length > 0 &&
-    (splitType !== "shares" ||
+    (kind === "loan"
+      ? Boolean(borrower && borrower !== payer)
+      : participants.length > 0) &&
+    (kind === "loan" || splitType !== "shares" ||
       participants.every((id) => (shares[id] ?? 0) > 0)) &&
-    (splitType !== "exact" || exactRemainder === 0);
+    (kind === "loan" || splitType !== "exact" || exactRemainder === 0);
 
   function toggle(id: string) {
     const next = new Set(splitWith);
@@ -89,17 +103,22 @@ export function Add() {
 
   async function submit() {
     const input: CreateExpenseInput = {
+      kind,
       description: description.trim(),
       amount,
       payerMemberId: payer,
-      splitType,
-      splitWith: participants,
-      shares: splitType === "shares" ? shares : undefined,
-      exact: splitType === "exact" ? exact : undefined,
+      splitType: kind === "loan" ? "exact" : splitType,
+      splitWith: kind === "loan" && borrower ? [borrower] : participants,
+      shares: kind === "expense" && splitType === "shares" ? shares : undefined,
+      exact:
+        kind === "loan" && borrower
+          ? { [borrower]: amount }
+          : splitType === "exact"
+            ? exact
+            : undefined,
       occurredAt: dateToISO(date),
     };
     if (fromSuggestionId) {
-      // Editing a suggestion → records an ai_edited expense + resolves it.
       await editSuggestion.mutateAsync({ id: fromSuggestionId, input });
       nav("/suggestions");
     } else {
@@ -111,12 +130,20 @@ export function Add() {
   return (
     <div>
       <PageHeader
-        title={fromSuggestionId ? "Edit suggestion" : "Add expense"}
+        title={fromSuggestionId ? "Edit suggestion" : kind === "loan" ? "Add loan" : "Add expense"}
         fallback={fromSuggestionId ? "/suggestions" : "/"}
       />
       <div style={{ padding: "0 16px 16px", display: "grid", gap: 16 }}>
 
       <Group>
+        <Field label="Type" icon="◎">
+          <Segmented
+            value={kind}
+            onChange={setKind}
+            options={["expense", "loan"]}
+          />
+        </Field>
+
         <Field label="Description" icon="✎">
           <input
             value={description}
@@ -173,7 +200,7 @@ export function Add() {
       </Group>
 
       <Group>
-        <Field label="Paid by" icon="◎">
+        <Field label={kind === "loan" ? "Lent by" : "Paid by"} icon="◎">
           <ChipRow>
             {members.map((m) => (
               <Chip
@@ -187,101 +214,121 @@ export function Add() {
           </ChipRow>
         </Field>
 
-        <Field label="Split" icon="⇆">
-        <Segmented
-          value={splitType}
-          onChange={setSplitType}
-          options={["equal", "shares", "exact"]}
-        />
-      </Field>
-
-      <Field label="Split between" icon="≡">
-        <div style={{ display: "grid", gap: 8 }}>
-          {members.map((m) => {
-            const on = splitWith.has(m.id);
-            return (
-              <div
-                key={m.id}
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 12,
-                  padding: "8px 12px",
-                  borderRadius: "var(--r-md)",
-                  border: on
-                    ? "1px solid var(--accent)"
-                    : "1px solid var(--border)",
-                  background: on ? "var(--accent-soft)" : "transparent",
-                }}
-              >
-                <button
-                  onClick={() => toggle(m.id)}
-                  style={{
-                    flex: 1,
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 10,
-                    border: "none",
-                    background: "transparent",
-                    color: "var(--text)",
-                    cursor: "pointer",
-                  }}
-                >
-                  <MemberAvatar
+        {kind === "loan" ? (
+          <Field label="Borrower" icon="⇄">
+            <ChipRow>
+              {members
+                .filter((m) => m.id !== payer)
+                .map((m) => (
+                  <Chip
+                    key={m.id}
+                    active={borrower === m.id}
+                    onClick={() => setSplitWith(new Set([m.id]))}
                     name={m.displayName}
                     telegramUserId={m.telegramUserId}
-                    size={28}
                   />
-                  <span className="t-body-strong">{m.displayName}</span>
-                </button>
+                ))}
+            </ChipRow>
+          </Field>
+        ) : (
+          <>
+            <Field label="Split" icon="⇆">
+              <Segmented
+                value={splitType}
+                onChange={setSplitType}
+                options={["equal", "shares", "exact"]}
+              />
+            </Field>
 
-                {on && splitType === "shares" && (
-                  <Stepper
-                    value={shares[m.id] ?? 1}
-                    onChange={(v) => setShares({ ...shares, [m.id]: v })}
-                  />
-                )}
-                {on && splitType === "exact" && (
-                  <input
-                    value={exact[m.id] ?? ""}
-                    onChange={(e) =>
-                      setExact({
-                        ...exact,
-                        [m.id]: e.target.value.replace(/[^\d.]/g, ""),
-                      })
-                    }
-                    inputMode="decimal"
-                    placeholder="0.00"
-                    className="tnum"
-                    style={{ ...inputStyle, width: 90, height: 36, textAlign: "right" }}
-                  />
-                )}
+            <Field label="Split between" icon="≡">
+              <div style={{ display: "grid", gap: 8 }}>
+                {members.map((m) => {
+                  const on = splitWith.has(m.id);
+                  return (
+                    <div
+                      key={m.id}
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 12,
+                        padding: "8px 12px",
+                        borderRadius: "var(--r-md)",
+                        border: on
+                          ? "1px solid var(--accent)"
+                          : "1px solid var(--border)",
+                        background: on ? "var(--accent-soft)" : "transparent",
+                      }}
+                    >
+                      <button
+                        onClick={() => toggle(m.id)}
+                        style={{
+                          flex: 1,
+                          display: "flex",
+                          alignItems: "center",
+                          gap: 10,
+                          border: "none",
+                          background: "transparent",
+                          color: "var(--text)",
+                          cursor: "pointer",
+                        }}
+                      >
+                        <MemberAvatar
+                          name={m.displayName}
+                          telegramUserId={m.telegramUserId}
+                          size={28}
+                        />
+                        <span className="t-body-strong">{m.displayName}</span>
+                      </button>
+
+                      {on && splitType === "shares" && (
+                        <Stepper
+                          value={shares[m.id] ?? 1}
+                          onChange={(v) => setShares({ ...shares, [m.id]: v })}
+                        />
+                      )}
+                      {on && splitType === "exact" && (
+                        <input
+                          value={exact[m.id] ?? ""}
+                          onChange={(e) =>
+                            setExact({
+                              ...exact,
+                              [m.id]: e.target.value.replace(/[^\d.]/g, ""),
+                            })
+                          }
+                          inputMode="decimal"
+                          placeholder="0.00"
+                          className="tnum"
+                          style={{ ...inputStyle, width: 90, height: 36, textAlign: "right" }}
+                        />
+                      )}
+                    </div>
+                  );
+                })}
               </div>
-            );
-          })}
-        </div>
 
-        {splitType === "exact" && (
-          <p
-            className="t-caption"
-            style={{
-              marginTop: 8,
-              color: exactRemainder === 0 ? "var(--accent)" : "var(--warn)",
-            }}
-          >
-            {exactRemainder === 0
-              ? "Balanced."
-              : `Remainder: ${centsToDecimal(exactRemainder)}`}
-          </p>
+              {splitType === "exact" && (
+                <p
+                  className="t-caption"
+                  style={{
+                    marginTop: 8,
+                    color: exactRemainder === 0 ? "var(--accent)" : "var(--warn)",
+                  }}
+                >
+                  {exactRemainder === 0
+                    ? "Balanced."
+                    : `Remainder: ${centsToDecimal(exactRemainder)}`}
+                </p>
+              )}
+            </Field>
+          </>
         )}
-        </Field>
       </Group>
 
       <Button
         disabled={!valid || create.isPending || editSuggestion.isPending}
         onClick={submit}
       >
-        {create.isPending || editSuggestion.isPending ? "Adding…" : "Add"}
+        {create.isPending || editSuggestion.isPending ? "Adding…" : kind === "loan" ? "Add loan" : "Add"}
       </Button>
       </div>
     </div>
@@ -398,14 +445,14 @@ function Chip({
   );
 }
 
-function Segmented({
+function Segmented<T extends string>({
   value,
   onChange,
   options,
 }: {
-  value: SplitType;
-  onChange: (v: SplitType) => void;
-  options: SplitType[];
+  value: T;
+  onChange: (v: T) => void;
+  options: T[];
 }) {
   return (
     <div

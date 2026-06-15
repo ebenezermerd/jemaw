@@ -32,7 +32,7 @@ export function Suggestions() {
       <EmptyState
         icon="✦"
         title="Caught up"
-        hint="Say “jemaw” in your group chat and Jemaw will draft expenses here."
+        hint="Say “jemaw” in your group chat and Jemaw will draft expenses or loans here."
       />
     );
   }
@@ -50,6 +50,7 @@ export function Suggestions() {
             s={s}
             currency={currency}
             payerName={nameOf(s.payerMemberId)}
+            borrowerName={nameOf(s.splitWith[0] ?? null)}
             onAdd={() => confirm.mutate(s.id)}
             onDismiss={() => dismiss.mutate(s.id)}
             onEdit={() => nav(`/add?from=${s.id}`)}
@@ -66,6 +67,7 @@ function Card({
   index,
   currency,
   payerName,
+  borrowerName,
   onAdd,
   onDismiss,
   onEdit,
@@ -75,6 +77,7 @@ function Card({
   index: number;
   currency: string;
   payerName: string;
+  borrowerName: string;
   onAdd: () => void;
   onDismiss: () => void;
   onEdit: () => void;
@@ -124,8 +127,11 @@ function Card({
             <Money value={s.amount ?? "0.00"} currency={currency} />
           </span>
           <span className="t-caption" style={{ color: "var(--text-muted)" }}>
-            {payerName} paid · split {s.splitWith.length}{" "}
-            {s.splitWith.length === 1 ? "way" : "ways"}
+            {s.kind === "loan"
+              ? `${payerName} lent · ${borrowerName} owes`
+              : `${payerName} paid · split ${s.splitWith.length} ${
+                  s.splitWith.length === 1 ? "way" : "ways"
+                }`}
           </span>
         </div>
       </div>
@@ -152,7 +158,7 @@ function Card({
           Edit
         </Button>
         <Button onClick={onAdd} disabled={busy} style={{ flex: 1 }}>
-          ✓ Add
+          {s.kind === "loan" ? "✓ Add loan" : "✓ Add"}
         </Button>
       </div>
     </motion.div>

@@ -107,7 +107,7 @@ export function SummaryCard({ s }: { s: MeSummaryDto }) {
       >
         <Stat label="Paid" value={formatMoney(s.totalPaid, s.currency)} />
         <Stat label="Your share" value={formatMoney(s.totalShare, s.currency)} divider />
-        <Stat label="Expenses" value={String(s.expenseCount)} divider />
+        <Stat label="Entries" value={String(s.expenseCount)} divider />
       </div>
     </div>
   );
