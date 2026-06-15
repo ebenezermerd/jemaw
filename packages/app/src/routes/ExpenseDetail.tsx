@@ -6,7 +6,7 @@ import {
   useEditExpense,
   useVoidExpense,
 } from "../lib/hooks.js";
-import type { CreateExpenseInput } from "@jemaw/shared/types";
+import type { CreateExpenseInput, ExpenseKind } from "@jemaw/shared/types";
 import { Button, Avatar } from "../ui/primitives.js";
 import { Modal } from "../motion/Modal.js";
 import { PageHeader } from "../ui/PageHeader.js";
@@ -30,6 +30,7 @@ export function ExpenseDetail() {
 
   const [description, setDescription] = useState("");
   const [amount, setAmount] = useState("");
+  const [kind, setKind] = useState<ExpenseKind>("expense");
   const [payer, setPayer] = useState("");
   const [splitWith, setSplitWith] = useState<Set<string>>(new Set());
   const [confirmVoid, setConfirmVoid] = useState(false);
@@ -39,9 +40,19 @@ export function ExpenseDetail() {
     if (!e) return;
     setDescription(e.description);
     setAmount(e.amount);
+    setKind(e.kind);
     setPayer(e.payerMemberId);
     setSplitWith(new Set(e.shares.map((s) => s.memberId)));
   }, [expense.data]);
+
+  useEffect(() => {
+    if (kind !== "loan" || !payer || members.length < 2) return;
+    const current = [...splitWith][0];
+    if (splitWith.size === 1 && current && current !== payer) return;
+    const next = members.find((m) => m.id !== payer)?.id;
+    if (next) setSplitWith(new Set([next]));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [kind, payer, group.data]);
 
   if (expense.isLoading || group.isLoading) return <PageLoader />;
   if (!expense.data) return <Centered>Expense not found.</Centered>;
@@ -57,12 +68,15 @@ export function ExpenseDetail() {
     expense.data.createdByMemberId === myMemberId;
 
   const participants = [...splitWith];
+  const borrower = kind === "loan" ? participants[0] : undefined;
   const valid =
     description.trim().length > 0 &&
     /^\d+(\.\d{1,2})?$/.test(amount) &&
     Number(amount) > 0 &&
     payer &&
-    participants.length > 0;
+    (kind === "loan"
+      ? Boolean(borrower && borrower !== payer)
+      : participants.length > 0);
 
   function toggle(mid: string) {
     const next = new Set(splitWith);
@@ -72,11 +86,13 @@ export function ExpenseDetail() {
 
   async function save() {
     const input: CreateExpenseInput = {
+      kind,
       description: description.trim(),
       amount,
       payerMemberId: payer,
-      splitType: "equal",
-      splitWith: participants,
+      splitType: kind === "loan" ? "exact" : "equal",
+      splitWith: kind === "loan" && borrower ? [borrower] : participants,
+      exact: kind === "loan" && borrower ? { [borrower]: amount } : undefined,
     };
     await edit.mutateAsync({ expenseId: id!, input });
     nav("/history");
@@ -89,7 +105,7 @@ export function ExpenseDetail() {
 
   return (
     <div>
-      <PageHeader title="Edit expense" fallback="/history" />
+      <PageHeader title={kind === "loan" ? "Edit loan" : "Edit expense"} fallback="/history" />
       <div style={{ padding: "0 16px 16px", display: "grid", gap: 20 }}>
       <Field label="Description">
         <input value={description} onChange={(e) => setDescription(e.target.value)} style={inputStyle} />
@@ -105,7 +121,7 @@ export function ExpenseDetail() {
         />
       </Field>
 
-      <Field label="Paid by">
+      <Field label={kind === "loan" ? "Lent by" : "Paid by"}>
         <div style={{ display: "flex", gap: 8, overflowX: "auto", paddingBottom: 4 }}>
           {members.map((m) => (
             <Chip key={m.id} active={payer === m.id} onClick={() => setPayer(m.id)} name={m.displayName} />
@@ -113,33 +129,50 @@ export function ExpenseDetail() {
         </div>
       </Field>
 
-      <Field label="Split between (equal)">
-        <div style={{ display: "grid", gap: 8 }}>
-          {members.map((m) => {
-            const on = splitWith.has(m.id);
-            return (
-              <button
-                key={m.id}
-                onClick={() => toggle(m.id)}
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 10,
-                  padding: "8px 12px",
-                  borderRadius: "var(--r-md)",
-                  border: on ? "1px solid var(--accent)" : "1px solid var(--border)",
-                  background: on ? "var(--accent-soft)" : "transparent",
-                  color: "var(--text)",
-                  cursor: "pointer",
-                }}
-              >
-                <Avatar name={m.displayName} size={28} />
-                <span className="t-body-strong">{m.displayName}</span>
-              </button>
-            );
-          })}
-        </div>
-      </Field>
+      {kind === "loan" ? (
+        <Field label="Borrower">
+          <div style={{ display: "flex", gap: 8, overflowX: "auto", paddingBottom: 4 }}>
+            {members
+              .filter((m) => m.id !== payer)
+              .map((m) => (
+                <Chip
+                  key={m.id}
+                  active={borrower === m.id}
+                  onClick={() => setSplitWith(new Set([m.id]))}
+                  name={m.displayName}
+                />
+              ))}
+          </div>
+        </Field>
+      ) : (
+        <Field label="Split between (equal)">
+          <div style={{ display: "grid", gap: 8 }}>
+            {members.map((m) => {
+              const on = splitWith.has(m.id);
+              return (
+                <button
+                  key={m.id}
+                  onClick={() => toggle(m.id)}
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 10,
+                    padding: "8px 12px",
+                    borderRadius: "var(--r-md)",
+                    border: on ? "1px solid var(--accent)" : "1px solid var(--border)",
+                    background: on ? "var(--accent-soft)" : "transparent",
+                    color: "var(--text)",
+                    cursor: "pointer",
+                  }}
+                >
+                  <Avatar name={m.displayName} size={28} />
+                  <span className="t-body-strong">{m.displayName}</span>
+                </button>
+              );
+            })}
+          </div>
+        </Field>
+      )}
 
       {canModify ? (
         <div style={{ display: "flex", gap: 8 }}>
@@ -152,13 +185,13 @@ export function ExpenseDetail() {
         </div>
       ) : (
         <p className="t-caption" style={{ color: "var(--text-faint)", margin: 0, textAlign: "center" }}>
-          Only the person who added this expense or a group admin can edit or remove it.
+          Only the person who added this {kind} or a group admin can edit or remove it.
         </p>
       )}
 
       <Modal open={confirmVoid} onClose={() => setConfirmVoid(false)}>
         <h2 className="t-heading" style={{ marginTop: 0 }}>
-          Remove this expense?
+          Remove this {kind}?
         </h2>
         <p className="t-body" style={{ color: "var(--text-muted)" }}>
           It will be removed from balances and history. This can't be undone.
@@ -225,4 +258,3 @@ function Chip({ active, onClick, name }: { active: boolean; onClick: () => void;
     </button>
   );
 }
-

@@ -1,6 +1,6 @@
 /**
  * Home: the personal summary card, then a tab switcher between two clean lists —
- * "Suggested" (AI expenses to add) and "Ready to settle" (transfers you owe).
+ * "Suggested" (AI entries to add) and "Ready to settle" (transfers you owe).
  * Each list row is collapsible: tap to expand details + action buttons.
  */
 import { useEffect, useState } from "react";
@@ -43,7 +43,7 @@ export function Home() {
   const me = currentMemberId(members);
 
   const all = suggestions.data?.suggestions ?? [];
-  const sugg = all.filter((s) => s.kind === "expense");
+  const sugg = all.filter((s) => s.kind === "expense" || s.kind === "loan");
   const settleSugg = all.filter((s) => s.kind === "settlement");
   const transfers = (settle.data?.transfers ?? []).filter(
     (t) => me != null && t.fromMemberId === me,
@@ -83,7 +83,7 @@ export function Home() {
               compact
               icon="✦"
               title="No suggestions yet"
-              hint="Say “jemaw” in your group chat and Jemaw will draft expenses here."
+              hint="Say “jemaw” in your group chat and Jemaw will draft expenses or loans here."
             />
           ) : (
             <div style={{ display: "grid", gap: 8 }}>
@@ -93,6 +93,7 @@ export function Home() {
                   s={s}
                   currency={currency}
                   payerName={nameOf(s.payerMemberId)}
+                  borrowerName={nameOf(s.splitWith[0] ?? null)}
                   onAdd={() => confirm.mutate(s.id)}
                   onRequestRemove={() => setRemoving(s.id)}
                   onEdit={() => nav(`/add?from=${s.id}`)}
@@ -376,6 +377,7 @@ function SuggestionRow({
   s,
   currency,
   payerName,
+  borrowerName,
   onAdd,
   onRequestRemove,
   onEdit,
@@ -384,6 +386,7 @@ function SuggestionRow({
   s: SuggestionDto;
   currency: string;
   payerName: string;
+  borrowerName: string;
   onAdd: () => void;
   onRequestRemove: () => void;
   onEdit: () => void;
@@ -400,7 +403,9 @@ function SuggestionRow({
               {s.description}
             </div>
             <div className="t-caption" style={{ color: "var(--text-muted)" }}>
-              {payerName} paid · swipe → add, ← remove
+              {s.kind === "loan"
+                ? `${payerName} lent to ${borrowerName} · swipe → add, ← remove`
+                : `${payerName} paid · swipe → add, ← remove`}
             </div>
           </div>
           <Pill variant={s.tier === "normal" ? "accent" : "warn"}>
@@ -423,8 +428,12 @@ function SuggestionRow({
           fontStyle: "italic",
         }}
       >
-        {s.reasoning} · split {s.splitWith.length}{" "}
-        {s.splitWith.length === 1 ? "way" : "ways"}
+        {s.reasoning}
+        {s.kind === "loan"
+          ? ` · ${borrowerName} owes`
+          : ` · split ${s.splitWith.length} ${
+              s.splitWith.length === 1 ? "way" : "ways"
+            }`}
       </div>
       <div style={{ display: "flex", gap: 8 }}>
         <Button variant="ghost" onClick={onRequestRemove} disabled={busy} style={{ flex: 1 }}>
@@ -434,7 +443,7 @@ function SuggestionRow({
           Edit
         </Button>
         <Button onClick={onAdd} disabled={busy} style={{ flex: 1 }}>
-          ✓ Add
+          {s.kind === "loan" ? "✓ Add loan" : "✓ Add"}
         </Button>
       </div>
     </Row>

@@ -65,7 +65,7 @@ export function History() {
           compact
           icon="↻"
           title="Nothing here yet"
-          hint="Expenses and settlements will appear in this timeline."
+          hint="Expenses, loans, and settlements will appear in this timeline."
         />
       ) : (
         days.map((d) => (
@@ -88,8 +88,9 @@ export function History() {
                           {item.expense.description}
                         </div>
                         <div className="t-caption" style={{ color: "var(--text-muted)" }} >
-                          {nameOf(item.expense.payerMemberId)} paid · split{" "}
-                          {item.expense.shares.length}
+                          {item.expense.kind === "loan"
+                            ? `${nameOf(item.expense.payerMemberId)} lent · ${nameOf(item.expense.shares[0]?.memberId ?? "")} owes`
+                            : `${nameOf(item.expense.payerMemberId)} paid · split ${item.expense.shares.length}`}
                         </div>
                       </div>
                     </div>

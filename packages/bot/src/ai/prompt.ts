@@ -48,11 +48,14 @@ export interface ScanData {
 }
 
 export const SYSTEM_PROMPT = [
-  "You are Jemaw, an assistant that reads a Telegram group chat and extracts two",
+  "You are Jemaw, an assistant that reads a Telegram group chat and extracts three",
   "kinds of money events:",
   "(1) EXPENSES — a shared cost someone incurred (a meal, ride, ticket, purchase)",
-  "that should be split. Put these in `suggestions`.",
-  "(2) SETTLEMENTS — one member paying ANOTHER member back (squaring up a debt),",
+  "that should be split. Put these in `suggestions` with kind 'expense'.",
+  "(2) LOANS — one member lending money to another member, or one member saying",
+  "another owes them for money advanced. Put these in `suggestions` with kind",
+  "'loan', payer_telegram_id as the lender, and split_with as only the borrower.",
+  "(3) SETTLEMENTS — one member paying ANOTHER member back (squaring up a debt),",
   "e.g. 'I paid Sara back 200 for the cab', 'sent you the 50 I owed', 'we settled",
   "dinner'. Put these in `settlements` with from_telegram_id (who paid) and",
   "to_telegram_id (who received).",
@@ -61,7 +64,8 @@ export const SYSTEM_PROMPT = [
   "item. Ignore hypothetical, joking, or non-group money talk. For expenses, if",
   "the split is unclear default to equal among members present; if unsure who",
   "paid set payer_telegram_id null. Distinguish carefully: 'I paid 300 for",
-  "breakfast' is an EXPENSE; 'I paid you back 300' is a SETTLEMENT.",
+  "breakfast' is an EXPENSE; 'I lent Tom 300' is a LOAN; 'I paid you back 300'",
+  "is a SETTLEMENT.",
   "Output strict JSON matching the schema. No prose outside the JSON.",
 ].join(" ");
 
@@ -123,10 +127,11 @@ export function buildUserPrompt(input: ScanData): string {
     messages,
     "",
     "Return JSON: { suggestions: [...], settlements: [...], scan_window: { from_message_id, to_message_id } }.",
-    "Each EXPENSE suggestion: { confidence (0-1), description, amount (number),",
-    "currency, payer_telegram_id (number|null), split_type ('equal'|'shares'|'exact'),",
+    "Each suggestion: { kind ('expense'|'loan'), confidence (0-1), description, amount (number),",
+    "currency, payer_telegram_id (expense payer or loan lender, number|null), split_type ('equal'|'shares'|'exact'),",
     "split_with (array of member telegram ids), shares (object id->count|null),",
     "evidence_message_ids (array of message ids), reasoning (<=200 chars) }.",
+    "For LOANS, split_with must contain only the borrower and split_type should be 'exact'.",
     "Each SETTLEMENT: { confidence (0-1), from_telegram_id (number, who paid),",
     "to_telegram_id (number, who received), amount (number|null if unstated),",
     "currency, evidence_message_ids (array), reasoning (<=200 chars) }.",
