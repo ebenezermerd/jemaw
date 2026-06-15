@@ -31,7 +31,7 @@ export function Balances() {
         <EmptyState
           icon="≡"
           title="Nothing to track yet"
-          hint="Add an expense or say “jemaw” in the group to get started."
+          hint="Add an expense, add a loan, or say “jemaw” in the group to get started."
         />
       </div>
     );

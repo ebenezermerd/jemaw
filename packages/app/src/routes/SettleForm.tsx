@@ -197,7 +197,7 @@ export function SettleForm() {
         </Field>
       </Group>
 
-      {/* expense selection */}
+      {/* entry selection */}
       {to && (
         <Group>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
@@ -209,7 +209,7 @@ export function SettleForm() {
             </button>
           </div>
           <p className="t-caption" style={{ color: "var(--text-faint)", margin: "-4px 0 0" }}>
-            Expenses {toName} paid where you owe a share.
+            Entries {toName} paid or lent where you owe a share.
             {hasOffset && (
               <>
                 {" "}
@@ -221,13 +221,13 @@ export function SettleForm() {
           <input
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search expenses…"
+            placeholder="Search entries…"
             style={{ ...inputStyle, height: 40 }}
           />
           {filtered.length === 0 ? (
             <p className="t-caption" style={{ color: "var(--text-faint)", margin: 0 }}>
               {relevant.length === 0
-                ? "No shared expenses between these two."
+                ? "No shared entries between these two."
                 : "No matches."}
             </p>
           ) : (
@@ -294,7 +294,7 @@ export function SettleForm() {
   );
 }
 
-// ── helpers: how much `from` owes for an expense `to` paid ──
+// ── helpers: how much `from` owes for an entry `to` paid ──
 function isOwedBetween(e: ExpenseDto, from: string, to: string): boolean {
   if (!from || !to) return false;
   return e.payerMemberId === to && e.shares.some((s) => s.memberId === from);
