@@ -127,6 +127,14 @@ export function Home() {
                   if (amount) p.set("amount", amount);
                   nav(`/settle/new?${p.toString()}`);
                 }}
+                onEdit={() => {
+                  const p = new URLSearchParams();
+                  p.set("suggestion", s.id);
+                  if (s.fromMemberId) p.set("from", s.fromMemberId);
+                  if (s.toMemberId) p.set("to", s.toMemberId);
+                  if (s.amount) p.set("amount", s.amount);
+                  nav(`/settle/new?${p.toString()}`);
+                }}
                 onDismiss={() => setRemoving(s.id)}
                 busy={dismiss.isPending}
               />
@@ -236,20 +244,22 @@ function Row({
   children,
   onSwipeRight,
   onSwipeLeft,
+  rightActionLabel = "Edit",
 }: {
   header: (open: boolean) => React.ReactNode;
   children: React.ReactNode;
-  /** right-drag commits the primary action (add/confirm) */
+  /** right-drag opens the edit flow for AI suggestions */
   onSwipeRight?: () => void;
   /** left-drag asks to remove (parent shows a confirm dialog) */
   onSwipeLeft?: () => void;
+  rightActionLabel?: string;
 }) {
   const [open, setOpen] = useState(false);
   const reduced = useReducedMotion();
   const x = useMotionValue(0);
   const swipeable = !reduced && (onSwipeRight != null || onSwipeLeft != null);
 
-  // Reveal a green (add) panel when dragging right, red (remove) when left.
+  // Reveal action panels while dragging.
   const addOpacity = useTransform(x, [0, 100], [0, 1]);
   const removeOpacity = useTransform(x, [-100, 0], [1, 0]);
 
@@ -285,7 +295,7 @@ function Row({
                 opacity: addOpacity,
               }}
             >
-              ＋ Add
+              {rightActionLabel}
             </motion.div>
           )}
           {onSwipeLeft && (
@@ -394,8 +404,9 @@ function SuggestionRow({
 }) {
   return (
     <Row
-      onSwipeRight={onAdd}
+      onSwipeRight={onEdit}
       onSwipeLeft={onRequestRemove}
+      rightActionLabel="Edit"
       header={(open) => (
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
           <div style={{ flex: 1, minWidth: 0 }}>
@@ -404,8 +415,8 @@ function SuggestionRow({
             </div>
             <div className="t-caption" style={{ color: "var(--text-muted)" }}>
               {s.kind === "loan"
-                ? `${payerName} lent to ${borrowerName} · swipe → add, ← remove`
-                : `${payerName} paid · swipe → add, ← remove`}
+                ? `${payerName} lent to ${borrowerName} · swipe → edit, ← remove`
+                : `${payerName} paid · swipe → edit, ← remove`}
             </div>
           </div>
           <Pill variant={s.tier === "normal" ? "accent" : "warn"}>
@@ -458,6 +469,7 @@ function SettlementSuggestionRow({
   toName,
   toTgId,
   onSettle,
+  onEdit,
   onDismiss,
   busy,
 }: {
@@ -467,13 +479,15 @@ function SettlementSuggestionRow({
   toName: string;
   toTgId?: string;
   onSettle: (amount?: string) => void;
+  onEdit: () => void;
   onDismiss: () => void;
   busy: boolean;
 }) {
   return (
     <Row
-      onSwipeRight={() => onSettle(s.amount ?? undefined)}
+      onSwipeRight={onEdit}
       onSwipeLeft={onDismiss}
+      rightActionLabel="Edit"
       header={(open) => (
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
           <MemberAvatar name={toName} telegramUserId={toTgId} size={28} />
@@ -482,7 +496,7 @@ function SettlementSuggestionRow({
               {fromName} paid {toName}
             </div>
             <div className="t-caption" style={{ color: "var(--text-muted)" }}>
-              spotted in chat
+              spotted in chat · swipe → edit, ← remove
             </div>
           </div>
           <Pill variant={s.tier === "normal" ? "accent" : "warn"}>AI</Pill>
@@ -510,6 +524,9 @@ function SettlementSuggestionRow({
       <div style={{ display: "flex", gap: 8 }}>
         <Button variant="ghost" onClick={onDismiss} disabled={busy} style={{ flex: 1 }}>
           Remove
+        </Button>
+        <Button variant="ghost" onClick={onEdit} disabled={busy} style={{ flex: 1 }}>
+          Edit
         </Button>
         <Button onClick={() => onSettle(s.amount ?? undefined)} style={{ flex: 1 }}>
           ✓ Settle

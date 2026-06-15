@@ -13,6 +13,8 @@ import {
   useGroup,
   useExpenses,
   useCreateSettlement,
+  useSuggestions,
+  useEditSettlementSuggestion,
 } from "../lib/hooks.js";
 import { MemberAvatar } from "../ui/MemberAvatar.js";
 import { Button } from "../ui/primitives.js";
@@ -33,13 +35,25 @@ const METHODS: { value: PaymentMethod; label: string }[] = [
 export function SettleForm() {
   const group = useGroup();
   const expensesQ = useExpenses();
+  const suggestionsQ = useSuggestions();
   const create = useCreateSettlement();
+  const editSuggestion = useEditSettlementSuggestion();
   const nav = useNavigate();
   const [params] = useSearchParams();
+  const suggestionId = params.get("suggestion") ?? undefined;
 
   const members = group.data?.members.filter((m) => m.isActive) ?? [];
   const currency = group.data?.defaultCurrency ?? "EUR";
   const expenses = expensesQ.data ?? [];
+  const settlementSuggestion = useMemo(
+    () =>
+      suggestionId
+        ? suggestionsQ.data?.suggestions.find(
+            (s) => s.id === suggestionId && s.kind === "settlement",
+          )
+        : undefined,
+    [suggestionId, suggestionsQ.data],
+  );
 
   const me = useMemo(() => {
     const tg = currentTelegramId();
@@ -66,16 +80,19 @@ export function SettleForm() {
   // rather than re-deriving a one-directional share sum that would diverge.
   useEffect(() => {
     if (!group.data) return;
-    setFrom(params.get("from") ?? me);
-    setTo(params.get("to") ?? "");
-    const a = params.get("amount");
+    setFrom(params.get("from") ?? settlementSuggestion?.fromMemberId ?? me);
+    setTo(params.get("to") ?? settlementSuggestion?.toMemberId ?? "");
+    const a = params.get("amount") ?? settlementSuggestion?.amount;
     if (a) setAmount(a);
     const m = params.get("method") as PaymentMethod | null;
     if (m) setMethod(m);
+    if (settlementSuggestion?.description) {
+      setDescription(settlementSuggestion.description);
+    }
     const exp = params.get("expenses");
     if (exp) setSelected(new Set(exp.split(",").filter(Boolean)));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [group.data]);
+  }, [group.data, settlementSuggestion?.id]);
 
   // Expenses relevant to this from→to pair: ones where `from` owes `to`
   // (to paid, from has a share). Shown as the context behind this balance and
@@ -107,7 +124,12 @@ export function SettleForm() {
   const amountCents = /^\d+(\.\d{1,2})?$/.test(amount) ? decimalToCents(amount) : 0;
   const hasOffset = selectedGrossCents > 0 && amountCents > 0 && selectedGrossCents !== amountCents;
 
-  if (group.isLoading || expensesQ.isLoading) return <PageLoader />;
+  if (group.isLoading || expensesQ.isLoading || (suggestionId && suggestionsQ.isLoading)) {
+    return <PageLoader />;
+  }
+  if (suggestionId && !settlementSuggestion) {
+    return <Centered>Settlement suggestion not found.</Centered>;
+  }
   if (members.length < 2)
     return <Centered>Need at least two members to settle.</Centered>;
 
@@ -133,7 +155,7 @@ export function SettleForm() {
   }
 
   async function submit() {
-    await create.mutateAsync({
+    const input = {
       fromMemberId: from,
       toMemberId: to,
       amount,
@@ -141,13 +163,18 @@ export function SettleForm() {
       description: description.trim() || undefined,
       expenseIds: [...selected],
       occurredAt: dateToISO(date),
-    });
+    };
+    if (suggestionId) {
+      await editSuggestion.mutateAsync({ id: suggestionId, input });
+    } else {
+      await create.mutateAsync(input);
+    }
     nav("/settle");
   }
 
   return (
     <div>
-      <PageHeader title="Settle up" fallback="/settle" />
+      <PageHeader title={suggestionId ? "Edit settlement" : "Settle up"} fallback="/settle" />
       <div style={{ padding: "0 16px 16px", display: "grid", gap: 16 }}>
       <Group>
         <Field label="Paid by" icon="◎">
@@ -286,8 +313,12 @@ export function SettleForm() {
         </Group>
       )}
 
-      <Button disabled={!valid || create.isPending} onClick={submit}>
-        {create.isPending ? "Recording…" : "Record settlement"}
+      <Button disabled={!valid || create.isPending || editSuggestion.isPending} onClick={submit}>
+        {create.isPending || editSuggestion.isPending
+          ? "Recording…"
+          : suggestionId
+            ? "Save settlement"
+            : "Record settlement"}
       </Button>
       </div>
     </div>

@@ -4,6 +4,7 @@ import {
   useGroup,
   useSuggestions,
   useConfirmSuggestion,
+  useConfirmSuggestionWithAmount,
   useDismissSuggestion,
 } from "../lib/hooks.js";
 import { Button, Money, Pill } from "../ui/primitives.js";
@@ -17,12 +18,23 @@ export function Suggestions() {
   const group = useGroup();
   const q = useSuggestions();
   const confirm = useConfirmSuggestion();
+  const confirmWithAmount = useConfirmSuggestionWithAmount();
   const dismiss = useDismissSuggestion();
   const nav = useNavigate();
 
   const currency = group.data?.defaultCurrency ?? "EUR";
   const nameOf = (id: string | null) =>
     id ? group.data?.members.find((m) => m.id === id)?.displayName ?? "Member" : "someone";
+
+  function editPath(s: SuggestionDto): string {
+    if (s.kind !== "settlement") return `/add?from=${s.id}`;
+    const p = new URLSearchParams();
+    p.set("suggestion", s.id);
+    if (s.fromMemberId) p.set("from", s.fromMemberId);
+    if (s.toMemberId) p.set("to", s.toMemberId);
+    if (s.amount) p.set("amount", s.amount);
+    return `/settle/new?${p.toString()}`;
+  }
 
   if (q.isLoading) return <SkeletonList count={3} height={120} />;
   const list = q.data?.suggestions ?? [];
@@ -51,10 +63,19 @@ export function Suggestions() {
             currency={currency}
             payerName={nameOf(s.payerMemberId)}
             borrowerName={nameOf(s.splitWith[0] ?? null)}
-            onAdd={() => confirm.mutate(s.id)}
+            fromName={nameOf(s.fromMemberId)}
+            toName={nameOf(s.toMemberId)}
+            onAdd={() => {
+              if (s.kind === "settlement") {
+                if (s.amount) confirmWithAmount.mutate({ id: s.id, amount: s.amount });
+                else nav(editPath(s));
+              } else {
+                confirm.mutate(s.id);
+              }
+            }}
             onDismiss={() => dismiss.mutate(s.id)}
-            onEdit={() => nav(`/add?from=${s.id}`)}
-            busy={confirm.isPending || dismiss.isPending}
+            onEdit={() => nav(editPath(s))}
+            busy={confirm.isPending || confirmWithAmount.isPending || dismiss.isPending}
           />
         ))}
       </AnimatePresence>
@@ -68,6 +89,8 @@ function Card({
   currency,
   payerName,
   borrowerName,
+  fromName,
+  toName,
   onAdd,
   onDismiss,
   onEdit,
@@ -78,6 +101,8 @@ function Card({
   currency: string;
   payerName: string;
   borrowerName: string;
+  fromName: string;
+  toName: string;
   onAdd: () => void;
   onDismiss: () => void;
   onEdit: () => void;
@@ -85,8 +110,9 @@ function Card({
 }) {
   const reduced = useReducedMotion();
 
-  // Swipe-left to dismiss (§12.9): commit past 40% width or high velocity.
+  // Swipe-right edits; swipe-left dismisses.
   function onDragEnd(_e: unknown, info: PanInfo) {
+    if (info.offset.x > 120 || info.velocity.x > 600) onEdit();
     if (info.offset.x < -120 || info.velocity.x < -600) onDismiss();
   }
 
@@ -101,7 +127,7 @@ function Card({
       }
       drag={reduced ? false : "x"}
       dragConstraints={{ left: 0, right: 0 }}
-      dragElastic={{ left: 0.6, right: 0.1 }}
+      dragElastic={{ left: 0.6, right: 0.6 }}
       onDragEnd={onDragEnd}
       whileTap={reduced ? undefined : { scale: 0.99 }}
       style={{
@@ -127,7 +153,9 @@ function Card({
             <Money value={s.amount ?? "0.00"} currency={currency} />
           </span>
           <span className="t-caption" style={{ color: "var(--text-muted)" }}>
-            {s.kind === "loan"
+            {s.kind === "settlement"
+              ? `${fromName} paid ${toName}`
+              : s.kind === "loan"
               ? `${payerName} lent · ${borrowerName} owes`
               : `${payerName} paid · split ${s.splitWith.length} ${
                   s.splitWith.length === 1 ? "way" : "ways"
@@ -158,7 +186,11 @@ function Card({
           Edit
         </Button>
         <Button onClick={onAdd} disabled={busy} style={{ flex: 1 }}>
-          {s.kind === "loan" ? "✓ Add loan" : "✓ Add"}
+          {s.kind === "settlement"
+            ? "✓ Settle"
+            : s.kind === "loan"
+              ? "✓ Add loan"
+              : "✓ Add"}
         </Button>
       </div>
     </motion.div>
