@@ -49,6 +49,19 @@ describe("computeBalances", () => {
     expect(r.every((x) => x.netCents === 0)).toBe(true);
   });
 
+  it("models a loan as lender credit and borrower debt", () => {
+    const expenses: ExpenseForBalance[] = [
+      {
+        payerMemberId: "sara",
+        amountCents: 30000,
+        shares: [{ memberId: "tom", shareCents: 30000 }],
+      },
+    ];
+    const r = computeBalances(["sara", "tom"], expenses);
+    const by = Object.fromEntries(r.map((x) => [x.memberId, x.netCents]));
+    expect(by).toEqual({ sara: 30000, tom: -30000 });
+  });
+
   it("a paid settlement zeroes the pair and preserves zero-sum", () => {
     // a paid 1000, split with b → a +500, b -500. Then b pays a 500.
     const expenses: ExpenseForBalance[] = [
