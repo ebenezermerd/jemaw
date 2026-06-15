@@ -1,37 +1,51 @@
 # Jemaw
----
-https://huggingface.co/datasets/ebenezermerd/multimedia/resolve/main/_-640x360.jpg
----
-A Telegram native expense companion for friend groups. Drop "jemaw" in your
-group chat, confirm AI suggested expenses in a Mini App, and settle off platform.
 
-## Stack
+![Jemaw Preview](https://huggingface.co/datasets/ebenezermerd/multimedia/resolve/main/_-640x360.jpg)
 
-| Layer | Choice |
-|---|---|
-| Language | TypeScript (pnpm workspace) |
+A Telegram-native expense companion for friend groups.
+
+Add **Jemaw** to your group chat, let it detect and suggest expenses with AI, confirm them through a Telegram Mini App, and settle payments off-platform.
+
+---
+
+## Overview
+
+Jemaw helps friend groups track shared expenses directly inside Telegram.
+
+Instead of switching between apps or manually writing down who paid for what, users can mention expenses in a group chat. Jemaw suggests structured expenses using AI, then users can confirm or edit them in the Mini App.
+
+---
+
+## Features
+
+- Telegram bot for group expense tracking
+- AI-suggested expense detection
+- Telegram Mini App for confirming expenses
+- Shared balance tracking for groups
+- Off-platform settlement support
+- Postgres database with Drizzle ORM
+- TypeScript monorepo using pnpm workspaces
+
+---
+
+## Tech Stack
+
+| Layer | Technology |
+| --- | --- |
+| Language | TypeScript |
+| Package Manager | pnpm workspace |
 | Bot / API | grammY + Fastify |
 | Mini App | Vite + React + TanStack Query |
 | Database | Postgres + Drizzle ORM |
-| AI | Google Gemini (`gemini-2.5-flash`) |
-| Hosting | Cloud Run (bot) + Firebase Hosting (app) |
+| AI | Google Gemini `gemini-2.5-flash` |
+| Hosting | Cloud Run for bot, Firebase Hosting for app |
 
-## Packages
+---
 
-- `packages/shared` — Drizzle schema and shared API types.
-- `packages/bot` — Fastify server, grammY bot, REST API, domain logic.
-- `packages/app` — the Telegram Mini App SPA.
+## Project Structure
 
-## Local development
-
-```bash
-docker compose up -d   # local Postgres
-cp .env.example .env    # set TELEGRAM_BOT_TOKEN
-pnpm install
-pnpm db:migrate         # create tables
-pnpm dev:bot            # bot + API on :8080
-pnpm dev:app            # Mini App on :5173
-```
-
-See `docs/DEPLOY_GCP.md` for deployment and `docs/HANDLER.md` for Cloud SQL
-operations.
+```txt
+packages/
+├── shared   # Drizzle schema and shared API types
+├── bot      # Fastify server, grammY bot, REST API, and domain logic
+└── app      # Telegram Mini App SPA
