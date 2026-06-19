@@ -35,7 +35,7 @@ export interface PairDebt {
 }
 
 /** A debtor's share is "covered" when the remaining gap is within tolerance. */
-export const COVERAGE_TOLERANCE_CENTS = 100; // 1.00 currency unit
+export const COVERAGE_TOLERANCE_CENTS = 300; // 3.00 currency unit
 
 export function isShareCovered(
   owedShareCents: number,
@@ -108,9 +108,27 @@ export function computePairwiseTransfers(debts: PairDebt[]): Transfer[] {
     map.set(key, (map.get(key) ?? 0) + d.owedCents);
   }
 
+  // Net opposing pairs: if A→B and B→A both exist, keep only the positive difference.
+  const netted = new Map<string, number>();
+  for (const [key, amount] of map) {
+    const [a, b] = key.split("|") as [string, string];
+    const reverseKey = `${b}|${a}`;
+    if (netted.has(reverseKey)) {
+      const rev = netted.get(reverseKey)!;
+      if (amount > rev) {
+        netted.delete(reverseKey);
+        netted.set(key, amount - rev);
+      } else {
+        netted.set(reverseKey, rev - amount);
+      }
+    } else {
+      netted.set(key, amount);
+    }
+  }
+
   const transfers: Transfer[] = [];
-  for (const [key, amountCents] of map) {
-    if (amountCents <= 0) continue;
+  for (const [key, amountCents] of netted) {
+    if (amountCents <= COVERAGE_TOLERANCE_CENTS) continue;
     const [fromMemberId, toMemberId] = key.split("|") as [string, string];
     transfers.push({ fromMemberId, toMemberId, amountCents });
   }

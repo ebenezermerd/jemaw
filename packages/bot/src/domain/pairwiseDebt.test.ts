@@ -121,11 +121,11 @@ describe("deriveExpenseDebts", () => {
 
 describe("isShareCovered", () => {
   it("residual exactly at tolerance is covered", () => {
-    expect(isShareCovered(2340, 2240)).toBe(true);
+    expect(isShareCovered(2340, 2040)).toBe(true); // gap = 300 = tolerance
   });
 
   it("residual one cent above tolerance is not covered", () => {
-    expect(isShareCovered(2340, 2239)).toBe(false);
+    expect(isShareCovered(2340, 2039)).toBe(false); // gap = 301 > tolerance
   });
 
   it("exact full payment is covered", () => {
@@ -160,7 +160,7 @@ describe("isExpenseCovered", () => {
       { m: "bob", c: 1000 },
       { m: "carol", c: 1000 },
     ]);
-    const allocs = [alloc("e1", "bob", 1000), alloc("e1", "carol", 800)];
+    const allocs = [alloc("e1", "bob", 1000), alloc("e1", "carol", 600)]; // gap 400 > 300
     expect(isExpenseCovered(e, allocs)).toBe(false);
   });
 
@@ -192,6 +192,16 @@ describe("computePairwiseTransfers", () => {
     ];
     const transfers = computePairwiseTransfers(debts);
     expect(transfers).toHaveLength(2);
+  });
+
+  it("nets opposing pair transfers to a single line", () => {
+    const debts = [
+      { debtorMemberId: "alice", creditorMemberId: "bob", expenseId: "e1", owedCents: 10000 },
+      { debtorMemberId: "bob", creditorMemberId: "alice", expenseId: "e2", owedCents: 3000 },
+    ];
+    const transfers = computePairwiseTransfers(debts);
+    expect(transfers).toHaveLength(1);
+    expect(transfers[0]).toMatchObject({ fromMemberId: "alice", toMemberId: "bob", amountCents: 7000 });
   });
 
   it("is deterministic regardless of input order", () => {
