@@ -194,6 +194,16 @@ describe("computePairwiseTransfers", () => {
     expect(transfers).toHaveLength(2);
   });
 
+  it("nets opposing pair transfers to a single line", () => {
+    const debts = [
+      { debtorMemberId: "alice", creditorMemberId: "bob", expenseId: "e1", owedCents: 10000 },
+      { debtorMemberId: "bob", creditorMemberId: "alice", expenseId: "e2", owedCents: 3000 },
+    ];
+    const transfers = computePairwiseTransfers(debts);
+    expect(transfers).toHaveLength(1);
+    expect(transfers[0]).toMatchObject({ fromMemberId: "alice", toMemberId: "bob", amountCents: 7000 });
+  });
+
   it("is deterministic regardless of input order", () => {
     const debts1 = [
       { debtorMemberId: "z-tom", creditorMemberId: "a-sara", expenseId: "e1", owedCents: 1000 },
