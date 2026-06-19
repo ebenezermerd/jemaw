@@ -85,7 +85,7 @@ export function SettleForm() {
     setFrom(params.get("from") ?? settlementSuggestion?.fromMemberId ?? me);
     setTo(params.get("to") ?? settlementSuggestion?.toMemberId ?? "");
     const a = params.get("amount") ?? settlementSuggestion?.amount;
-    if (a) { setAmount(a); setAmountManual(true); } // treat prefilled amount as manual so user can override
+    if (a) setAmount(a);
     const m = params.get("method") as PaymentMethod | null;
     if (m) setMethod(m);
     if (settlementSuggestion?.description) {
@@ -120,11 +120,11 @@ export function SettleForm() {
   // Keep amount in sync with selected expenses unless the user typed a custom value.
   useEffect(() => {
     if (amountManual) return;
-    if (selected.size === 0) { setAmount(""); return; }
     const cents = relevant
       .filter((e) => selected.has(e.id))
       .reduce((sum, e) => sum + owedShareCents(e, from), 0);
-    setAmount(cents > 0 ? centsToDecimal(cents) : "");
+    if (selected.size > 0) setAmount(centsToDecimal(cents));
+    else setAmount("");
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selected, from, relevant]);
 
