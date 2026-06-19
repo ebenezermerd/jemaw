@@ -178,17 +178,15 @@ export interface SettlementDto {
   createdAt: string; // ISO
 }
 
-/**
- * Body for POST /settlements. `fromMemberId` defaults to the caller. `amount`
- * is clamped to the live debt server-side; omit to settle the full debt.
- */
 export interface CreateSettlementInput {
   toMemberId: string;
   fromMemberId?: string;
+  /** Omit to auto-fill the full owed amount across the selected expenses. */
   amount?: string;
   method?: PaymentMethod;
   description?: string;
-  expenseIds?: string[];
+  /** At least one expense must be selected; amount must not exceed what is owed. */
+  expenseIds: string[];
   occurredAt?: string;
 }
 
@@ -210,6 +208,8 @@ export interface SuggestionDto {
   /** member ids (expense only) */
   splitWith: string[];
   shares: Record<string, number> | null;
+  /** expense ids this settlement suggestion covers (AI-matched, may be empty) */
+  expenseIds: string[];
   /** telegram message ids cited as evidence */
   evidenceMessageIds: number[];
   reasoning: string;
