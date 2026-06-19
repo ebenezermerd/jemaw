@@ -103,16 +103,15 @@ export function SettleForm() {
     [expenses, from, to],
   );
 
-  // Preselect the relevant expenses once the pair is known (unless the link named
-  // specific ones), so the list reflects what makes up this balance.
+  // Reset selection when the from→to pair changes (unless the link named specific ones).
   const [selectedPair, setSelectedPair] = useState("");
   useEffect(() => {
     if (!from || !to) return;
     const pair = `${from}>${to}`;
     if (pair === selectedPair) return;
     setSelectedPair(pair);
-    if (params.get("expenses")) return; // link named specific expenses
-    setSelected(new Set(relevant.map((e) => e.id)));
+    if (params.get("expenses")) return; // link named specific expenses — keep them
+    setSelected(new Set()); // start empty; user picks what this payment covers
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [from, to, expenses]);
 
