@@ -246,7 +246,7 @@ d("Allocation-based settlements", () => {
       },
     });
     expect(res.statusCode).toBe(409);
-    expect(res.json().error).toMatch(/no share/);
+    expect(res.json().error).toMatch(/not paid by the payee/);
   });
 
   it("partial pay: expense stays active (gap > tolerance)", async () => {
@@ -275,7 +275,8 @@ d("Allocation-based settlements", () => {
     });
     expect(expRes.json<ExpenseDto[]>().find((e) => e.id === bigExpense.id)).toBeDefined();
 
-    // Settle plan should still show Bob → Alice transfer
+    // Settle plan should still show Bob → Alice transfer.
+    // Accumulated uncovered debts at this point: Lunch 40 + Hotel 100 + BigExpense residual 150 = 290.
     const planRes = await app.inject({
       method: "GET",
       url: `/api/groups/${groupId}/settle`,
@@ -286,9 +287,7 @@ d("Allocation-based settlements", () => {
       (t) => t.fromMemberId === bobId && t.toMemberId === aliceId,
     );
     expect(transfer).toBeDefined();
-    // previously settle also had the first expense (dinner-covered) and hotel covered by previous partial;
-    // but bigExpense bob owes 250, paid 100 → remaining 150
-    expect(Number(transfer!.amount)).toBeCloseTo(150, 0);
+    expect(Number(transfer!.amount)).toBeCloseTo(290, 0);
   });
 
   it("settle across two expenses oldest-first", async () => {
