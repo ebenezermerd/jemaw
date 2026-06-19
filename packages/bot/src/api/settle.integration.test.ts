@@ -13,8 +13,9 @@ import {
   expenses,
   expenseShares,
   settlements,
+  settlementAllocations,
 } from "@jemaw/shared/schema";
-import { eq } from "drizzle-orm";
+import { eq, inArray } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
 import type {
   BalanceDto,
@@ -63,13 +64,24 @@ d("Phase 2 settle integration", () => {
   });
 
   afterAll(async () => {
+    const groupSettlements = await db
+      .select({ id: settlements.id })
+      .from(settlements)
+      .where(eq(settlements.groupId, groupId));
+    if (groupSettlements.length > 0) {
+      await db.delete(settlementAllocations).where(
+        inArray(settlementAllocations.settlementId, groupSettlements.map((s) => s.id)),
+      );
+    }
     await db.delete(settlements).where(eq(settlements.groupId, groupId));
     const exp = await db
       .select({ id: expenses.id })
       .from(expenses)
       .where(eq(expenses.groupId, groupId));
-    for (const e of exp) {
-      await db.delete(expenseShares).where(eq(expenseShares.expenseId, e.id));
+    if (exp.length > 0) {
+      await db.delete(expenseShares).where(
+        inArray(expenseShares.expenseId, exp.map((e) => e.id)),
+      );
     }
     await db.delete(expenses).where(eq(expenses.groupId, groupId));
     await db.delete(members).where(eq(members.groupId, groupId));
@@ -111,22 +123,36 @@ d("Phase 2 settle integration", () => {
   });
 
   it("rejects a non-debtor marking paid (Sara is owed, not the debtor)", async () => {
+    // Fetch the expense Sara just paid so we have a valid ID.
+    const expRes = await app.inject({
+      method: "GET",
+      url: `/api/groups/${groupId}/expenses`,
+      headers: h(saraTg),
+    });
+    const expenseId = (expRes.json() as ExpenseDto[])[0]!.id;
+    // Sara tries to pay Tom, but she owes nobody → 409 (no debt between these members).
     const res = await app.inject({
       method: "POST",
       url: `/api/groups/${groupId}/settlements`,
       headers: h(saraTg),
-      payload: { toMemberId: tomId },
+      payload: { toMemberId: tomId, expenseIds: [expenseId] },
     });
-    // Sara owes nobody → no transfer from Sara → 409.
     expect(res.statusCode).toBe(409);
   });
 
   it("debtor marks paid; balances zero out", async () => {
+    // Fetch the active expense to pass expenseIds.
+    const expRes = await app.inject({
+      method: "GET",
+      url: `/api/groups/${groupId}/expenses`,
+      headers: h(tomTg),
+    });
+    const expenseId = (expRes.json() as ExpenseDto[])[0]!.id;
     const res = await app.inject({
       method: "POST",
       url: `/api/groups/${groupId}/settlements`,
       headers: h(tomTg),
-      payload: { toMemberId: saraId },
+      payload: { toMemberId: saraId, expenseIds: [expenseId] },
     });
     expect(res.statusCode).toBe(201);
 
@@ -142,14 +168,16 @@ d("Phase 2 settle integration", () => {
     expect(by["Tom"]).toBe("0.00");
   });
 
-  it("clamps a second mark-paid to the new debt after another expense", async () => {
-    // Tom pays 10 split 2 ways → Tom +5, Sara -5. Now Sara owes Tom 5.
-    await addExpense("10.00", tomId);
+  it("settles new debt after another expense; amount auto-fills to max owed", async () => {
+    // Tom pays 10 split 2 ways → Sara owes Tom 5.
+    const addRes = await addExpense("10.00", tomId);
+    const expenseId = (addRes.json() as ExpenseDto).id;
+    // Sara settles with no explicit amount → auto-fills to max owed (5.00).
     const res = await app.inject({
       method: "POST",
       url: `/api/groups/${groupId}/settlements`,
       headers: h(saraTg),
-      payload: { toMemberId: tomId },
+      payload: { toMemberId: tomId, expenseIds: [expenseId] },
     });
     expect(res.statusCode).toBe(201);
     expect((res.json() as { amount: string }).amount).toBe("5.00");

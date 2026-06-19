@@ -5,6 +5,7 @@ import {
   expenses,
   expenseShares,
   settlements,
+  settlementAllocations,
   suggestions,
   aiRuns,
   messages,
@@ -12,13 +13,14 @@ import {
 import { getTableName } from "drizzle-orm";
 
 describe("schema", () => {
-  it("defines all 8 tables from the plan", () => {
+  it("defines all 9 tables", () => {
     const names = [
       groups,
       members,
       expenses,
       expenseShares,
       settlements,
+      settlementAllocations,
       suggestions,
       aiRuns,
       messages,
@@ -30,6 +32,7 @@ describe("schema", () => {
       "expenses",
       "expense_shares",
       "settlements",
+      "settlement_allocations",
       "suggestions",
       "ai_runs",
       "messages",
