@@ -35,7 +35,7 @@ export interface PairDebt {
 }
 
 /** A debtor's share is "covered" when the remaining gap is within tolerance. */
-export const COVERAGE_TOLERANCE_CENTS = 100; // 1.00 currency unit
+export const COVERAGE_TOLERANCE_CENTS = 300; // 3.00 currency unit
 
 export function isShareCovered(
   owedShareCents: number,
