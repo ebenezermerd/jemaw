@@ -19,8 +19,15 @@ import {
   handledEvidenceMessageIds,
   countLiveExpenses,
   countSettlements,
+  listLiveExpenses,
+  listSettlementAllocations,
 } from "../repo.js";
 import { getSummaryForScan } from "./summary.js";
+import {
+  deriveExpenseDebts,
+  type ExpenseForDebt,
+  type AllocationForDebt,
+} from "../domain/pairwiseDebt.js";
 import type { Group } from "@jemaw/shared/schema";
 
 const MAX_MESSAGES = 10;
@@ -48,8 +55,6 @@ export async function scanGroup(
 ): Promise<ScanResult> {
   const { db, gemini } = deps;
   const members = await listMembers(db, group.id);
-  // Trailing window of the last N messages, so every "jemaw" re-examines recent
-  // context (a since-last-scan window of one message finds nothing).
   const msgs = await lastNMessages(db, group.id, MAX_MESSAGES);
   console.log(
     `[scan] group=${group.id} members=${members.length} messages=${msgs.length}`,
@@ -292,6 +297,24 @@ export async function scanGroup(
     });
   }
 
+  // Load live expenses + allocations once for settlement expense-matching.
+  const liveExpenses = await listLiveExpenses(db, group.id);
+  const rawAllocations = await listSettlementAllocations(db, group.id);
+  const expensesForDebt: ExpenseForDebt[] = liveExpenses.map((e) => ({
+    expenseId: e.expense.id,
+    payerMemberId: e.expense.payerMemberId,
+    occurredAt: e.expense.occurredAt,
+    shares: e.shares.map((s) => ({
+      memberId: s.memberId,
+      shareCents: decimalToCents(s.shareAmount),
+    })),
+  }));
+  const allocations: AllocationForDebt[] = rawAllocations.map((a) => ({
+    expenseId: a.expenseId,
+    memberId: a.memberId,
+    allocatedCents: decimalToCents(a.allocatedAmount),
+  }));
+
   // ── settlements (paybacks detected in chat) ──
   for (const st of parsed.data.settlements) {
     if (tierFor(st.confidence) === "drop") {
@@ -311,6 +334,28 @@ export async function scanGroup(
       );
       continue;
     }
+
+    // Match which expenses this payment covers using per-creditor debts.
+    // Greedily pick oldest-first expenses where from owes to, up to the stated amount.
+    const debts = deriveExpenseDebts(expensesForDebt, allocations)
+      .filter((d) => d.debtorMemberId === from.id && d.creditorMemberId === to.id)
+      .sort((a, b) => {
+        const ea = liveExpenses.find((e) => e.expense.id === a.expenseId);
+        const eb = liveExpenses.find((e) => e.expense.id === b.expenseId);
+        return (ea?.expense.occurredAt.getTime() ?? 0) - (eb?.expense.occurredAt.getTime() ?? 0);
+      });
+    const matchedExpenseIds: string[] = [];
+    if (st.amount != null) {
+      let remaining = decimalToCents(st.amount.toFixed(2));
+      for (const d of debts) {
+        if (remaining <= 0) break;
+        matchedExpenseIds.push(d.expenseId);
+        remaining -= d.owedCents;
+      }
+    } else {
+      matchedExpenseIds.push(...debts.map((d) => d.expenseId));
+    }
+
     rows.push({
       groupId: group.id,
       aiRunId: run.id,
@@ -324,9 +369,10 @@ export async function scanGroup(
       payerMemberId: null,
       fromMemberId: from.id,
       toMemberId: to.id,
-      splitType: "equal" as const, // unused for settlements; schema needs non-null
+      splitType: "equal" as const,
       splitWith: [],
       shares: null,
+      expenseIds: matchedExpenseIds,
       evidenceMessageIds: st.evidence_message_ids,
       reasoning: st.reasoning,
       status: "pending" as const,
