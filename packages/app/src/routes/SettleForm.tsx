@@ -77,22 +77,18 @@ export function SettleForm() {
   const [query, setQuery] = useState("");
   const [overPayError, setOverPayError] = useState<string | null>(null);
 
-  // Prefill from params. The amount is the settle plan's net (e.g. 450), which
-  // already accounts for both directions and prior settlements — we trust it
-  // rather than re-deriving a one-directional share sum that would diverge.
+  // Prefill the pair, method and note from params. Amount and expense selection
+  // are driven by the pair effect below (preselects outstanding expenses), so the
+  // shown total always matches the selected expenses and adjusts as the user toggles.
   useEffect(() => {
     if (!group.data) return;
     setFrom(params.get("from") ?? settlementSuggestion?.fromMemberId ?? me);
     setTo(params.get("to") ?? settlementSuggestion?.toMemberId ?? "");
-    const a = params.get("amount") ?? settlementSuggestion?.amount;
-    if (a) setAmount(a);
     const m = params.get("method") as PaymentMethod | null;
     if (m) setMethod(m);
     if (settlementSuggestion?.description) {
       setDescription(settlementSuggestion.description);
     }
-    const exp = params.get("expenses");
-    if (exp) setSelected(new Set(exp.split(",").filter(Boolean)));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [group.data, settlementSuggestion?.id]);
 
@@ -104,18 +100,24 @@ export function SettleForm() {
     [expenses, from, to],
   );
 
-  // Reset selection when the from→to pair changes (unless the link named specific ones).
+  // When the from→to pair changes, preselect the outstanding expenses behind
+  // this balance so the user lands on the full settlement and can toggle items
+  // off to settle less. A link naming specific expenses overrides this.
   const [selectedPair, setSelectedPair] = useState("");
   useEffect(() => {
-    if (!from || !to) return;
+    if (!from || !to || expensesQ.isLoading) return;
     const pair = `${from}>${to}`;
     if (pair === selectedPair) return;
     setSelectedPair(pair);
-    if (params.get("expenses")) return; // link named specific expenses — keep them
-    setSelected(new Set()); // start empty; user picks what this payment covers
     setAmountManual(false);
+    const exp = params.get("expenses");
+    if (exp) {
+      setSelected(new Set(exp.split(",").filter(Boolean))); // link named specific expenses
+    } else {
+      setSelected(new Set(relevant.map((e) => e.id))); // default: everything outstanding
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [from, to, expenses]);
+  }, [from, to, expenses, expensesQ.isLoading]);
 
   // Keep amount in sync with selected expenses unless the user typed a custom value.
   useEffect(() => {
