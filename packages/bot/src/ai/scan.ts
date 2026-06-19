@@ -351,9 +351,12 @@ export async function scanGroup(
         if (remaining <= 0) break;
         matchedExpenseIds.push(d.expenseId);
         remaining -= d.owedCents;
+        // Stop as soon as the payment is fully accounted for
+        if (remaining <= 0) break;
       }
-    } else {
-      matchedExpenseIds.push(...debts.map((d) => d.expenseId));
+    } else if (debts.length > 0) {
+      // No amount known — pick only the single most recent outstanding expense
+      matchedExpenseIds.push(debts[0]!.expenseId);
     }
 
     rows.push({
