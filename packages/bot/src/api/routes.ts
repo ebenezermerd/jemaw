@@ -39,7 +39,6 @@ import {
   deriveExpenseDebts,
   isExpenseCovered,
   computePairwiseTransfers,
-  COVERAGE_TOLERANCE_CENTS,
   type ExpenseForDebt,
   type AllocationForDebt,
 } from "../domain/pairwiseDebt.js";
@@ -477,14 +476,14 @@ export async function registerApi(
       ? decimalToCents(input.amount)
       : maxAllocatableCents;
 
-    if (requestedCents > maxAllocatableCents + COVERAGE_TOLERANCE_CENTS) {
+    if (requestedCents > maxAllocatableCents) {
       return {
         error: "amount exceeds what you owe on the selected expenses",
         status: 409,
         extra: { maxAllocatable: centsToDecimal(maxAllocatableCents) },
       };
     }
-    const paidCents = Math.min(requestedCents, maxAllocatableCents);
+    const paidCents = requestedCents;
 
     const sortedExpenses = [...selectedExpenses].sort(
       (a, b) => a.expense.occurredAt.getTime() - b.expense.occurredAt.getTime(),
