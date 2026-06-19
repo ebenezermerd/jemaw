@@ -43,6 +43,13 @@
       "when": 1781871310874,
       "tag": "0005_third_tomas",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1781873088540,
+      "tag": "0006_windy_white_tiger",
+      "breakpoints": true
     }
   ]
 }
