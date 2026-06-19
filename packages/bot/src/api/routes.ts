@@ -416,11 +416,6 @@ export async function registerApi(
     },
   );
 
-  /**
-   * Shared settlement create logic used by manual POST, suggestion confirm, and
-   * suggestion edit. Validates the selected expenses belong to the from→to pair,
-   * allocates the paid amount across them oldest-first, and writes allocations.
-   */
   async function recordSettlementFromInput(
     group: { id: string; defaultCurrency: string },
     member: Member,
@@ -432,10 +427,8 @@ export async function registerApi(
     const fromMemberId = input.fromMemberId ?? member.id;
     const { toMemberId, expenseIds } = input;
 
-    // Load current per-expense debts from→to.
     const { expensesForDebt, allocations, transfers } = await loadLedger(db, group.id);
 
-    // Confirm there is currently debt from→to in the pairwise plan.
     const hasDebt = transfers.some(
       (t) => t.fromMemberId === fromMemberId && t.toMemberId === toMemberId,
     );
@@ -447,7 +440,6 @@ export async function registerApi(
       };
     }
 
-    // Resolve the selected expenses and validate each belongs to the from→to pair.
     const liveExpenses = await listLiveExpenses(db, group.id);
     const selectedExpenses = expenseIds
       .map((id) => liveExpenses.find((e) => e.expense.id === id))
@@ -468,12 +460,11 @@ export async function registerApi(
       }
     }
 
-    // Compute max allocatable = sum of residual owed by from on each selected expense.
     const expensesForDebtMap = new Map(expensesForDebt.map((e) => [e.expenseId, e]));
     let maxAllocatableCents = 0;
     for (const e of selectedExpenses) {
       const efd = expensesForDebtMap.get(e.expense.id);
-      if (!efd) continue; // already fully covered
+      if (!efd) continue;
       const share = efd.shares.find((s) => s.memberId === fromMemberId);
       if (!share) continue;
       const allocated = allocations
@@ -482,7 +473,6 @@ export async function registerApi(
       maxAllocatableCents += Math.max(0, share.shareCents - allocated);
     }
 
-    // Determine paid amount; reject if it exceeds what's owed.
     const requestedCents = input.amount
       ? decimalToCents(input.amount)
       : maxAllocatableCents;
@@ -496,7 +486,6 @@ export async function registerApi(
     }
     const paidCents = Math.min(requestedCents, maxAllocatableCents);
 
-    // Allocate across selected expenses, oldest-first, greedily.
     const sortedExpenses = [...selectedExpenses].sort(
       (a, b) => a.expense.occurredAt.getTime() - b.expense.occurredAt.getTime(),
     );
@@ -541,8 +530,7 @@ export async function registerApi(
     return { settlement };
   }
 
-  // GET expenses list. Covered expenses are excluded by default; pass
-  // ?includeCovered=1 to include them (used by History / ExpenseDetail).
+
   app.get(
     "/api/groups/:groupId/expenses",
     { preHandler: auth },
