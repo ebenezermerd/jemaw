@@ -150,6 +150,7 @@ export const suggestions = pgTable("suggestions", {
   splitType: splitType("split_type").notNull(),
   splitWith: jsonb("split_with").notNull(), // array of member ids
   shares: jsonb("shares"),
+  expenseIds: jsonb("expense_ids"),
   evidenceMessageIds: jsonb("evidence_message_ids").notNull(),
   reasoning: text("reasoning").notNull(),
   status: suggestionStatus("status").notNull().default("pending"),

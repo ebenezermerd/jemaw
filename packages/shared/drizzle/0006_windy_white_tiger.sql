@@ -1,0 +1,1 @@
+ALTER TABLE "suggestions" ADD COLUMN "expense_ids" jsonb;
