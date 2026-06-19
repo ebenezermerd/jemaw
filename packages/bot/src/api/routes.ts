@@ -16,7 +16,8 @@ import {
   groupHasExpenses,
   groupHasNewMessages,
   listSettlements,
-  createSettlement,
+  createSettlementWithAllocations,
+  listSettlementAllocations,
   listPendingSuggestions,
   getSuggestion,
   resolveSuggestion,
@@ -26,6 +27,7 @@ import {
   countAdmins,
   updateGroupCurrency,
   resetGroupData,
+  type AllocationInput,
 } from "../repo.js";
 import { computeSplit } from "../domain/splits.js";
 import {
@@ -33,7 +35,14 @@ import {
   type ExpenseForBalance,
   type MemberNet,
 } from "../domain/balances.js";
-import { computeSettlement } from "../domain/settle.js";
+import {
+  deriveExpenseDebts,
+  isExpenseCovered,
+  computePairwiseTransfers,
+  COVERAGE_TOLERANCE_CENTS,
+  type ExpenseForDebt,
+  type AllocationForDebt,
+} from "../domain/pairwiseDebt.js";
 import { refreshGroupSummarySafe } from "../ai/summary.js";
 import {
   decimalToCents,
@@ -42,7 +51,8 @@ import {
   type HistoryItem,
   type SettlePlanResponse,
 } from "@jemaw/shared/types";
-import type { Member } from "@jemaw/shared/schema";
+import type { Transfer } from "../domain/settle.js";
+import type { Member, Settlement } from "@jemaw/shared/schema";
 import {
   toGroupDto,
   toExpenseDto,
@@ -59,18 +69,32 @@ import type {
 import type { ScanRateLimiter } from "../ai/rateLimit.js";
 
 /**
- * Compute the current net balances for a group from live expenses + paid
- * settlements. Shared by the balances, settle, and mark-paid endpoints so the
- * math is defined in exactly one place.
+ * Load the full ledger for a group: net balances (for Balances screen),
+ * per-creditor pairwise transfers (for the Settle plan), coverage set, and
+ * the raw data needed by settlement-create validation.
+ *
+ * nets   — computed from ALL live expenses + ALL settlements (zero-sum invariant).
+ * transfers — per-creditor pairwise plan from expense_shares minus allocations.
+ * coveredExpenseIds — expenses where every debtor share is within tolerance.
  */
-async function loadBalances(
+async function loadLedger(
   db: Db,
   groupId: string,
-): Promise<{ members: Member[]; nets: MemberNet[] }> {
+): Promise<{
+  members: Member[];
+  nets: MemberNet[];
+  expensesForDebt: ExpenseForDebt[];
+  allocations: AllocationForDebt[];
+  coveredExpenseIds: Set<string>;
+  transfers: Transfer[];
+}> {
   const members = await listMembers(db, groupId);
-  const expenses = await listLiveExpenses(db, groupId);
+  const liveExpenses = await listLiveExpenses(db, groupId);
   const settlements = await listSettlements(db, groupId);
-  const forBalance: ExpenseForBalance[] = expenses.map((e) => ({
+  const rawAllocations = await listSettlementAllocations(db, groupId);
+
+  // Net balances (unchanged from before — keeps zero-sum invariant).
+  const forBalance: ExpenseForBalance[] = liveExpenses.map((e) => ({
     payerMemberId: e.expense.payerMemberId,
     amountCents: decimalToCents(e.expense.amount),
     shares: e.shares.map((s) => ({
@@ -88,7 +112,33 @@ async function loadBalances(
     forBalance,
     forSettle,
   );
-  return { members, nets };
+
+  // Per-creditor pairwise debt (new — drives Settle plan + coverage).
+  const expensesForDebt: ExpenseForDebt[] = liveExpenses.map((e) => ({
+    expenseId: e.expense.id,
+    payerMemberId: e.expense.payerMemberId,
+    occurredAt: e.expense.occurredAt,
+    shares: e.shares.map((s) => ({
+      memberId: s.memberId,
+      shareCents: decimalToCents(s.shareAmount),
+    })),
+  }));
+  const allocations: AllocationForDebt[] = rawAllocations.map((a) => ({
+    expenseId: a.expenseId,
+    memberId: a.memberId,
+    allocatedCents: decimalToCents(a.allocatedAmount),
+  }));
+
+  const coveredExpenseIds = new Set(
+    expensesForDebt
+      .filter((e) => isExpenseCovered(e, allocations))
+      .map((e) => e.expenseId),
+  );
+
+  const pairDebts = deriveExpenseDebts(expensesForDebt, allocations);
+  const transfers = computePairwiseTransfers(pairDebts);
+
+  return { members, nets, expensesForDebt, allocations, coveredExpenseIds, transfers };
 }
 
 /** Validated expense input shape (shared by create + edit). */
@@ -164,7 +214,7 @@ const createSettlementSchema = z.object({
   amount: z.string().regex(/^\d+(\.\d{1,2})?$/).optional(),
   method: z.enum(["cash", "bank", "telebirr", "other"]).optional(),
   description: z.string().max(200).optional(),
-  expenseIds: z.array(z.string().uuid()).optional(),
+  expenseIds: z.array(z.string().uuid()).min(1, "select at least one expense"),
   occurredAt: z.string().datetime().optional(),
 });
 
@@ -281,7 +331,7 @@ export async function registerApi(
     { preHandler: auth },
     async (req) => {
       const { group, member } = req.jemaw!;
-      const { nets } = await loadBalances(db, group.id);
+      const { nets } = await loadLedger(db, group.id);
       const net = nets.find((n) => n.memberId === member.id)?.netCents ?? 0;
 
       const expenses = await listLiveExpenses(db, group.id);
@@ -315,22 +365,21 @@ export async function registerApi(
     { preHandler: auth },
     async (req) => {
       const { group } = req.jemaw!;
-      const { members, nets } = await loadBalances(db, group.id);
+      const { members, nets } = await loadLedger(db, group.id);
       const nameOf = (id: string) =>
         members.find((m) => m.id === id)?.displayName ?? "Member";
       return toBalanceDtos(nets, nameOf);
     },
   );
 
-  // GET live settle-up plan
+  // GET live settle-up plan (per-creditor pairwise, not global netting)
   app.get(
     "/api/groups/:groupId/settle",
     { preHandler: auth },
     async (req) => {
       const { group } = req.jemaw!;
-      const { nets } = await loadBalances(db, group.id);
-      const transfers = computeSettlement(nets).map(toTransferDto);
-      const res: SettlePlanResponse = { transfers };
+      const { transfers } = await loadLedger(db, group.id);
+      const res: SettlePlanResponse = { transfers: transfers.map(toTransferDto) };
       return res;
     },
   );
@@ -346,9 +395,9 @@ export async function registerApi(
     },
   );
 
-  // POST record a settlement. Payer defaults to the caller; amount is clamped
-  // to the live debt (omit to settle in full). Carries method/description/
-  // expenseIds/date metadata from the settle form.
+  // POST record a settlement. Requires >=1 selected expense (expenseIds).
+  // Amount is allocated across selected expenses oldest-first; over-paying is
+  // rejected with the max-allocatable cap rather than silently clamped.
   app.post(
     "/api/groups/:groupId/settlements",
     { preHandler: auth },
@@ -358,93 +407,154 @@ export async function registerApi(
       if (!parsed.success) {
         return reply.code(400).send({ error: "invalid body" });
       }
-      const body = parsed.data;
-      const fromMemberId = body.fromMemberId ?? member.id;
-      const { toMemberId } = body;
-
-      // Recompute the live plan and find this exact debtor->creditor transfer.
-      const { nets } = await loadBalances(db, group.id);
-      const plan = computeSettlement(nets);
-      const transfer = plan.find(
-        (t) => t.fromMemberId === fromMemberId && t.toMemberId === toMemberId,
-      );
-      if (!transfer) {
-        return reply.code(409).send({
-          error: "no current debt between these members",
-          transfers: plan.map(toTransferDto),
-        });
+      const result = await recordSettlementFromInput(group, member, parsed.data);
+      if ("error" in result) {
+        return reply.code(result.status ?? 409).send({ error: result.error, ...result.extra });
       }
-
-      // Amount: requested (clamped to debt) or the full debt.
-      const requestedCents = body.amount
-        ? decimalToCents(body.amount)
-        : transfer.amountCents;
-      const amountCents = Math.min(requestedCents, transfer.amountCents);
-
-      const created = await createSettlement(db, {
-        groupId: group.id,
-        fromMemberId,
-        toMemberId,
-        amount: centsToDecimal(amountCents),
-        currency: group.defaultCurrency,
-        method: body.method ?? "cash",
-        description: body.description ?? null,
-        expenseIds: body.expenseIds ?? null,
-        occurredAt: body.occurredAt ? new Date(body.occurredAt) : new Date(),
-        markedPaidAt: new Date(),
-        markedPaidByMemberId: member.id,
-      });
       await refreshGroupSummarySafe(db, group.id);
-      return reply.code(201).send(toSettlementDto(created));
+      return reply.code(201).send(toSettlementDto(result.settlement));
     },
   );
 
+  /**
+   * Shared settlement create logic used by manual POST, suggestion confirm, and
+   * suggestion edit. Validates the selected expenses belong to the from→to pair,
+   * allocates the paid amount across them oldest-first, and writes allocations.
+   */
   async function recordSettlementFromInput(
     group: { id: string; defaultCurrency: string },
     member: Member,
     input: z.infer<typeof createSettlementSchema>,
-  ): Promise<{ settlement: Awaited<ReturnType<typeof createSettlement>> } | { error: string; transfers?: unknown[] }> {
+  ): Promise<
+    | { settlement: Settlement }
+    | { error: string; status?: number; extra?: Record<string, unknown> }
+  > {
     const fromMemberId = input.fromMemberId ?? member.id;
-    const { toMemberId } = input;
-    const { nets } = await loadBalances(db, group.id);
-    const plan = computeSettlement(nets);
-    const transfer = plan.find(
+    const { toMemberId, expenseIds } = input;
+
+    // Load current per-expense debts from→to.
+    const { expensesForDebt, allocations, transfers } = await loadLedger(db, group.id);
+
+    // Confirm there is currently debt from→to in the pairwise plan.
+    const hasDebt = transfers.some(
       (t) => t.fromMemberId === fromMemberId && t.toMemberId === toMemberId,
     );
-    if (!transfer) {
+    if (!hasDebt) {
       return {
         error: "no current debt between these members",
-        transfers: plan.map(toTransferDto),
+        status: 409,
+        extra: { transfers: transfers.map(toTransferDto) },
       };
     }
+
+    // Resolve the selected expenses and validate each belongs to the from→to pair.
+    const liveExpenses = await listLiveExpenses(db, group.id);
+    const selectedExpenses = expenseIds
+      .map((id) => liveExpenses.find((e) => e.expense.id === id))
+      .filter((e): e is NonNullable<typeof e> => e !== undefined);
+
+    for (const e of selectedExpenses) {
+      if (e.expense.payerMemberId !== toMemberId) {
+        return {
+          error: `expense "${e.expense.description}" was not paid by the payee`,
+          status: 409,
+        };
+      }
+      if (!e.shares.some((s) => s.memberId === fromMemberId)) {
+        return {
+          error: `you have no share in "${e.expense.description}"`,
+          status: 409,
+        };
+      }
+    }
+
+    // Compute max allocatable = sum of residual owed by from on each selected expense.
+    const expensesForDebtMap = new Map(expensesForDebt.map((e) => [e.expenseId, e]));
+    let maxAllocatableCents = 0;
+    for (const e of selectedExpenses) {
+      const efd = expensesForDebtMap.get(e.expense.id);
+      if (!efd) continue; // already fully covered
+      const share = efd.shares.find((s) => s.memberId === fromMemberId);
+      if (!share) continue;
+      const allocated = allocations
+        .filter((a) => a.expenseId === e.expense.id && a.memberId === fromMemberId)
+        .reduce((sum, a) => sum + a.allocatedCents, 0);
+      maxAllocatableCents += Math.max(0, share.shareCents - allocated);
+    }
+
+    // Determine paid amount; reject if it exceeds what's owed.
     const requestedCents = input.amount
       ? decimalToCents(input.amount)
-      : transfer.amountCents;
-    const amountCents = Math.min(requestedCents, transfer.amountCents);
-    const settlement = await createSettlement(db, {
-      groupId: group.id,
-      fromMemberId,
-      toMemberId,
-      amount: centsToDecimal(amountCents),
-      currency: group.defaultCurrency,
-      method: input.method ?? "cash",
-      description: input.description ?? null,
-      expenseIds: input.expenseIds ?? null,
-      occurredAt: input.occurredAt ? new Date(input.occurredAt) : new Date(),
-      markedPaidAt: new Date(),
-      markedPaidByMemberId: member.id,
-    });
+      : maxAllocatableCents;
+
+    if (requestedCents > maxAllocatableCents + COVERAGE_TOLERANCE_CENTS) {
+      return {
+        error: "amount exceeds what you owe on the selected expenses",
+        status: 409,
+        extra: { maxAllocatable: centsToDecimal(maxAllocatableCents) },
+      };
+    }
+    const paidCents = Math.min(requestedCents, maxAllocatableCents);
+
+    // Allocate across selected expenses, oldest-first, greedily.
+    const sortedExpenses = [...selectedExpenses].sort(
+      (a, b) => a.expense.occurredAt.getTime() - b.expense.occurredAt.getTime(),
+    );
+    const allocationInputs: AllocationInput[] = [];
+    let remaining = paidCents;
+    for (const e of sortedExpenses) {
+      if (remaining <= 0) break;
+      const efd = expensesForDebtMap.get(e.expense.id);
+      const share = efd?.shares.find((s) => s.memberId === fromMemberId);
+      if (!share) continue;
+      const allocated = allocations
+        .filter((a) => a.expenseId === e.expense.id && a.memberId === fromMemberId)
+        .reduce((sum, a) => sum + a.allocatedCents, 0);
+      const residual = Math.max(0, share.shareCents - allocated);
+      const give = Math.min(remaining, residual);
+      if (give > 0) {
+        allocationInputs.push({
+          expenseId: e.expense.id,
+          memberId: fromMemberId,
+          allocatedAmount: centsToDecimal(give),
+        });
+        remaining -= give;
+      }
+    }
+
+    const { settlement } = await createSettlementWithAllocations(
+      db,
+      {
+        groupId: group.id,
+        fromMemberId,
+        toMemberId,
+        amount: centsToDecimal(paidCents),
+        currency: group.defaultCurrency,
+        method: input.method ?? "cash",
+        description: input.description ?? null,
+        occurredAt: input.occurredAt ? new Date(input.occurredAt) : new Date(),
+        markedPaidAt: new Date(),
+        markedPaidByMemberId: member.id,
+      },
+      allocationInputs,
+    );
     return { settlement };
   }
 
-  // GET expenses list
+  // GET expenses list. Covered expenses are excluded by default; pass
+  // ?includeCovered=1 to include them (used by History / ExpenseDetail).
   app.get(
     "/api/groups/:groupId/expenses",
     { preHandler: auth },
     async (req) => {
       const { group } = req.jemaw!;
+      const { includeCovered } = req.query as { includeCovered?: string };
       const expenses = await listLiveExpenses(db, group.id);
-      return expenses.map(toExpenseDto);
+      if (includeCovered === "1") return expenses.map(toExpenseDto);
+      const { coveredExpenseIds } = await loadLedger(db, group.id);
+      return expenses
+        .filter((e) => !coveredExpenseIds.has(e.expense.id))
+        .map(toExpenseDto);
     },
   );
 
@@ -592,7 +702,9 @@ export async function registerApi(
     },
   );
 
-  // GET history (expenses + settlements, grouped by day)
+  // GET history (expenses + settlements, grouped by day). Covered items are
+  // included (not hidden) but tagged with settled:true for the UI to render
+  // a "settled" badge. Expenses fetched with includeCovered=1 implicitly.
   app.get(
     "/api/groups/:groupId/history",
     { preHandler: auth },
@@ -600,7 +712,9 @@ export async function registerApi(
       const { group } = req.jemaw!;
       const { memberId } = req.query as { memberId?: string };
 
-      let expenses = await listLiveExpenses(db, group.id);
+      const { coveredExpenseIds } = await loadLedger(db, group.id);
+
+      let expenses = await listLiveExpenses(db, group.id); // includes covered
       let settlements = await listSettlements(db, group.id);
       if (memberId) {
         expenses = expenses.filter(
@@ -616,18 +730,22 @@ export async function registerApi(
       // Each item carries its day + a sort timestamp.
       const entries: { day: string; ts: number; item: HistoryItem }[] = [];
       for (const e of expenses) {
+        const settled = coveredExpenseIds.has(e.expense.id);
         entries.push({
           day: e.expense.occurredAt.toISOString().slice(0, 10),
           ts: e.expense.occurredAt.getTime(),
-          item: { kind: "expense", expense: toExpenseDto(e) },
+          item: { kind: "expense", expense: toExpenseDto(e), settled },
         });
       }
       for (const s of settlements) {
         const when = s.markedPaidAt ?? s.createdAt;
+        // A settlement is "settled" when all expenses it covers are covered.
+        const expIds = (s.expenseIds as string[] | null) ?? [];
+        const settled = expIds.length > 0 && expIds.every((id) => coveredExpenseIds.has(id));
         entries.push({
           day: when.toISOString().slice(0, 10),
           ts: when.getTime(),
-          item: { kind: "settlement", settlement: toSettlementDto(s) },
+          item: { kind: "settlement", settlement: toSettlementDto(s), settled },
         });
       }
 
@@ -796,44 +914,37 @@ export async function registerApi(
         return reply.code(409).send({ error: "already resolved" });
       }
 
-      // ── settlement suggestion → record a settlement, clamped to the debt ──
+      // ── settlement suggestion → record via allocation-based create ──
       if (s.kind === "settlement") {
         if (!s.fromMemberId || !s.toMemberId) {
           return reply.code(400).send({ error: "settlement is missing parties" });
         }
-        const body = (req.body ?? {}) as { amount?: string };
-        const statedDecimal = body.amount ?? s.amount;
-        if (!statedDecimal) {
+        if (!s.amount) {
           return reply
             .code(400)
             .send({ error: "amount required for this settlement; edit it" });
         }
-        const statedCents = decimalToCents(statedDecimal);
-
-        // Clamp to the current debt from→to (same as manual mark-as-paid).
-        const { nets } = await loadBalances(db, group.id);
-        const plan = computeSettlement(nets);
-        const transfer = plan.find(
-          (t) => t.fromMemberId === s.fromMemberId && t.toMemberId === s.toMemberId,
-        );
-        if (!transfer) {
-          return reply.code(409).send({
-            error: "no current debt between these members",
+        // Suggestions need expenseIds to allocate. If none attached (e.g. AI
+        // didn't match any expense yet), require the user to open the form.
+        const suggestionExpenseIds = (s.splitWith as string[] | null) ?? [];
+        if (suggestionExpenseIds.length === 0) {
+          return reply.code(400).send({
+            error: "select the expenses this settlement covers — open the form to edit",
           });
         }
-        const amountCents = Math.min(statedCents, transfer.amountCents);
-        const created = await createSettlement(db, {
-          groupId: group.id,
+        const body = (req.body ?? {}) as { amount?: string };
+        const result = await recordSettlementFromInput(group, member, {
           fromMemberId: s.fromMemberId,
           toMemberId: s.toMemberId,
-          amount: centsToDecimal(amountCents),
-          currency: group.defaultCurrency,
-          markedPaidAt: new Date(),
-          markedPaidByMemberId: member.id,
+          amount: body.amount ?? s.amount,
+          expenseIds: suggestionExpenseIds,
         });
+        if ("error" in result) {
+          return reply.code(result.status ?? 409).send({ error: result.error, ...result.extra });
+        }
         await resolveSuggestion(db, s.id, "confirmed", member.id, new Date());
         await refreshGroupSummarySafe(db, group.id);
-        return reply.code(201).send(toSettlementDto(created));
+        return reply.code(201).send(toSettlementDto(result.settlement));
       }
 
       // ── expense or loan suggestion → create a ledger entry ──
@@ -911,10 +1022,9 @@ export async function registerApi(
         if (!parsed.success) return reply.code(400).send({ error: "invalid body" });
         const recorded = await recordSettlementFromInput(group, member, parsed.data);
         if ("error" in recorded) {
-          return reply.code(409).send({
-            error: recorded.error,
-            transfers: recorded.transfers,
-          });
+          return reply
+            .code(recorded.status ?? 409)
+            .send({ error: recorded.error, ...recorded.extra });
         }
         await resolveSuggestion(db, s.id, "edited", member.id, new Date());
         await refreshGroupSummarySafe(db, group.id);

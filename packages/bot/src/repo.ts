@@ -10,12 +10,14 @@ import {
   expenses,
   expenseShares,
   settlements,
+  settlementAllocations,
   messages,
   aiRuns,
   suggestions,
   type Group,
   type Member,
   type Settlement,
+  type SettlementAllocation,
   type Message,
   type AiRun,
   type Suggestion,
@@ -215,23 +217,34 @@ export async function addManualMember(
   displayName: string,
   telegramUserId: bigint | null,
 ): Promise<Member> {
-  // Manual members may have no Telegram id yet; use a negative synthetic id
-  // derived from time-free randomness is not available — use 0-based sentinel
-  // via a unique-per-group placeholder. We require a telegramUserId in v1
-  // manual add to keep the unique constraint satisfied; callers pass one or a
-  // synthetic negative id chosen by the route.
-  const tid = telegramUserId ?? -BigInt(Math.floor(performanceNowSafe()));
-  const inserted = await db
-    .insert(members)
-    .values({ groupId, telegramUserId: tid, displayName, username: null })
-    .returning();
-  return inserted[0]!;
-}
-
-// performance.now is allowed; Date.now is avoided per environment constraints
-// elsewhere, but synthetic member ids only need within-process uniqueness.
-function performanceNowSafe(): number {
-  return Math.floor(performance.now() * 1000);
+  if (telegramUserId !== null) {
+    const inserted = await db
+      .insert(members)
+      .values({ groupId, telegramUserId, displayName, username: null })
+      .returning();
+    return inserted[0]!;
+  }
+  // No Telegram id: generate a random large-negative synthetic id and retry on
+  // unique(group_id, telegram_user_id) collision. Correctness rests on the DB
+  // constraint, not on the random value being globally unique.
+  for (let attempt = 0; attempt < 10; attempt++) {
+    const tid = -(
+      BigInt(Date.now()) * 1_000_000n +
+      BigInt(Math.floor(Math.random() * 1_000_000))
+    );
+    try {
+      const inserted = await db
+        .insert(members)
+        .values({ groupId, telegramUserId: tid, displayName, username: null })
+        .returning();
+      return inserted[0]!;
+    } catch (err) {
+      // Postgres unique-violation code 23505 — retry with a new id.
+      if ((err as { code?: string }).code === "23505") continue;
+      throw err;
+    }
+  }
+  throw new Error("Failed to generate a unique synthetic member id after 10 attempts");
 }
 
 export async function renameMember(
@@ -424,6 +437,54 @@ export async function createSettlement(
 ): Promise<Settlement> {
   const rows = await db.insert(settlements).values(values).returning();
   return rows[0]!;
+}
+
+export interface AllocationInput {
+  expenseId: string;
+  memberId: string;
+  allocatedAmount: string; // decimal string
+}
+
+/** Transactionally insert a settlement + its per-expense allocation rows. */
+export async function createSettlementWithAllocations(
+  db: Db,
+  values: typeof settlements.$inferInsert,
+  allocationInputs: AllocationInput[],
+): Promise<{ settlement: Settlement; allocations: SettlementAllocation[] }> {
+  return db.transaction(async (tx) => {
+    // Populate expenseIds JSONB from allocations for back-compat / history.
+    const expenseIds = [...new Set(allocationInputs.map((a) => a.expenseId))];
+    const ins = await tx
+      .insert(settlements)
+      .values({ ...values, expenseIds })
+      .returning();
+    const settlement = ins[0]!;
+    const allocations = await tx
+      .insert(settlementAllocations)
+      .values(
+        allocationInputs.map((a) => ({
+          settlementId: settlement.id,
+          expenseId: a.expenseId,
+          memberId: a.memberId,
+          allocatedAmount: a.allocatedAmount,
+        })),
+      )
+      .returning();
+    return { settlement, allocations };
+  });
+}
+
+/** All allocation rows for settlements belonging to a group. */
+export async function listSettlementAllocations(
+  db: Db,
+  groupId: string,
+): Promise<SettlementAllocation[]> {
+  const rows = await db
+    .select({ sa: settlementAllocations })
+    .from(settlementAllocations)
+    .innerJoin(settlements, eq(settlementAllocations.settlementId, settlements.id))
+    .where(eq(settlements.groupId, groupId));
+  return rows.map((r) => r.sa);
 }
 
 // ─── Messages ─────────────────────────────────────────────────────────
@@ -622,15 +683,22 @@ export async function resolveSuggestion(
  */
 export async function resetGroupData(db: Db, groupId: string): Promise<void> {
   await db.transaction(async (tx) => {
-    // expense_shares has no group_id — delete via its parent expenses.
+    const groupExpenseIds = tx
+      .select({ id: expenses.id })
+      .from(expenses)
+      .where(eq(expenses.groupId, groupId));
+    const groupSettlementIds = tx
+      .select({ id: settlements.id })
+      .from(settlements)
+      .where(eq(settlements.groupId, groupId));
+
+    // Delete allocations first (child of both settlements and expenses).
+    await tx.delete(settlementAllocations).where(
+      inArray(settlementAllocations.settlementId, groupSettlementIds),
+    );
+    // expense_shares has no group_id — delete via parent expenses.
     await tx.delete(expenseShares).where(
-      inArray(
-        expenseShares.expenseId,
-        tx
-          .select({ id: expenses.id })
-          .from(expenses)
-          .where(eq(expenses.groupId, groupId)),
-      ),
+      inArray(expenseShares.expenseId, groupExpenseIds),
     );
     await tx.delete(settlements).where(eq(settlements.groupId, groupId));
     await tx.delete(suggestions).where(eq(suggestions.groupId, groupId));
