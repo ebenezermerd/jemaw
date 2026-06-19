@@ -10,11 +10,17 @@ import {
   listMembers,
   listLiveExpenses,
   listSettlements,
+  listSettlementAllocations,
   getGroupById,
   mergeGroupSettings,
 } from "../repo.js";
 import { computeBalances } from "../domain/balances.js";
-import { computeSettlement } from "../domain/settle.js";
+import {
+  deriveExpenseDebts,
+  computePairwiseTransfers,
+  type ExpenseForDebt,
+  type AllocationForDebt,
+} from "../domain/pairwiseDebt.js";
 import { decimalToCents, centsToDecimal } from "@jemaw/shared/types";
 
 export interface AiSummary {
@@ -41,6 +47,8 @@ export async function computeGroupSummary(
   const nameOf = (id: string) =>
     members.find((m) => m.id === id)?.displayName ?? "Member";
 
+  const rawAllocations = await listSettlementAllocations(db, groupId);
+
   const nets = computeBalances(
     members.map((m) => m.id),
     liveExpenses.map((e) => ({
@@ -58,6 +66,23 @@ export async function computeGroupSummary(
     })),
   );
 
+  // Use per-creditor pairwise transfers so AI grounding matches the UI plan.
+  const expensesForDebt: ExpenseForDebt[] = liveExpenses.map((e) => ({
+    expenseId: e.expense.id,
+    payerMemberId: e.expense.payerMemberId,
+    occurredAt: e.expense.occurredAt,
+    shares: e.shares.map((s) => ({
+      memberId: s.memberId,
+      shareCents: decimalToCents(s.shareAmount),
+    })),
+  }));
+  const allocations: AllocationForDebt[] = rawAllocations.map((a) => ({
+    expenseId: a.expenseId,
+    memberId: a.memberId,
+    allocatedCents: decimalToCents(a.allocatedAmount),
+  }));
+  const openDebts = computePairwiseTransfers(deriveExpenseDebts(expensesForDebt, allocations));
+
   return {
     version: { expenses: liveExpenses.length, settlements: settlementRows.length },
     currency,
@@ -65,7 +90,7 @@ export async function computeGroupSummary(
       name: nameOf(n.memberId),
       net: centsToDecimal(n.netCents),
     })),
-    openDebts: computeSettlement(nets).map((t) => ({
+    openDebts: openDebts.map((t) => ({
       from: nameOf(t.fromMemberId),
       to: nameOf(t.toMemberId),
       amount: centsToDecimal(t.amountCents),

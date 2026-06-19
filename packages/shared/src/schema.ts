@@ -21,7 +21,9 @@ import {
   jsonb,
   integer,
   unique,
+  check,
 } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
 
 // ─── Enums ────────────────────────────────────────────────────────────
 export const expenseSource = pgEnum("expense_source", [
@@ -159,70 +161,103 @@ export const suggestions = pgTable("suggestions", {
 });
 
 // ─── expenses ─────────────────────────────────────────────────────────
-export const expenses = pgTable("expenses", {
-  id: uuid("id").primaryKey().defaultRandom(),
-  groupId: uuid("group_id")
-    .notNull()
-    .references(() => groups.id),
-  payerMemberId: uuid("payer_member_id")
-    .notNull()
-    .references(() => members.id),
-  amount: numeric("amount", { precision: 12, scale: 2 }).notNull(),
-  kind: expenseKind("kind").notNull().default("expense"),
-  currency: text("currency").notNull(),
-  description: text("description").notNull(),
-  createdByMemberId: uuid("created_by_member_id")
-    .notNull()
-    .references(() => members.id),
-  source: expenseSource("source").notNull(),
-  sourceSuggestionId: uuid("source_suggestion_id").references(
-    () => suggestions.id,
-  ),
-  occurredAt: timestamp("occurred_at", { withTimezone: true }).notNull(),
-  createdAt: timestamp("created_at", { withTimezone: true })
-    .notNull()
-    .defaultNow(),
-  voidedAt: timestamp("voided_at", { withTimezone: true }),
-});
+export const expenses = pgTable(
+  "expenses",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    groupId: uuid("group_id")
+      .notNull()
+      .references(() => groups.id),
+    payerMemberId: uuid("payer_member_id")
+      .notNull()
+      .references(() => members.id),
+    amount: numeric("amount", { precision: 12, scale: 2 }).notNull(),
+    kind: expenseKind("kind").notNull().default("expense"),
+    currency: text("currency").notNull(),
+    description: text("description").notNull(),
+    createdByMemberId: uuid("created_by_member_id")
+      .notNull()
+      .references(() => members.id),
+    source: expenseSource("source").notNull(),
+    sourceSuggestionId: uuid("source_suggestion_id").references(
+      () => suggestions.id,
+    ),
+    occurredAt: timestamp("occurred_at", { withTimezone: true }).notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    voidedAt: timestamp("voided_at", { withTimezone: true }),
+  },
+  (t) => [check("expense_amount_positive", sql`${t.amount} > 0`)],
+);
 
 // ─── expense_shares ───────────────────────────────────────────────────
-export const expenseShares = pgTable("expense_shares", {
+export const expenseShares = pgTable(
+  "expense_shares",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    expenseId: uuid("expense_id")
+      .notNull()
+      .references(() => expenses.id),
+    memberId: uuid("member_id")
+      .notNull()
+      .references(() => members.id),
+    shareAmount: numeric("share_amount", { precision: 12, scale: 2 }).notNull(),
+  },
+  (t) => [
+    unique().on(t.expenseId, t.memberId),
+    check("share_amount_nonneg", sql`${t.shareAmount} >= 0`),
+  ],
+);
+
+// ─── settlements ──────────────────────────────────────────────────────
+export const settlements = pgTable(
+  "settlements",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    groupId: uuid("group_id")
+      .notNull()
+      .references(() => groups.id),
+    fromMemberId: uuid("from_member_id")
+      .notNull()
+      .references(() => members.id),
+    toMemberId: uuid("to_member_id")
+      .notNull()
+      .references(() => members.id),
+    amount: numeric("amount", { precision: 12, scale: 2 }).notNull(),
+    currency: text("currency").notNull(),
+    method: paymentMethod("method").notNull().default("cash"),
+    description: text("description"),
+    // Selected expense ids this payment covers — mirrors allocation expenseIds for history/back-compat.
+    expenseIds: jsonb("expense_ids"),
+    occurredAt: timestamp("occurred_at", { withTimezone: true }),
+    markedPaidAt: timestamp("marked_paid_at", { withTimezone: true }),
+    markedPaidByMemberId: uuid("marked_paid_by_member_id").references(
+      () => members.id,
+    ),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [check("settlement_amount_positive", sql`${t.amount} > 0`)],
+);
+
+// ─── settlement_allocations ───────────────────────────────────────────
+// Per-expense allocation rows written when a settlement is recorded. One
+// settlement may cover multiple expenses; each row records how much of the
+// paid amount is attributed to a specific expense+debtor pair.
+export const settlementAllocations = pgTable("settlement_allocations", {
   id: uuid("id").primaryKey().defaultRandom(),
+  settlementId: uuid("settlement_id")
+    .notNull()
+    .references(() => settlements.id),
   expenseId: uuid("expense_id")
     .notNull()
     .references(() => expenses.id),
   memberId: uuid("member_id")
     .notNull()
-    .references(() => members.id),
-  shareAmount: numeric("share_amount", { precision: 12, scale: 2 }).notNull(),
-});
-
-// ─── settlements ──────────────────────────────────────────────────────
-export const settlements = pgTable("settlements", {
-  id: uuid("id").primaryKey().defaultRandom(),
-  groupId: uuid("group_id")
-    .notNull()
-    .references(() => groups.id),
-  fromMemberId: uuid("from_member_id")
-    .notNull()
-    .references(() => members.id),
-  toMemberId: uuid("to_member_id")
-    .notNull()
-    .references(() => members.id),
-  amount: numeric("amount", { precision: 12, scale: 2 }).notNull(),
-  currency: text("currency").notNull(),
-  method: paymentMethod("method").notNull().default("cash"),
-  description: text("description"),
-  // Selected expense ids this payment covers — metadata for context/history.
-  expenseIds: jsonb("expense_ids"),
-  occurredAt: timestamp("occurred_at", { withTimezone: true }),
-  markedPaidAt: timestamp("marked_paid_at", { withTimezone: true }),
-  markedPaidByMemberId: uuid("marked_paid_by_member_id").references(
-    () => members.id,
-  ),
-  createdAt: timestamp("created_at", { withTimezone: true })
-    .notNull()
-    .defaultNow(),
+    .references(() => members.id), // the debtor whose share is being paid
+  allocatedAmount: numeric("allocated_amount", { precision: 12, scale: 2 }).notNull(),
 });
 
 // ─── messages ─────────────────────────────────────────────────────────
@@ -257,6 +292,8 @@ export type ExpenseShare = typeof expenseShares.$inferSelect;
 export type NewExpenseShare = typeof expenseShares.$inferInsert;
 export type Settlement = typeof settlements.$inferSelect;
 export type NewSettlement = typeof settlements.$inferInsert;
+export type SettlementAllocation = typeof settlementAllocations.$inferSelect;
+export type NewSettlementAllocation = typeof settlementAllocations.$inferInsert;
 export type Suggestion = typeof suggestions.$inferSelect;
 export type NewSuggestion = typeof suggestions.$inferInsert;
 export type AiRun = typeof aiRuns.$inferSelect;

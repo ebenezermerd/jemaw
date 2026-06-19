@@ -232,8 +232,8 @@ export interface ConfirmSuggestionInput {
 
 // ─── History ──────────────────────────────────────────────────────────
 export type HistoryItem =
-  | { kind: "expense"; expense: ExpenseDto }
-  | { kind: "settlement"; settlement: SettlementDto };
+  | { kind: "expense"; expense: ExpenseDto; settled: boolean }
+  | { kind: "settlement"; settlement: SettlementDto; settled: boolean };
 
 export interface HistoryDayGroup {
   /** YYYY-MM-DD */
