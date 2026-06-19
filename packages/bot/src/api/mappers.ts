@@ -123,6 +123,7 @@ export function toSuggestionDto(s: Suggestion): SuggestionDto {
     splitType: s.splitType,
     splitWith: (s.splitWith as string[]) ?? [],
     shares: (s.shares as Record<string, number> | null) ?? null,
+    expenseIds: (s.expenseIds as string[] | null) ?? [],
     evidenceMessageIds: (s.evidenceMessageIds as number[]) ?? [],
     reasoning: s.reasoning,
     confidence: s.confidence,

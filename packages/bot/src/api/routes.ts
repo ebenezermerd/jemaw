@@ -914,7 +914,7 @@ export async function registerApi(
         }
         // Suggestions need expenseIds to allocate. If none attached (e.g. AI
         // didn't match any expense yet), require the user to open the form.
-        const suggestionExpenseIds = (s.splitWith as string[] | null) ?? [];
+        const suggestionExpenseIds = (s.expenseIds as string[] | null) ?? [];
         if (suggestionExpenseIds.length === 0) {
           return reply.code(400).send({
             error: "select the expenses this settlement covers — open the form to edit",
