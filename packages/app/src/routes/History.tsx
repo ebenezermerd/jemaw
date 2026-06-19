@@ -87,14 +87,14 @@ export function History() {
                         <div className="t-body-strong" style={ellipsis}>
                           {item.expense.description}
                         </div>
-                        <div className="t-caption" style={{ color: "var(--text-muted)" }} >
+                        <div className="t-caption" style={{ color: "var(--text-muted)" }}>
                           {item.expense.kind === "loan"
                             ? `${nameOf(item.expense.payerMemberId)} lent · ${nameOf(item.expense.shares[0]?.memberId ?? "")} owes`
                             : `${nameOf(item.expense.payerMemberId)} paid · split ${item.expense.shares.length}`}
                         </div>
                       </div>
+                      {item.settled && <SettledBadge />}
                     </div>
-                    {/* amount on its own line, right-aligned — never clipped */}
                     <div
                       className="t-body-strong"
                       style={{ textAlign: "right", marginTop: 8 }}
@@ -122,7 +122,7 @@ export function History() {
                       }}
                     >
                       <span className="t-caption" style={{ color: "var(--accent)" }}>
-                        settled
+                        {item.settled ? "fully settled" : "settled"}
                       </span>
                       <span className="t-body-strong">
                         <Money value={item.settlement.amount} currency={currency} />
@@ -136,6 +136,24 @@ export function History() {
         ))
       )}
     </div>
+  );
+}
+
+function SettledBadge() {
+  return (
+    <span
+      className="t-caption"
+      style={{
+        flexShrink: 0,
+        padding: "2px 7px",
+        borderRadius: "var(--r-full)",
+        background: "var(--accent-soft)",
+        color: "var(--accent)",
+        fontSize: 11,
+      }}
+    >
+      settled
+    </span>
   );
 }
 
