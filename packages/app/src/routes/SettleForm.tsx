@@ -69,6 +69,7 @@ export function SettleForm() {
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
   const [amount, setAmount] = useState("");
+  const [amountManual, setAmountManual] = useState(false);
   const [date, setDate] = useState(todayISO());
   const [method, setMethod] = useState<PaymentMethod>("cash");
   const [description, setDescription] = useState("");
@@ -84,7 +85,7 @@ export function SettleForm() {
     setFrom(params.get("from") ?? settlementSuggestion?.fromMemberId ?? me);
     setTo(params.get("to") ?? settlementSuggestion?.toMemberId ?? "");
     const a = params.get("amount") ?? settlementSuggestion?.amount;
-    if (a) setAmount(a);
+    if (a) { setAmount(a); setAmountManual(true); } // treat prefilled amount as manual so user can override
     const m = params.get("method") as PaymentMethod | null;
     if (m) setMethod(m);
     if (settlementSuggestion?.description) {
@@ -112,8 +113,20 @@ export function SettleForm() {
     setSelectedPair(pair);
     if (params.get("expenses")) return; // link named specific expenses — keep them
     setSelected(new Set()); // start empty; user picks what this payment covers
+    setAmountManual(false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [from, to, expenses]);
+
+  // Keep amount in sync with selected expenses unless the user typed a custom value.
+  useEffect(() => {
+    if (amountManual) return;
+    if (selected.size === 0) { setAmount(""); return; }
+    const cents = relevant
+      .filter((e) => selected.has(e.id))
+      .reduce((sum, e) => sum + owedShareCents(e, from), 0);
+    setAmount(cents > 0 ? centsToDecimal(cents) : "");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selected, from, relevant]);
 
   const toName = members.find((m) => m.id === to)?.displayName ?? "them";
   // Gross of the selected owed shares — shown against the net so the gap is clear
@@ -204,7 +217,7 @@ export function SettleForm() {
         <Field label="Amount" icon="€">
           <input
             value={amount}
-            onChange={(e) => { setAmount(e.target.value.replace(/[^\d.]/g, "")); setOverPayError(null); }}
+            onChange={(e) => { setAmount(e.target.value.replace(/[^\d.]/g, "")); setAmountManual(true); setOverPayError(null); }}
             inputMode="decimal"
             placeholder="0.00"
             className="tnum"
