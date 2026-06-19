@@ -33,6 +33,7 @@ export function Suggestions() {
     if (s.fromMemberId) p.set("from", s.fromMemberId);
     if (s.toMemberId) p.set("to", s.toMemberId);
     if (s.amount) p.set("amount", s.amount);
+    if (s.expenseIds.length > 0) p.set("expenses", s.expenseIds.join(","));
     return `/settle/new?${p.toString()}`;
   }
 
@@ -67,8 +68,11 @@ export function Suggestions() {
             toName={nameOf(s.toMemberId)}
             onAdd={() => {
               if (s.kind === "settlement") {
-                if (s.amount) confirmWithAmount.mutate({ id: s.id, amount: s.amount });
-                else nav(editPath(s));
+                if (s.amount && s.expenseIds.length > 0) {
+                  confirmWithAmount.mutateAsync({ id: s.id, amount: s.amount }).catch(() => nav(editPath(s)));
+                } else {
+                  nav(editPath(s));
+                }
               } else {
                 confirm.mutate(s.id);
               }
