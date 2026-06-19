@@ -74,6 +74,7 @@ export function SettleForm() {
   const [description, setDescription] = useState("");
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [query, setQuery] = useState("");
+  const [overPayError, setOverPayError] = useState<string | null>(null);
 
   // Prefill from params. The amount is the settle plan's net (e.g. 450), which
   // already accounts for both directions and prior settlements — we trust it
@@ -140,7 +141,12 @@ export function SettleForm() {
     filtered.length > 0 && filtered.every((e) => selected.has(e.id));
 
   const valid =
-    from && to && from !== to && /^\d+(\.\d{1,2})?$/.test(amount) && Number(amount) > 0;
+    from &&
+    to &&
+    from !== to &&
+    /^\d+(\.\d{1,2})?$/.test(amount) &&
+    Number(amount) > 0 &&
+    selected.size >= 1;
 
   function toggleAll() {
     const next = new Set(selected);
@@ -155,6 +161,7 @@ export function SettleForm() {
   }
 
   async function submit() {
+    setOverPayError(null);
     const input = {
       fromMemberId: from,
       toMemberId: to,
@@ -164,12 +171,20 @@ export function SettleForm() {
       expenseIds: [...selected],
       occurredAt: dateToISO(date),
     };
-    if (suggestionId) {
-      await editSuggestion.mutateAsync({ id: suggestionId, input });
-    } else {
-      await create.mutateAsync(input);
+    try {
+      if (suggestionId) {
+        await editSuggestion.mutateAsync({ id: suggestionId, input });
+      } else {
+        await create.mutateAsync(input);
+      }
+      nav("/settle");
+    } catch (err: unknown) {
+      const body = (err as { response?: { maxAllocatable?: string; error?: string } })?.response;
+      if (body?.maxAllocatable) {
+        setOverPayError(`Exceeds what you owe. Max: ${formatMoney(body.maxAllocatable, currency)}`);
+        setAmount(body.maxAllocatable);
+      }
     }
-    nav("/settle");
   }
 
   return (
@@ -190,7 +205,7 @@ export function SettleForm() {
         <Field label="Amount" icon="€">
           <input
             value={amount}
-            onChange={(e) => setAmount(e.target.value.replace(/[^\d.]/g, ""))}
+            onChange={(e) => { setAmount(e.target.value.replace(/[^\d.]/g, "")); setOverPayError(null); }}
             inputMode="decimal"
             placeholder="0.00"
             className="tnum"
@@ -313,6 +328,16 @@ export function SettleForm() {
         </Group>
       )}
 
+      {overPayError && (
+        <p className="t-caption" style={{ color: "var(--destructive, #e53e3e)", margin: 0 }}>
+          {overPayError}
+        </p>
+      )}
+      {to && selected.size === 0 && (
+        <p className="t-caption" style={{ color: "var(--text-muted)", margin: 0 }}>
+          Select at least one expense above to continue.
+        </p>
+      )}
       <Button disabled={!valid || create.isPending || editSuggestion.isPending} onClick={submit}>
         {create.isPending || editSuggestion.isPending
           ? "Recording…"
