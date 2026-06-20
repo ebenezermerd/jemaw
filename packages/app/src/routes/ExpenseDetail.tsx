@@ -219,8 +219,8 @@ const inputStyle: React.CSSProperties = {
   height: 44,
   padding: "0 12px",
   borderRadius: "var(--r-md)",
-  border: "1px solid var(--border-strong)",
-  background: "var(--surface)",
+  border: "1px solid var(--border)",
+  background: "var(--surface-3)",
   color: "var(--text)",
   fontSize: 16,
   fontFamily: "inherit",
@@ -229,7 +229,7 @@ const inputStyle: React.CSSProperties = {
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <label style={{ display: "grid", gap: 8 }}>
-      <span className="t-label" style={{ color: "var(--text-muted)" }}>{label}</span>
+      <span className="t-mono-label" style={{ color: "var(--text-muted)" }}>{label}</span>
       {children}
     </label>
   );

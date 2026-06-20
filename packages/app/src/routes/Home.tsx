@@ -212,12 +212,33 @@ function Tabs({
           borderRadius: "var(--r-md)",
           border: "none",
           cursor: "pointer",
-          background: active ? "var(--accent-soft)" : "transparent",
-          color: active ? "var(--accent)" : "var(--text-muted)",
+          fontWeight: active ? 600 : 500,
+          background: active ? "var(--accent)" : "transparent",
+          color: active ? "#fff" : "var(--text-muted)",
+          transition: "background var(--dur-fast), color var(--dur-fast)",
         }}
       >
         {label}
-        {count > 0 && <Pill variant={active ? "accent" : "neutral"}>{count}</Pill>}
+        {count > 0 && (
+          <span
+            className="t-caption"
+            style={{
+              minWidth: 18,
+              height: 18,
+              padding: "0 6px",
+              borderRadius: "var(--r-full)",
+              display: "inline-grid",
+              placeItems: "center",
+              fontWeight: 700,
+              background: active
+                ? "rgba(255,255,255,0.22)"
+                : "var(--surface-3)",
+              color: active ? "#fff" : "var(--text-muted)",
+            }}
+          >
+            {count}
+          </span>
+        )}
       </button>
     );
   };
@@ -287,7 +308,7 @@ function Row({
                 position: "absolute",
                 inset: 0,
                 background: "var(--accent)",
-                color: "#0B0B0C",
+                color: "#fff",
                 display: "flex",
                 alignItems: "center",
                 paddingLeft: 20,
@@ -419,8 +440,8 @@ function SuggestionRow({
                 : `${payerName} paid · swipe → edit, ← remove`}
             </div>
           </div>
-          <Pill variant={s.tier === "normal" ? "accent" : "warn"}>
-            {s.tier === "normal" ? "AI" : "low"}
+          <Pill variant={s.tier === "normal" ? "positive" : "warn"}>
+            {s.tier === "normal" ? "✦ AI" : "low"}
           </Pill>
           <span className="t-body-strong">
             <Money value={s.amount ?? "0.00"} currency={currency} />
@@ -499,7 +520,9 @@ function SettlementSuggestionRow({
               spotted in chat · swipe → edit, ← remove
             </div>
           </div>
-          <Pill variant={s.tier === "normal" ? "accent" : "warn"}>AI</Pill>
+          <Pill variant={s.tier === "normal" ? "positive" : "warn"}>
+            {s.tier === "normal" ? "✦ AI" : "low"}
+          </Pill>
           {s.amount && (
             <span className="t-body-strong">
               <Money value={s.amount} currency={currency} />

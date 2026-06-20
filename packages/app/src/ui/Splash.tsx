@@ -26,16 +26,16 @@ export function Splash({
         overflow: "hidden",
       }}
     >
-      {/* floating accent orbs for depth */}
-      <div aria-hidden style={orb(-80, -60, 220, 0.18)} />
-      <div aria-hidden style={orb(120, 240, 160, 0.12)} />
+      {/* floating accent orbs for depth — violet bloom + teal accent */}
+      <div aria-hidden style={orb(-80, -60, 220, 0.22, "var(--accent)")} />
+      <div aria-hidden style={orb(120, 240, 160, 0.12, "var(--positive)")} />
 
       <div
         style={{
           position: "relative",
           display: "grid",
           justifyItems: "center",
-          gap: 18,
+          gap: 14,
           textAlign: "center",
           padding: 24,
         }}
@@ -44,14 +44,21 @@ export function Splash({
           className="t-display"
           style={{
             background:
-              "linear-gradient(120deg, var(--text) 0%, var(--accent) 120%)",
+              "linear-gradient(120deg, var(--text) 0%, var(--violet-300) 120%)",
             WebkitBackgroundClip: "text",
             backgroundClip: "text",
             color: "transparent",
-            letterSpacing: "-0.03em",
+            letterSpacing: "-0.04em",
           }}
         >
           {title}
+        </span>
+        {/* dual-language Amharic wordmark */}
+        <span
+          className="t-amharic"
+          style={{ color: "var(--violet-300)", fontSize: 20, marginTop: -6 }}
+        >
+          ጀማው
         </span>
         <span className="t-body" style={{ color: "var(--text-muted)" }}>
           {subtitle}
@@ -74,6 +81,7 @@ function orb(
   left: number,
   size: number,
   opacity: number,
+  color: string,
 ): React.CSSProperties {
   return {
     position: "absolute",
@@ -82,7 +90,7 @@ function orb(
     width: size,
     height: size,
     borderRadius: "50%",
-    background: "var(--accent)",
+    background: color,
     filter: "blur(60px)",
     opacity,
     pointerEvents: "none",

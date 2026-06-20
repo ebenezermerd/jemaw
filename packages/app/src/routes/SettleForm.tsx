@@ -299,7 +299,7 @@ export function SettleForm() {
                         borderRadius: 5,
                         border: on ? "none" : "1px solid var(--border-strong)",
                         background: on ? "var(--accent)" : "transparent",
-                        color: "#0B0B0C",
+                        color: "#fff",
                         display: "grid",
                         placeItems: "center",
                         fontSize: 12,
@@ -380,7 +380,7 @@ function Group({ children }: { children: React.ReactNode }) {
 function Field({ label, icon, children }: { label: string; icon?: string; children: React.ReactNode }) {
   return (
     <label style={{ display: "grid", gap: 8 }}>
-      <span className="t-label" style={{ color: "var(--text-muted)", display: "flex", alignItems: "center", gap: 6 }}>
+      <span className="t-mono-label" style={{ color: "var(--text-muted)", display: "flex", alignItems: "center", gap: 6 }}>
         {icon && (
           <span aria-hidden style={{ width: 22, height: 22, borderRadius: "var(--r-sm)", background: "var(--accent-soft)", color: "var(--accent)", display: "grid", placeItems: "center", fontSize: 12 }}>
             {icon}
@@ -455,8 +455,10 @@ function Segmented<T extends string>({
             borderRadius: "var(--r-sm)",
             border: "none",
             cursor: "pointer",
-            background: value === o.value ? "var(--accent-soft)" : "transparent",
-            color: value === o.value ? "var(--accent)" : "var(--text-muted)",
+            fontWeight: value === o.value ? 600 : 500,
+            background: value === o.value ? "var(--accent)" : "transparent",
+            color: value === o.value ? "#fff" : "var(--text-muted)",
+            transition: "background var(--dur-fast), color var(--dur-fast)",
           }}
         >
           {o.label}
@@ -471,8 +473,8 @@ const inputStyle: React.CSSProperties = {
   height: 44,
   padding: "0 12px",
   borderRadius: "var(--r-md)",
-  border: "1px solid var(--border-strong)",
-  background: "var(--surface)",
+  border: "1px solid var(--border)",
+  background: "var(--surface-3)",
   color: "var(--text)",
   fontSize: 16,
   fontFamily: "inherit",

@@ -145,8 +145,8 @@ function Card({
     >
       {/* confidence pill, top-right corner */}
       <span style={{ position: "absolute", top: 12, right: 12 }}>
-        <Pill variant={s.tier === "normal" ? "accent" : "warn"}>
-          {s.tier === "normal" ? "AI" : "low"}
+        <Pill variant={s.tier === "normal" ? "positive" : "warn"}>
+          {s.tier === "normal" ? "✦ AI" : "low"}
         </Pill>
       </span>
 

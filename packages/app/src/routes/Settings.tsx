@@ -247,7 +247,7 @@ export function Settings() {
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <section style={{ display: "grid", gap: 10 }}>
-      <h2 className="t-label" style={{ color: "var(--text-muted)", margin: 0, textTransform: "uppercase", letterSpacing: "0.04em" }}>
+      <h2 className="t-mono-label" style={{ color: "var(--text-muted)", margin: 0 }}>
         {title}
       </h2>
       <div
@@ -317,8 +317,10 @@ function Segmented<T extends string>({
             borderRadius: "var(--r-sm)",
             border: "none",
             cursor: "pointer",
-            background: value === o.value ? "var(--accent-soft)" : "transparent",
-            color: value === o.value ? "var(--accent)" : "var(--text-muted)",
+            fontWeight: value === o.value ? 600 : 500,
+            background: value === o.value ? "var(--accent)" : "transparent",
+            color: value === o.value ? "#fff" : "var(--text-muted)",
+            transition: "background var(--dur-fast), color var(--dur-fast)",
           }}
         >
           {o.label}

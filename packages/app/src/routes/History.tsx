@@ -82,7 +82,7 @@ export function History() {
                     style={cardRow}
                   >
                     <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                      <Avatar name={nameOf(item.expense.payerMemberId)} size={28} />
+                      <TypeGlyph kind={item.expense.kind === "loan" ? "loan" : "expense"} />
                       <div style={{ flex: 1, minWidth: 0 }}>
                         <div className="t-body-strong" style={ellipsis}>
                           {item.expense.description}
@@ -105,6 +105,7 @@ export function History() {
                 ) : (
                   <div key={`s-${idx}`} style={{ ...cardRow, cursor: "default" }}>
                     <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                      <TypeGlyph kind="settlement" />
                       <Avatar name={nameOf(item.settlement.fromMemberId)} size={24} />
                       <span style={{ color: "var(--text-muted)" }}>→</span>
                       <Avatar name={nameOf(item.settlement.toMemberId)} size={24} />
@@ -121,7 +122,7 @@ export function History() {
                         marginTop: 8,
                       }}
                     >
-                      <span className="t-caption" style={{ color: "var(--accent)" }}>
+                      <span className="t-caption" style={{ color: "var(--positive)" }}>
                         {item.settled ? "fully settled" : "settled"}
                       </span>
                       <span className="t-body-strong">
@@ -147,12 +148,43 @@ function SettledBadge() {
         flexShrink: 0,
         padding: "2px 7px",
         borderRadius: "var(--r-full)",
-        background: "var(--accent-soft)",
-        color: "var(--accent)",
+        background: "var(--positive-soft)",
+        color: "var(--positive)",
         fontSize: 11,
       }}
     >
       settled
+    </span>
+  );
+}
+
+/**
+ * Entry type glyph (Jemaw Brand.dc.html): expense = violet box, loan = amber
+ * diagonal, settlement = teal double-arrow. Replaces the generic avatar lead.
+ */
+function TypeGlyph({ kind }: { kind: "expense" | "loan" | "settlement" }) {
+  const tone =
+    kind === "expense"
+      ? { bg: "var(--accent-soft)", fg: "var(--accent)", glyph: "▦" }
+      : kind === "loan"
+        ? { bg: "var(--warn-soft)", fg: "var(--warn)", glyph: "⤢" }
+        : { bg: "var(--positive-soft)", fg: "var(--positive)", glyph: "⇄" };
+  return (
+    <span
+      aria-hidden
+      style={{
+        width: 28,
+        height: 28,
+        flexShrink: 0,
+        borderRadius: 9,
+        background: tone.bg,
+        color: tone.fg,
+        display: "grid",
+        placeItems: "center",
+        fontSize: 14,
+      }}
+    >
+      {tone.glyph}
     </span>
   );
 }

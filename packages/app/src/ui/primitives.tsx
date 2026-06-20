@@ -31,7 +31,7 @@ export function Button({
     border: "1px solid transparent",
   };
   const variants: Record<ButtonVariant, React.CSSProperties> = {
-    primary: { background: "var(--accent)", color: "#0B0B0C", border: "none" },
+    primary: { background: "var(--accent)", color: "#fff", border: "none" },
     ghost: {
       background: "transparent",
       color: "var(--text)",
@@ -61,22 +61,42 @@ export function Card({
   children,
   onClick,
   accent,
+  variant = "plain",
+  style,
 }: {
   children: ReactNode;
   onClick?: () => void;
-  accent?: "accent" | "warn";
+  /** thin left status bar (semantic) */
+  accent?: "accent" | "warn" | "positive";
+  /** plain surface or the glassy violet-bloom hero surface */
+  variant?: "plain" | "glass";
+  style?: React.CSSProperties;
 }) {
+  const accentColor =
+    accent === "positive"
+      ? "var(--positive)"
+      : accent === "warn"
+        ? "var(--warn)"
+        : "var(--accent)";
   return (
     <div
       onClick={onClick}
       style={{
         position: "relative",
-        background: "var(--surface)",
+        background:
+          variant === "glass"
+            ? "linear-gradient(150deg, var(--surface-elevated), var(--surface))"
+            : "var(--surface)",
         border: "1px solid var(--border)",
         borderRadius: "var(--r-lg)",
         padding: 16,
         cursor: onClick ? "pointer" : "default",
         overflow: "hidden",
+        boxShadow:
+          variant === "glass"
+            ? "inset 0 1px 0 rgba(255,255,255,0.06)"
+            : undefined,
+        ...style,
       }}
     >
       {accent && (
@@ -87,8 +107,8 @@ export function Card({
             top: 0,
             bottom: 0,
             width: 4,
-            background:
-              accent === "accent" ? "var(--accent-soft)" : "var(--warn-soft)",
+            background: accentColor,
+            opacity: 0.9,
           }}
         />
       )}
@@ -98,6 +118,26 @@ export function Card({
 }
 
 // ─── Avatar ───────────────────────────────────────────────────────────
+/** Deterministic member gradient (Jemaw Brand.dc.html uses tinted avatar
+ * gradients). Stable per name so the same member always reads the same. */
+const AVATAR_GRADIENTS = [
+  "linear-gradient(140deg, #463494, #8a78d6)",
+  "linear-gradient(140deg, #1c5e4b, #2dd4a7)",
+  "linear-gradient(140deg, #234c7a, #5ba8e0)",
+  "linear-gradient(140deg, #7a5a1c, #e0b23c)",
+  "linear-gradient(140deg, #7a3a1c, #e8825c)",
+  "linear-gradient(140deg, #6a2a55, #d873b8)",
+];
+
+function avatarGradient(name: string): string {
+  let h = 0;
+  for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) >>> 0;
+  return (
+    AVATAR_GRADIENTS[h % AVATAR_GRADIENTS.length] ??
+    "linear-gradient(140deg, #463494, #8a78d6)"
+  );
+}
+
 export function Avatar({
   name,
   size = 32,
@@ -133,12 +173,12 @@ export function Avatar({
         width: size,
         height: size,
         borderRadius: "var(--r-full)",
-        background: "var(--surface-elevated)",
-        color: "var(--text-muted)",
+        background: avatarGradient(name),
+        color: "#fff",
         display: "inline-grid",
         placeItems: "center",
         fontSize: size * 0.42,
-        fontWeight: 600,
+        fontWeight: 700,
         flexShrink: 0,
       }}
     >
@@ -153,25 +193,32 @@ export function Pill({
   variant = "neutral",
 }: {
   children: ReactNode;
-  variant?: "neutral" | "accent" | "warn";
+  variant?: "neutral" | "accent" | "positive" | "warn";
 }) {
-  const bg = {
-    neutral: "transparent",
-    accent: "var(--accent-soft)",
-    warn: "var(--warn-soft)",
-  }[variant];
+  const tone: Record<
+    "neutral" | "accent" | "positive" | "warn",
+    { bg: string; fg: string }
+  > = {
+    neutral: { bg: "transparent", fg: "var(--text-muted)" },
+    accent: { bg: "var(--accent-soft)", fg: "var(--accent)" },
+    positive: { bg: "var(--positive-soft)", fg: "var(--positive)" },
+    warn: { bg: "var(--warn-soft)", fg: "var(--warn)" },
+  };
+  const { bg, fg } = tone[variant];
   return (
     <span
       className="t-caption"
       style={{
         height: 24,
-        padding: "0 8px",
+        padding: "0 9px",
         borderRadius: "var(--r-full)",
         background: bg,
         border: variant === "neutral" ? "1px solid var(--border)" : "none",
         display: "inline-flex",
         alignItems: "center",
-        color: "var(--text-muted)",
+        gap: 4,
+        fontWeight: 700,
+        color: fg,
       }}
     >
       {children}
@@ -196,7 +243,7 @@ export function Money({
   const color = !signed
     ? "var(--text)"
     : n > 0
-      ? "var(--accent)"
+      ? "var(--positive)"
       : n < 0
         ? "var(--warn)"
         : "var(--text-muted)";

@@ -44,7 +44,7 @@ export function Balances() {
       </h1>
 
       {allEven && (
-        <p className="t-caption" style={{ color: "var(--accent)", margin: 0 }}>
+        <p className="t-caption" style={{ color: "var(--positive)", margin: 0 }}>
           ✓ All settled up — everyone's even.
         </p>
       )}
@@ -75,7 +75,7 @@ export function Balances() {
                         n === 0
                           ? "var(--text-muted)"
                           : positive
-                            ? "var(--accent)"
+                            ? "var(--positive)"
                             : "var(--warn)",
                     }}
                   >
