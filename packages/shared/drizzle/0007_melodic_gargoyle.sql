@@ -1,0 +1,1 @@
+ALTER TABLE "members" ADD COLUMN "is_primary" boolean DEFAULT true NOT NULL;
