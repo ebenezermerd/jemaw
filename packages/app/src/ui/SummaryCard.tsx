@@ -27,7 +27,7 @@ export function SummaryCard({ s }: { s: MeSummaryDto }) {
       style={{
         position: "relative",
         borderRadius: 26,
-        padding: 18,
+        padding: 15,
         overflow: "hidden",
         color: "#fff",
         background:
@@ -95,7 +95,7 @@ export function SummaryCard({ s }: { s: MeSummaryDto }) {
         {/* status label + sub-pill */}
         <div
           style={{
-            marginTop: 16,
+            marginTop: 12,
             display: "flex",
             alignItems: "center",
             gap: 8,
@@ -153,7 +153,7 @@ export function SummaryCard({ s }: { s: MeSummaryDto }) {
 
         {/* divider */}
         <div
-          style={{ height: 1, background: "rgba(255,255,255,.2)", margin: "14px 0 12px" }}
+          style={{ height: 1, background: "rgba(255,255,255,.2)", margin: "11px 0 10px" }}
         />
 
         {/* stat row */}
