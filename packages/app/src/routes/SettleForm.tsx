@@ -17,7 +17,6 @@ import {
   useEditSettlementSuggestion,
 } from "../lib/hooks.js";
 import { MemberAvatar } from "../ui/MemberAvatar.js";
-import { Button } from "../ui/primitives.js";
 import { PageHeader } from "../ui/PageHeader.js";
 import { PageLoader } from "../motion/Loader.js";
 import { Centered } from "./Balances.js";
@@ -189,29 +188,28 @@ export function SettleForm() {
   return (
     <div>
       <PageHeader title={suggestionId ? "Edit settlement" : "Settle up"} fallback="/settle" />
-      <div style={{ padding: "0 16px 16px", display: "grid", gap: 16 }}>
-      <Group>
-        <Field label="Paid by" icon="◎">
-          <MemberPicker members={members} value={from} onChange={setFrom} />
-        </Field>
-        <Field label="Paid to" icon="→">
-          <MemberPicker
-            members={members.filter((m) => m.id !== from)}
-            value={to}
-            onChange={setTo}
-          />
-        </Field>
-        <Field label="Amount" icon="€">
+      <div style={{ padding: "0 16px 16px", display: "grid", gap: 14 }}>
+      {/* who pays whom — already determined, shown as a fixed presentation */}
+      <DuoHeader
+        from={members.find((m) => m.id === from)}
+        to={members.find((m) => m.id === to)}
+      />
+
+      {/* amount + when, side by side */}
+      <div style={{ display: "flex", gap: 10 }}>
+        <div style={{ flex: 1.4, display: "grid", gap: 6 }}>
+          <span className="t-mono-label" style={{ color: "var(--text-muted)" }}>Amount</span>
           <input
             value={amount}
             onChange={(e) => { setAmount(e.target.value.replace(/[^\d.]/g, "")); setOverPayError(null); }}
             inputMode="decimal"
             placeholder="0.00"
             className="tnum"
-            style={{ ...inputStyle, fontSize: 20, fontWeight: 600 }}
+            style={{ ...inputStyle, fontSize: 18, fontWeight: 700 }}
           />
-        </Field>
-        <Field label="When" icon="◷">
+        </div>
+        <div style={{ flex: 1, display: "grid", gap: 6 }}>
+          <span className="t-mono-label" style={{ color: "var(--text-muted)" }}>When</span>
           <div style={{ position: "relative" }}>
             <div style={{ ...inputStyle, display: "flex", alignItems: "center", pointerEvents: "none" }}>
               {friendlyDate(date)}
@@ -224,32 +222,51 @@ export function SettleForm() {
               style={{ ...inputStyle, position: "absolute", inset: 0, opacity: 0 }}
             />
           </div>
-        </Field>
-        <Field label="Method" icon="≋">
-          <Segmented value={method} onChange={setMethod} options={METHODS} />
-        </Field>
-        <Field label="Note (optional)" icon="✎">
-          <input
-            value={description}
-            onChange={(e) => setDescription(e.target.value)}
-            placeholder="e.g. via Telebirr"
-            style={inputStyle}
-          />
-        </Field>
-      </Group>
+        </div>
+      </div>
 
-      {/* entry selection */}
+      {/* method */}
+      <div style={{ display: "grid", gap: 6 }}>
+        <span className="t-mono-label" style={{ color: "var(--text-muted)" }}>Method</span>
+        <Segmented value={method} onChange={setMethod} options={METHODS} />
+      </div>
+
+      {/* note */}
+      <div style={{ display: "grid", gap: 6 }}>
+        <span className="t-mono-label" style={{ color: "var(--text-muted)" }}>Note (optional)</span>
+        <input
+          value={description}
+          onChange={(e) => setDescription(e.target.value)}
+          placeholder="e.g. via Telebirr"
+          style={inputStyle}
+        />
+      </div>
+
+      {/* settling your share of — check-tile entry rows */}
       {to && (
-        <Group>
+        <div style={{ display: "grid", gap: 10, marginTop: 2 }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-            <span className="t-label" style={{ color: "var(--text-muted)" }}>
-              Settling your share of these ({selected.size})
+            <span style={{ fontSize: 13, fontWeight: 700, color: "var(--text)" }}>
+              Settling your share of{" "}
+              <span style={{ color: "var(--text-muted)", fontWeight: 500 }}>
+                ({selected.size})
+              </span>
             </span>
-            <button onClick={toggleAll} className="t-label" style={linkBtn}>
+            <button
+              onClick={toggleAll}
+              style={{
+                border: "none",
+                background: "transparent",
+                cursor: "pointer",
+                fontSize: 12,
+                fontWeight: 700,
+                color: "var(--violet-300)",
+              }}
+            >
               {allSelected ? "Deselect all" : "Select all"}
             </button>
           </div>
-          <p className="t-caption" style={{ color: "var(--text-faint)", margin: "-4px 0 0" }}>
+          <p className="t-caption" style={{ color: "var(--text-faint)", margin: 0 }}>
             Entries {toName} paid or lent where you owe a share.
             {hasOffset && (
               <>
@@ -272,7 +289,7 @@ export function SettleForm() {
                 : "No matches."}
             </p>
           ) : (
-            <div style={{ maxHeight: 220, overflowY: "auto", display: "grid", gap: 6 }}>
+            <div style={{ maxHeight: 240, overflowY: "auto", display: "grid", gap: 9 }}>
               {filtered.map((e) => {
                 const on = selected.has(e.id);
                 return (
@@ -282,11 +299,14 @@ export function SettleForm() {
                     style={{
                       display: "flex",
                       alignItems: "center",
-                      gap: 10,
-                      padding: "8px 10px",
-                      borderRadius: "var(--r-md)",
-                      border: on ? "1px solid var(--accent)" : "1px solid var(--border)",
-                      background: on ? "var(--accent-soft)" : "transparent",
+                      gap: 12,
+                      padding: "12px 13px",
+                      borderRadius: 13,
+                      border: on
+                        ? "1px solid var(--accent)"
+                        : "1px solid var(--border)",
+                      background: on ? "var(--surface-elevated)" : "var(--surface)",
+                      opacity: on ? 1 : 0.65,
                       color: "var(--text)",
                       cursor: "pointer",
                       textAlign: "left",
@@ -294,37 +314,37 @@ export function SettleForm() {
                   >
                     <span
                       style={{
-                        width: 18,
-                        height: 18,
-                        borderRadius: 5,
-                        border: on ? "none" : "1px solid var(--border-strong)",
+                        width: 22,
+                        height: 22,
+                        borderRadius: 7,
+                        border: on ? "none" : "1px solid rgba(255,255,255,0.2)",
                         background: on ? "var(--accent)" : "transparent",
                         color: "#fff",
                         display: "grid",
                         placeItems: "center",
-                        fontSize: 12,
+                        fontSize: 13,
                         flexShrink: 0,
                       }}
                     >
                       {on ? "✓" : ""}
                     </span>
-                    <span className="t-body-strong" style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    <span style={{ flex: 1, minWidth: 0, fontSize: 14, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                       {e.description}
                     </span>
-                    <span style={{ flexShrink: 0, textAlign: "right", display: "grid", gap: 1 }}>
-                      <span className="tnum t-caption" style={{ color: "var(--text)", fontWeight: 600 }}>
+                    <span style={{ flexShrink: 0, textAlign: "right" }}>
+                      <div className="tnum" style={{ fontSize: 14, fontWeight: 700, color: "var(--text)" }}>
                         {formatMoney(centsToDecimal(owedShareCents(e, from)), currency)}
-                      </span>
-                      <span className="tnum t-caption" style={{ color: "var(--text-faint)", fontSize: 11 }}>
+                      </div>
+                      <div className="tnum" style={{ fontSize: 10, color: "var(--text-faint)" }}>
                         of {formatMoney(e.amount, currency)}
-                      </span>
+                      </div>
                     </span>
                   </button>
                 );
               })}
             </div>
           )}
-        </Group>
+        </div>
       )}
 
       {overPayError && (
@@ -337,16 +357,85 @@ export function SettleForm() {
           Select at least one expense above to continue.
         </p>
       )}
-      <Button disabled={!valid || create.isPending || editSuggestion.isPending} onClick={submit}>
+      <button
+        disabled={!valid || create.isPending || editSuggestion.isPending}
+        onClick={submit}
+        style={{
+          width: "100%",
+          border: "none",
+          borderRadius: 14,
+          padding: 15,
+          fontSize: 16,
+          fontWeight: 700,
+          color: "#fff",
+          background: "var(--accent)",
+          boxShadow: "0 10px 26px -8px rgba(110,89,199,.6)",
+          cursor: valid ? "pointer" : "not-allowed",
+          opacity: !valid || create.isPending || editSuggestion.isPending ? 0.55 : 1,
+          transition: "opacity var(--dur-fast)",
+        }}
+      >
         {create.isPending || editSuggestion.isPending
           ? "Recording…"
           : suggestionId
             ? "Save settlement"
             : "Record settlement"}
-      </Button>
+      </button>
       </div>
     </div>
   );
+}
+
+/** Fixed "who pays whom" presentation — payer → arrow → payee. The pair is
+ * already determined (from the Settle list or a suggestion), so it's shown,
+ * not picked. */
+function DuoHeader({
+  from,
+  to,
+}: {
+  from?: { displayName: string; telegramUserId: string };
+  to?: { displayName: string; telegramUserId: string };
+}) {
+  if (!from || !to) return null;
+  return (
+    <div
+      style={{
+        background: "var(--surface)",
+        border: "1px solid var(--border)",
+        borderRadius: 18,
+        padding: 16,
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        gap: 14,
+      }}
+    >
+      <div style={{ textAlign: "center" }}>
+        <div style={{ margin: "0 auto 6px" }}>
+          <MemberAvatar name={from.displayName} telegramUserId={from.telegramUserId} size={46} />
+        </div>
+        <div style={{ fontSize: 11, color: "var(--text-muted)" }}>
+          {firstName(from.displayName)} pays
+        </div>
+      </div>
+      <svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="var(--accent)" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
+        <line x1="4" y1="12" x2="19" y2="12" />
+        <polyline points="13 6 19 12 13 18" />
+      </svg>
+      <div style={{ textAlign: "center" }}>
+        <div style={{ margin: "0 auto 6px" }}>
+          <MemberAvatar name={to.displayName} telegramUserId={to.telegramUserId} size={46} />
+        </div>
+        <div style={{ fontSize: 11, color: "var(--text-muted)" }}>
+          {firstName(to.displayName)}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function firstName(name: string): string {
+  return name.trim().split(/\s+/)[0] ?? name;
 }
 
 // ── helpers: how much `from` owes for an entry `to` paid ──
@@ -360,79 +449,6 @@ function owedShareCents(e: ExpenseDto, from: string): number {
 }
 
 // ── small form bits ──
-function Group({ children }: { children: React.ReactNode }) {
-  return (
-    <div
-      style={{
-        background: "var(--surface)",
-        border: "1px solid var(--border)",
-        borderRadius: "var(--r-lg)",
-        padding: 16,
-        display: "grid",
-        gap: 18,
-      }}
-    >
-      {children}
-    </div>
-  );
-}
-
-function Field({ label, icon, children }: { label: string; icon?: string; children: React.ReactNode }) {
-  return (
-    <label style={{ display: "grid", gap: 8 }}>
-      <span className="t-mono-label" style={{ color: "var(--text-muted)", display: "flex", alignItems: "center", gap: 6 }}>
-        {icon && (
-          <span aria-hidden style={{ width: 22, height: 22, borderRadius: "var(--r-sm)", background: "var(--accent-soft)", color: "var(--accent)", display: "grid", placeItems: "center", fontSize: 12 }}>
-            {icon}
-          </span>
-        )}
-        {label}
-      </span>
-      {children}
-    </label>
-  );
-}
-
-function MemberPicker({
-  members,
-  value,
-  onChange,
-}: {
-  members: { id: string; displayName: string; telegramUserId: string }[];
-  value: string;
-  onChange: (id: string) => void;
-}) {
-  return (
-    <div style={{ display: "flex", gap: 8, overflowX: "auto", paddingBottom: 4 }}>
-      {members.map((m) => {
-        const active = value === m.id;
-        return (
-          <button
-            key={m.id}
-            onClick={() => onChange(m.id)}
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 8,
-              height: 40,
-              padding: "0 12px 0 8px",
-              flexShrink: 0,
-              borderRadius: "var(--r-full)",
-              border: active ? "1px solid var(--accent)" : "1px solid var(--border-strong)",
-              background: active ? "var(--accent-soft)" : "transparent",
-              color: "var(--text)",
-              cursor: "pointer",
-            }}
-          >
-            <MemberAvatar name={m.displayName} telegramUserId={m.telegramUserId} size={24} />
-            <span className="t-label">{m.displayName}</span>
-          </button>
-        );
-      })}
-    </div>
-  );
-}
-
 function Segmented<T extends string>({
   value,
   onChange,
@@ -478,13 +494,6 @@ const inputStyle: React.CSSProperties = {
   color: "var(--text)",
   fontSize: 16,
   fontFamily: "inherit",
-};
-
-const linkBtn: React.CSSProperties = {
-  border: "none",
-  background: "transparent",
-  color: "var(--accent)",
-  cursor: "pointer",
 };
 
 function todayISO(): string {
