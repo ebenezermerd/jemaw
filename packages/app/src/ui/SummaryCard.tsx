@@ -11,6 +11,10 @@ export function SummaryCard({ s }: { s: MeSummaryDto }) {
   const net = Number(s.net);
   const standing =
     net > 0 ? "you're owed" : net < 0 ? "you owe" : "you're all square";
+  // Semantic accent: teal when owed, amber when owing, neutral when even.
+  const statusColor =
+    net > 0 ? "#2DD4A7" : net < 0 ? "#F0A640" : "rgba(247,247,245,0.7)";
+  const statusGlyph = net > 0 ? "▲" : net < 0 ? "▼" : "•";
   const { symbol, suffix } = currencyAffix(s.currency);
   // Group thousands on the focal number (4,565.49) + keep the sign.
   const focal = net > 0 ? `+${formatNumber(s.net)}` : formatNumber(s.net);
@@ -24,9 +28,10 @@ export function SummaryCard({ s }: { s: MeSummaryDto }) {
         overflow: "hidden",
         color: "#F7F7F5",
         background:
-          "linear-gradient(135deg, color-mix(in srgb, var(--accent) 88%, #000) 0%, color-mix(in srgb, var(--accent) 34%, #0B0B0C) 56%, #0E0E10 100%)",
+          "linear-gradient(150deg, #463494 0%, #6E59C7 48%, #2A1F5C 100%)",
         border: "1px solid var(--border-strong)",
-        boxShadow: "0 10px 28px rgba(0,0,0,0.28)",
+        boxShadow:
+          "0 24px 50px -18px rgba(110,89,199,0.55), inset 0 1px 0 rgba(255,255,255,0.2)",
         display: "grid",
         gap: 14,
       }}
@@ -76,14 +81,18 @@ export function SummaryCard({ s }: { s: MeSummaryDto }) {
       {/* focal: net */}
       <div style={{ position: "relative" }}>
         <div
-          className="t-caption"
+          className="t-mono-label"
           style={{
-            opacity: 0.82,
-            marginBottom: 2,
-            letterSpacing: "0.06em",
-            textTransform: "uppercase",
+            marginBottom: 4,
+            color: statusColor,
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 5,
           }}
         >
+          <span aria-hidden style={{ fontSize: 9 }}>
+            {statusGlyph}
+          </span>
           {standing}
         </div>
         <div className="t-title" style={{ lineHeight: 1 }}>

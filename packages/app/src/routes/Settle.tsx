@@ -57,7 +57,7 @@ export function Settle() {
         <h1 className="t-screen-title" style={{ margin: "8px 0 0" }}>
           Settle up
         </h1>
-        <p className="t-caption" style={{ color: "var(--accent)", margin: 0 }}>
+        <p className="t-caption" style={{ color: "var(--positive)", margin: 0 }}>
           ✓ All settled up — everyone's even.
         </p>
         <div style={{ display: "grid", gap: 8 }}>

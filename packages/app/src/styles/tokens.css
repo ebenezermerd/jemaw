@@ -1,29 +1,67 @@
-/* Jemaw design tokens — JEMAW_PLAN.md §12. Dark is default. */
+/* Jemaw design tokens — violet/teal/amber brand (Jemaw Brand.dc.html). Dark is default. */
+
+/* Amharic display face. Bricolage/Hanken/Space Mono/Noto Ethiopic load via the
+ * Google Fonts <link> in index.html. */
+@font-face {
+  font-family: "Benaiah";
+  src: url("/fonts/Benaiah.ttf") format("truetype");
+  font-weight: 400 700;
+  font-display: swap;
+}
 
 :root {
   /* Color — dark (default) */
-  --bg: #0b0b0c;
-  --surface: #141416;
-  --surface-elevated: #1c1c20;
-  --border: rgba(255, 255, 255, 0.06);
+  --bg: #0b0a11;
+  --surface: #16151f;
+  --surface-elevated: #1e1c2a;
+  --surface-3: #252333; /* input fields / raised inputs */
+  --border: rgba(255, 255, 255, 0.07);
   --border-strong: rgba(255, 255, 255, 0.12);
-  --text: #f5f5f4;
-  --text-muted: rgba(245, 245, 244, 0.6);
-  --text-faint: rgba(245, 245, 244, 0.36);
-  --accent: #34d399;
-  --accent-soft: rgba(52, 211, 153, 0.12);
-  --warn: #f59e0b;
-  --warn-soft: rgba(245, 158, 11, 0.12);
-  --danger: #ef4444;
-  --focus-ring: rgba(52, 211, 153, 0.45);
-  --shadow-sheet: 0 -8px 32px rgba(0, 0, 0, 0.32);
+  --text: #f4f2fb;
+  --text-muted: rgba(244, 242, 251, 0.62);
+  --text-faint: rgba(244, 242, 251, 0.4);
+
+  /* Brand / primary action (violet) */
+  --accent: #6e59c7;
+  --accent-soft: rgba(110, 89, 199, 0.16);
+  /* Positive / "is owed" (teal) */
+  --positive: #2dd4a7;
+  --positive-soft: rgba(45, 212, 167, 0.14);
+  /* Negative / "owes" (amber) */
+  --warn: #f0a640;
+  --warn-soft: rgba(240, 166, 64, 0.14);
+  /* Destructive (coral) */
+  --danger: #f2685f;
+  --danger-soft: rgba(242, 104, 95, 0.14);
+
+  --focus-ring: rgba(110, 89, 199, 0.45);
+  --shadow-sheet: 0 -8px 32px rgba(0, 0, 0, 0.4);
+
+  /* Violet ramp (Jemaw Brand.dc.html) */
+  --violet-700: #2a1f5c;
+  --violet-600: #463494;
+  --violet-500: #6e59c7;
+  --violet-400: #8a78d6;
+  --violet-300: #a99ce3;
+  --violet-200: #c8bfef;
+  --lilac-100: #e5dff5;
+  --lilac-50: #f2effa;
+
+  /* Data-viz categorical palette (6 hues, color-vision-deficiency friendly) */
+  --dv-1: #8e7be0;
+  --dv-2: #5ba8e0;
+  --dv-3: #2dc4b0;
+  --dv-4: #e0b23c;
+  --dv-5: #e8825c;
+  --dv-6: #d873b8;
 
   /* Radius */
-  --r-sm: 8px;
+  --r-sm: 9px;
   --r-md: 12px;
   --r-lg: 16px;
-  --r-xl: 24px;
+  --r-xl: 26px;
   --r-full: 9999px;
+  --r-frame: 42px; /* app-frame / large hero cards */
 
   /* Motion */
   --dur-instant: 100ms;
@@ -38,21 +76,32 @@
 }
 
 :root[data-theme="light"] {
-  --bg: #fafaf8;
+  --bg: #f2effa;
   --surface: #ffffff;
-  --surface-elevated: #f2f2ef;
-  --border: rgba(0, 0, 0, 0.06);
-  --border-strong: rgba(0, 0, 0, 0.1);
-  --text: #18181b;
-  --text-muted: rgba(24, 24, 27, 0.6);
-  --text-faint: rgba(24, 24, 27, 0.4);
-  --accent: #10b981;
-  --accent-soft: rgba(16, 185, 129, 0.1);
-  --warn: #d97706;
-  --warn-soft: rgba(217, 119, 6, 0.1);
-  --danger: #dc2626;
-  --focus-ring: rgba(16, 185, 129, 0.4);
-  --shadow-sheet: 0 -8px 32px rgba(0, 0, 0, 0.08);
+  --surface-elevated: #f7f5fc;
+  --surface-3: #ece8f7;
+  --border: rgba(42, 31, 92, 0.08);
+  --border-strong: rgba(42, 31, 92, 0.16);
+  --text: #1a1530;
+  --text-muted: rgba(26, 21, 48, 0.62);
+  --text-faint: rgba(26, 21, 48, 0.4);
+
+  --accent: #6e59c7;
+  --accent-soft: rgba(110, 89, 199, 0.12);
+  --positive: #14a37f;
+  --positive-soft: rgba(20, 163, 127, 0.12);
+  --warn: #d98a1f;
+  --warn-soft: rgba(217, 138, 31, 0.12);
+  --danger: #d94b42;
+  --danger-soft: rgba(217, 75, 66, 0.1);
+
+  --focus-ring: rgba(110, 89, 199, 0.4);
+  --shadow-sheet: 0 -8px 32px rgba(42, 31, 92, 0.1);
+
+  --violet-500: #463494;
+  --violet-400: #6e59c7;
+  --violet-300: #8a78d6;
+
   color-scheme: light;
 }
 
@@ -98,9 +147,11 @@ body,
 body {
   background: var(--bg);
   color: var(--text);
-  font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-family: "Hanken Grotesk", -apple-system, BlinkMacSystemFont, "Segoe UI",
+    sans-serif;
   font-size: 16px;
   line-height: 22px;
+  letter-spacing: -0.02em;
   -webkit-font-smoothing: antialiased;
 }
 
@@ -121,15 +172,36 @@ svg {
   to { background-position: -200% 0 }
 }
 
-/* Type scale (§12.3) */
-.t-display { font-size: 40px; line-height: 44px; font-weight: 600; letter-spacing: -0.02em; }
-.t-title { font-size: 28px; line-height: 32px; font-weight: 600; letter-spacing: -0.015em; }
-.t-screen-title { font-size: 22px; line-height: 28px; font-weight: 600; letter-spacing: -0.015em; }
-.t-heading { font-size: 20px; line-height: 26px; font-weight: 600; letter-spacing: -0.01em; }
+/* Type scale. Display/titles use Bricolage Grotesque (tight tracking); UI/body
+ * inherits Hanken Grotesk from body. */
+.t-display,
+.t-title,
+.t-screen-title {
+  font-family: "Bricolage Grotesque", "Hanken Grotesk", sans-serif;
+}
+.t-display { font-size: 36px; line-height: 40px; font-weight: 700; letter-spacing: -0.04em; }
+.t-title { font-size: 22px; line-height: 28px; font-weight: 700; letter-spacing: -0.03em; }
+.t-screen-title { font-size: 22px; line-height: 28px; font-weight: 700; letter-spacing: -0.03em; }
+.t-heading { font-size: 20px; line-height: 26px; font-weight: 700; letter-spacing: -0.02em; }
 .t-body { font-size: 16px; line-height: 22px; font-weight: 400; }
 .t-body-strong { font-size: 16px; line-height: 22px; font-weight: 500; }
 .t-label { font-size: 14px; line-height: 18px; font-weight: 500; }
-.t-caption { font-size: 12px; line-height: 16px; font-weight: 500; letter-spacing: 0.01em; }
+.t-caption { font-size: 13px; line-height: 17px; font-weight: 500; letter-spacing: 0; }
+
+/* Space Mono uppercase micro-label (form field labels, metadata). */
+.t-mono-label {
+  font-family: "Space Mono", monospace;
+  font-size: 11px;
+  line-height: 14px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+/* Amharic wordmark / dual-language accents. */
+.t-amharic {
+  font-family: "Benaiah", "Noto Sans Ethiopic", sans-serif;
+}
 
 :focus-visible {
   outline: 2px solid var(--focus-ring);
