@@ -176,8 +176,10 @@ export function SummaryCard({ s }: { s: MeSummaryDto }) {
 function Stat({ label, value }: { label: string; value: string }) {
   return (
     <div>
-      <div style={{ fontSize: 14, fontWeight: 700, color: "#fff" }}>{value}</div>
-      <div style={{ fontSize: 10, color: "rgba(255,255,255,.6)", marginTop: 1 }}>
+      <div style={{ fontSize: 14, fontWeight: 700, color: "#fff", lineHeight: 1.1 }}>
+        {value}
+      </div>
+      <div style={{ fontSize: 10, color: "rgba(255,255,255,.6)", marginTop: -2 }}>
         {label}
       </div>
     </div>
