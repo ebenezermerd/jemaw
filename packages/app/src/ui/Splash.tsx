@@ -9,7 +9,7 @@ import { useReducedMotion } from "../motion/useReducedMotion.js";
 
 export function Splash({
   title = "Jemaw",
-  subtitle = "your group's quiet bookkeeper",
+  subtitle,
   hint,
 }: {
   title?: string;
@@ -138,11 +138,13 @@ export function Splash({
         >
           ጀማው
         </div>
-        <div
-          style={{ fontSize: 14, color: "rgba(244,242,251,.55)", marginTop: 14 }}
-        >
-          {subtitle}
-        </div>
+        {subtitle && (
+          <div
+            style={{ fontSize: 14, color: "rgba(244,242,251,.55)", marginTop: 14 }}
+          >
+            {subtitle}
+          </div>
+        )}
       </div>
 
       {/* branded loader */}

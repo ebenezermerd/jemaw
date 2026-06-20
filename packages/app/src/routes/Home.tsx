@@ -61,7 +61,7 @@ export function Home() {
 
   return (
     <div style={{ paddingBottom: 8, overflowX: "hidden" }}>
-      <div style={{ padding: 16, paddingBottom: 8, display: "grid", gap: 16 }}>
+      <div style={{ padding: 16, paddingBottom: 8, display: "grid", gap: 14 }}>
         {/* greeting */}
         {summary.data && (
           <div
@@ -69,7 +69,6 @@ export function Home() {
               display: "flex",
               justifyContent: "space-between",
               alignItems: "center",
-              paddingTop: 6,
             }}
           >
             <div>
