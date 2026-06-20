@@ -61,7 +61,41 @@ export function Home() {
 
   return (
     <div style={{ paddingBottom: 8, overflowX: "hidden" }}>
-      <div style={{ padding: 16, paddingBottom: 8 }}>
+      <div style={{ padding: 16, paddingBottom: 8, display: "grid", gap: 16 }}>
+        {/* greeting */}
+        {summary.data && (
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+              paddingTop: 6,
+            }}
+          >
+            <div>
+              <div style={{ fontSize: 13, color: "var(--text-muted)" }}>
+                {todayLabel()}
+              </div>
+              <div
+                style={{
+                  fontFamily: "'Bricolage Grotesque', sans-serif",
+                  fontWeight: 700,
+                  fontSize: 22,
+                  letterSpacing: "-0.02em",
+                  color: "var(--text)",
+                }}
+              >
+                Hi, {firstName(summary.data.displayName)}
+              </div>
+            </div>
+            <MemberAvatar
+              name={summary.data.displayName}
+              telegramUserId={me ? tgId(me) : undefined}
+              size={38}
+            />
+          </div>
+        )}
+
         {summary.isLoading || !summary.data ? (
           <Skeleton height={170} radius="var(--r-xl)" />
         ) : (
@@ -403,6 +437,45 @@ function Chevron({ open }: { open: boolean }) {
   );
 }
 
+// ─── Suggestion type glyph ────────────────────────────────────────────
+/** 38px icon box leading a suggestion row (Hi-Fi): violet receipt for an
+ * expense, amber diagonal for a loan. */
+function SuggestionGlyph({ kind }: { kind: "expense" | "loan" }) {
+  const isLoan = kind === "loan";
+  return (
+    <div
+      aria-hidden
+      style={{
+        width: 38,
+        height: 38,
+        flex: "none",
+        borderRadius: 11,
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        background: isLoan
+          ? "rgba(240,166,64,.14)"
+          : "rgba(110,89,199,.16)",
+        border: isLoan
+          ? "1px solid rgba(240,166,64,.4)"
+          : "1px solid rgba(110,89,199,.4)",
+      }}
+    >
+      {isLoan ? (
+        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="#F0A640" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M7 17L17 7" />
+          <path d="M9 7h8v8" />
+        </svg>
+      ) : (
+        <svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="#A99CE3" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <rect x="4" y="6" width="16" height="12" rx="2" />
+          <path d="M4 10h16" />
+        </svg>
+      )}
+    </div>
+  );
+}
+
 // ─── Suggestion row ───────────────────────────────────────────────────
 function SuggestionRow({
   s,
@@ -430,6 +503,7 @@ function SuggestionRow({
       rightActionLabel="Edit"
       header={(open) => (
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <SuggestionGlyph kind={s.kind === "loan" ? "loan" : "expense"} />
           <div style={{ flex: 1, minWidth: 0 }}>
             <div className="t-body-strong" style={ellip}>
               {s.description}
@@ -456,7 +530,7 @@ function SuggestionRow({
           color: "var(--text-muted)",
           marginBottom: 12,
           paddingLeft: 10,
-          borderLeft: "2px solid var(--border-strong)",
+          borderLeft: "2px solid rgba(168,156,227,.45)",
           fontStyle: "italic",
         }}
       >
@@ -538,7 +612,7 @@ function SettlementSuggestionRow({
           color: "var(--text-muted)",
           marginBottom: 12,
           paddingLeft: 10,
-          borderLeft: "2px solid var(--border-strong)",
+          borderLeft: "2px solid rgba(168,156,227,.45)",
           fontStyle: "italic",
         }}
       >
@@ -622,4 +696,18 @@ function currentMemberId(
     return new URLSearchParams(window.location.search).get("me");
   }
   return members.find((m) => m.telegramUserId === String(tgId))?.id ?? null;
+}
+
+/** "Sunday, Jun 20" — the greeting date line. */
+function todayLabel(): string {
+  return new Date().toLocaleDateString("en-US", {
+    weekday: "long",
+    month: "short",
+    day: "numeric",
+  });
+}
+
+/** First token of a display name, for the "Hi, X" greeting. */
+function firstName(name: string): string {
+  return name.trim().split(/\s+/)[0] ?? name;
 }

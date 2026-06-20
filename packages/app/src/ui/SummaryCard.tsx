@@ -1,154 +1,185 @@
 /**
- * Personal summary card for Home — a compact credit-card surface. Net standing
- * is focal; paid / share / items are a tidy stat row across the bottom. The
- * cardholder is a name badge (no avatar). Reduced height + tighter type.
+ * Personal balance card for Home — pixel-faithful to the Hi-Fi "premium balance
+ * card": violet gradient, specular highlight, the bubble-logo watermark, a name
+ * pill + gold chip, semantic status pill, the focal net in Bricolage, and a
+ * three-column stat row. Net standing is the focal number.
  */
 import { AnimatedNumber } from "../motion/AnimatedNumber.js";
-import { currencyAffix, formatMoney, formatNumber } from "../lib/money.js";
+import { currencyAffix, formatNumber } from "../lib/money.js";
 import type { MeSummaryDto } from "@jemaw/shared/types";
 
 export function SummaryCard({ s }: { s: MeSummaryDto }) {
   const net = Number(s.net);
   const standing =
     net > 0 ? "you're owed" : net < 0 ? "you owe" : "you're all square";
-  // Semantic accent: teal when owed, amber when owing, neutral when even.
-  const statusColor =
-    net > 0 ? "#2DD4A7" : net < 0 ? "#F0A640" : "rgba(247,247,245,0.7)";
-  const statusGlyph = net > 0 ? "▲" : net < 0 ? "▼" : "•";
+  // Semantic status sub-pill: teal owed, amber owes, neutral even.
+  const status =
+    net > 0
+      ? { color: "#bff3e2", bg: "rgba(45,212,167,.24)", glyph: "▲", word: "net positive" }
+      : net < 0
+        ? { color: "#fbe0bd", bg: "rgba(240,166,64,.24)", glyph: "▼", word: "net negative" }
+        : { color: "rgba(255,255,255,.8)", bg: "rgba(255,255,255,.16)", glyph: "•", word: "all square" };
   const { symbol, suffix } = currencyAffix(s.currency);
-  // Group thousands on the focal number (4,565.49) + keep the sign.
   const focal = net > 0 ? `+${formatNumber(s.net)}` : formatNumber(s.net);
 
   return (
     <div
       style={{
         position: "relative",
-        borderRadius: "var(--r-xl)",
-        padding: 18,
+        borderRadius: 26,
+        padding: 22,
         overflow: "hidden",
-        color: "#F7F7F5",
+        color: "#fff",
         background:
-          "linear-gradient(150deg, #463494 0%, #6E59C7 48%, #2A1F5C 100%)",
-        border: "1px solid var(--border-strong)",
+          "linear-gradient(145deg,#3B2C84 0%,#6E59C7 58%,#8A78D6 100%)",
         boxShadow:
-          "0 24px 50px -18px rgba(110,89,199,0.55), inset 0 1px 0 rgba(255,255,255,0.2)",
-        display: "grid",
-        gap: 14,
+          "0 24px 50px -18px rgba(110,89,199,.6), inset 0 1px 0 rgba(255,255,255,.2)",
       }}
     >
-      {/* sheen + scrim */}
+      {/* specular highlight */}
       <div
         aria-hidden
         style={{
           position: "absolute",
           inset: 0,
           background:
-            "radial-gradient(130% 90% at 100% 0%, rgba(255,255,255,0.10) 0%, transparent 46%), radial-gradient(120% 90% at 0% 100%, rgba(0,0,0,0.32) 0%, transparent 56%)",
+            "radial-gradient(150px 110px at 84% 4%, rgba(255,255,255,.26), transparent 70%)",
           pointerEvents: "none",
         }}
       />
-
-      {/* top: name badge + chip */}
-      <div
+      {/* bubble-logo watermark, bottom-right */}
+      <svg
+        aria-hidden
+        viewBox="0 0 100 100"
         style={{
-          position: "relative",
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "center",
+          position: "absolute",
+          right: -28,
+          bottom: -34,
+          width: 180,
+          height: 180,
+          opacity: 0.16,
+          pointerEvents: "none",
         }}
       >
-        <span
-          className="t-caption"
-          style={{
-            display: "inline-flex",
-            alignItems: "center",
-            height: 24,
-            padding: "0 10px",
-            borderRadius: "var(--r-full)",
-            background: "rgba(255,255,255,0.16)",
-            color: "#F7F7F5",
-            textTransform: "uppercase",
-            letterSpacing: "0.08em",
-            fontWeight: 600,
-            backdropFilter: "blur(4px)",
-          }}
-        >
-          {s.displayName}
-        </span>
-        <Chip />
-      </div>
+        <circle cx="50" cy="40" r="23" fill="#fff" style={{ mixBlendMode: "overlay" }} />
+        <circle cx="37" cy="62" r="23" fill="#fff" style={{ mixBlendMode: "overlay" }} />
+        <circle cx="63" cy="62" r="23" fill="#fff" style={{ mixBlendMode: "overlay" }} />
+      </svg>
 
-      {/* focal: net */}
       <div style={{ position: "relative" }}>
+        {/* name pill + gold chip */}
         <div
-          className="t-mono-label"
           style={{
-            marginBottom: 4,
-            color: statusColor,
-            display: "inline-flex",
-            alignItems: "center",
-            gap: 5,
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "flex-start",
           }}
         >
-          <span aria-hidden style={{ fontSize: 9 }}>
-            {statusGlyph}
+          <span
+            style={{
+              fontSize: 10,
+              fontWeight: 700,
+              letterSpacing: "0.08em",
+              textTransform: "uppercase",
+              color: "#fff",
+              background: "rgba(255,255,255,.16)",
+              padding: "5px 11px",
+              borderRadius: 999,
+            }}
+          >
+            {s.displayName}
           </span>
-          {standing}
+          <Chip />
         </div>
-        <div className="t-title" style={{ lineHeight: 1 }}>
+
+        {/* status label + sub-pill */}
+        <div
+          style={{
+            marginTop: 24,
+            display: "flex",
+            alignItems: "center",
+            gap: 8,
+          }}
+        >
+          <span
+            style={{
+              fontSize: 11,
+              fontWeight: 700,
+              letterSpacing: "0.1em",
+              textTransform: "uppercase",
+              color: "rgba(255,255,255,.82)",
+            }}
+          >
+            {standing}
+          </span>
+          <span
+            style={{
+              fontSize: 10,
+              color: status.color,
+              background: status.bg,
+              padding: "2px 8px",
+              borderRadius: 6,
+              fontWeight: 700,
+            }}
+          >
+            {status.glyph} {status.word}
+          </span>
+        </div>
+
+        {/* focal net */}
+        <div
+          style={{
+            fontFamily: "'Bricolage Grotesque', sans-serif",
+            fontWeight: 800,
+            fontSize: 42,
+            letterSpacing: "-0.02em",
+            color: "#fff",
+            marginTop: 5,
+            fontVariantNumeric: "tabular-nums",
+            display: "flex",
+            alignItems: "baseline",
+            gap: 0,
+          }}
+        >
           <AnimatedNumber
             value={focal}
             prefix={suffix ? "" : symbol}
-            suffix={suffix ? symbol : ""}
+            suffix=""
           />
+          {suffix && (
+            <span style={{ fontSize: 21, opacity: 0.7 }}>&nbsp;{symbol}</span>
+          )}
         </div>
-      </div>
 
-      {/* bottom: stat row */}
-      <div
-        style={{
-          position: "relative",
-          display: "grid",
-          gridTemplateColumns: "1fr 1fr 1fr",
-          borderTop: "1px solid rgba(255,255,255,0.16)",
-          paddingTop: 12,
-        }}
-      >
-        <Stat label="Paid" value={formatMoney(s.totalPaid, s.currency)} />
-        <Stat label="Your share" value={formatMoney(s.totalShare, s.currency)} divider />
-        <Stat label="Entries" value={String(s.expenseCount)} divider />
+        {/* divider */}
+        <div
+          style={{ height: 1, background: "rgba(255,255,255,.2)", margin: "18px 0 14px" }}
+        />
+
+        {/* stat row */}
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            fontVariantNumeric: "tabular-nums",
+          }}
+        >
+          <Stat label="Paid" value={formatNumber(s.totalPaid)} />
+          <Stat label="Your share" value={formatNumber(s.totalShare)} />
+          <Stat label="Entries" value={String(s.expenseCount)} />
+        </div>
       </div>
     </div>
   );
 }
 
-function Stat({
-  label,
-  value,
-  divider,
-}: {
-  label: string;
-  value: string;
-  divider?: boolean;
-}) {
+function Stat({ label, value }: { label: string; value: string }) {
   return (
-    <div
-      style={{
-        display: "grid",
-        gap: 2,
-        paddingLeft: divider ? 12 : 0,
-        borderLeft: divider ? "1px solid rgba(255,255,255,0.16)" : "none",
-      }}
-    >
-      <span
-        className="tnum t-label"
-        style={{ fontVariantNumeric: "tabular-nums" }}
-      >
-        {value}
-      </span>
-      <span className="t-caption" style={{ opacity: 0.7, fontSize: 11 }}>
+    <div>
+      <div style={{ fontSize: 14, fontWeight: 700, color: "#fff" }}>{value}</div>
+      <div style={{ fontSize: 10, color: "rgba(255,255,255,.6)", marginTop: 1 }}>
         {label}
-      </span>
+      </div>
     </div>
   );
 }
@@ -158,30 +189,20 @@ function Chip() {
     <div
       aria-hidden
       style={{
-        width: 32,
-        height: 24,
-        borderRadius: 5,
-        background: "linear-gradient(135deg, #EBD98C, #C9A227)",
+        width: 38,
+        height: 28,
+        borderRadius: 7,
+        background: "linear-gradient(135deg,#E9C36B,#C99A3E)",
+        boxShadow: "inset 0 1px 1px rgba(255,255,255,.5)",
         position: "relative",
-        boxShadow: "inset 0 1px 1px rgba(255,255,255,0.4)",
       }}
     >
       <div
         style={{
           position: "absolute",
-          inset: "5px 8px",
+          inset: "5px 7px",
+          border: "1px solid rgba(0,0,0,.22)",
           borderRadius: 2,
-          border: "1px solid rgba(0,0,0,0.28)",
-        }}
-      />
-      <div
-        style={{
-          position: "absolute",
-          left: 8,
-          right: 8,
-          top: "50%",
-          height: 1,
-          background: "rgba(0,0,0,0.28)",
         }}
       />
     </div>
