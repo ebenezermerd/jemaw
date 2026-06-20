@@ -461,12 +461,12 @@ function SuggestionGlyph({ kind }: { kind: "expense" | "loan" }) {
       }}
     >
       {isLoan ? (
-        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="#F0A640" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <svg viewBox="0 0 24 24" width="23" height="23" fill="none" stroke="#F0A640" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
           <path d="M7 17L17 7" />
           <path d="M9 7h8v8" />
         </svg>
       ) : (
-        <svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="#A99CE3" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="#A99CE3" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
           <rect x="4" y="6" width="16" height="12" rx="2" />
           <path d="M4 10h16" />
         </svg>
