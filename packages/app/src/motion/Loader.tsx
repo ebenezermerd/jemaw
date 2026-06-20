@@ -34,12 +34,12 @@ export function Loader({ size = 44 }: { size?: number }) {
               : { animation: "jemaw-spin 1s linear infinite", transformOrigin: "center" }
           }
         />
-        {/* inner counter-arc (teal accent for the dual-tone brand mark) */}
+        {/* inner counter-arc (violet-300, per Hi-Fi loader) */}
         <circle
           cx="22"
           cy="22"
           r="11"
-          stroke="color-mix(in srgb, var(--positive) 75%, transparent)"
+          stroke="rgba(168,156,227,0.7)"
           strokeWidth={stroke}
           strokeLinecap="round"
           strokeDasharray="14 120"
@@ -54,7 +54,7 @@ export function Loader({ size = 44 }: { size?: number }) {
           cx="22"
           cy="22"
           r="3"
-          fill="var(--accent)"
+          fill="var(--violet-300)"
           style={reduced ? undefined : { animation: "jemaw-core 1.2s ease-in-out infinite" }}
         />
       </svg>

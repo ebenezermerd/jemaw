@@ -166,6 +166,16 @@ svg {
   font-variant-numeric: tabular-nums;
 }
 
+/* Brand breathing mark (Splash) — float + bubble breathe. */
+@keyframes jemaw-float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-7px); }
+}
+@keyframes jemaw-breathe {
+  0%, 100% { transform: scale(1); opacity: 0.92; }
+  50% { transform: scale(1.05); opacity: 1; }
+}
+
 /* Skeleton shimmer (used app-wide). */
 @keyframes jemaw-shimmer {
   from { background-position: 200% 0 }
