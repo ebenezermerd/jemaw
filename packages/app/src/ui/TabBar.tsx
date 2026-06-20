@@ -101,7 +101,7 @@ function CenterButton({
       style={{
         width: 58,
         height: 58,
-        marginTop: -36,
+        marginTop: -42,
         borderRadius: "var(--r-full)",
         border: "4px solid var(--bg)",
         background: mode === "add" ? "var(--accent)" : "var(--surface-elevated)",

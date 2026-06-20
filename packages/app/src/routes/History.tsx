@@ -181,7 +181,7 @@ function TypeGlyph({ kind }: { kind: "expense" | "loan" | "settlement" }) {
         color: tone.fg,
         display: "grid",
         placeItems: "center",
-        fontSize: 14,
+        fontSize: 18,
       }}
     >
       {tone.glyph}

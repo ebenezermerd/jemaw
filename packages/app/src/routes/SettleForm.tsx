@@ -322,7 +322,7 @@ export function SettleForm() {
                         color: "#fff",
                         display: "grid",
                         placeItems: "center",
-                        fontSize: 13,
+                        fontSize: 16,
                         flexShrink: 0,
                       }}
                     >
