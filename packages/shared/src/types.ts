@@ -57,6 +57,8 @@ export interface MemberDto {
   telegramUserId: TelegramIdString;
   role: "admin" | "member";
   isActive: boolean;
+  /** Default-included in expense splits; secondary members are added explicitly. */
+  isPrimary: boolean;
 }
 
 export interface GroupDto {

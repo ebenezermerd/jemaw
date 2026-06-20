@@ -11,6 +11,7 @@ function member(over: Partial<Member> = {}): Member {
     username: null,
     role: "member",
     isActive: true,
+    isPrimary: true,
     joinedAt: new Date(),
     ...over,
   } as Member;
@@ -30,6 +31,11 @@ describe("toMemberDto", () => {
   it("exposes the member role", () => {
     expect(toMemberDto(member({ role: "admin" })).role).toBe("admin");
     expect(toMemberDto(member({ role: "member" })).role).toBe("member");
+  });
+
+  it("exposes the primary flag", () => {
+    expect(toMemberDto(member({ isPrimary: true })).isPrimary).toBe(true);
+    expect(toMemberDto(member({ isPrimary: false })).isPrimary).toBe(false);
   });
 });
 

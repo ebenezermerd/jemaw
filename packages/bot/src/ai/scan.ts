@@ -244,9 +244,12 @@ export async function scanGroup(
       continue;
     }
     if (splitMemberIds.length === 0) {
-      splitMemberIds.push(...allMemberIds);
+      // No members clued from chat — default to primary members only (the
+      // group's regular participants), falling back to all if none are primary.
+      const primaryIds = members.filter((m) => m.isPrimary).map((m) => m.id);
+      splitMemberIds.push(...(primaryIds.length ? primaryIds : allMemberIds));
       sawUnknownSplit = true;
-      console.log(`[scan] fallback "${s.description}": split defaulted to all members`);
+      console.log(`[scan] fallback "${s.description}": split defaulted to primary members`);
     }
     if (
       s.kind === "loan" &&

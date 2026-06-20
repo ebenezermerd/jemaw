@@ -30,6 +30,7 @@ export function toMemberDto(m: Member): MemberDto {
     telegramUserId: telegramIdToString(m.telegramUserId),
     role: m.role,
     isActive: m.isActive,
+    isPrimary: m.isPrimary,
   };
 }
 
