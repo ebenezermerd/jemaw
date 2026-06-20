@@ -37,12 +37,19 @@ export function Add() {
   const [splitWith, setSplitWith] = useState<Set<string>>(new Set());
   const [shares, setShares] = useState<Record<string, number>>({});
   const [exact, setExact] = useState<Record<string, string>>({});
+  // Secondary members stay hidden behind "Add others" until revealed.
+  const [showSecondary, setShowSecondary] = useState(false);
 
-  // Default selections once members load.
+  // Default selections once members load. Splits default to primary members
+  // (the group's regular participants); secondary members are added explicitly
+  // via "Add others". Fall back to all if no member is marked primary.
   useEffect(() => {
     if (members.length && !payer) setPayer(members[0]!.id);
-    if (members.length && splitWith.size === 0)
-      setSplitWith(new Set(members.map((m) => m.id)));
+    if (members.length && splitWith.size === 0) {
+      const primary = members.filter((m) => m.isPrimary);
+      const defaults = primary.length ? primary : members;
+      setSplitWith(new Set(defaults.map((m) => m.id)));
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [group.data]);
 
@@ -242,7 +249,14 @@ export function Add() {
 
             <Field label="Split between" icon="≡">
               <div style={{ display: "grid", gap: 8 }}>
-                {members.map((m) => {
+                {members
+                  .filter(
+                    (m) =>
+                      showSecondary ||
+                      m.isPrimary ||
+                      splitWith.has(m.id),
+                  )
+                  .map((m) => {
                   const on = splitWith.has(m.id);
                   return (
                     <div
@@ -305,6 +319,27 @@ export function Add() {
                   );
                 })}
               </div>
+
+              {!showSecondary &&
+                members.some((m) => !m.isPrimary && !splitWith.has(m.id)) && (
+                  <button
+                    onClick={() => setShowSecondary(true)}
+                    className="t-label"
+                    style={{
+                      marginTop: 8,
+                      width: "100%",
+                      padding: "10px 12px",
+                      borderRadius: "var(--r-md)",
+                      border: "1px dashed var(--border-strong)",
+                      background: "transparent",
+                      color: "var(--accent)",
+                      cursor: "pointer",
+                      fontWeight: 600,
+                    }}
+                  >
+                    + Add others
+                  </button>
+                )}
 
               {splitType === "exact" && (
                 <p

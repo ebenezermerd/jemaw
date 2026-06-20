@@ -196,6 +196,21 @@ export async function setMemberRoleById(
   return rows[0] ?? null;
 }
 
+/** Set a member's primary flag (default-included in splits). Independent of role. */
+export async function setMemberPrimaryById(
+  db: Db,
+  groupId: string,
+  memberId: string,
+  isPrimary: boolean,
+): Promise<Member | null> {
+  const rows = await db
+    .update(members)
+    .set({ isPrimary })
+    .where(and(eq(members.groupId, groupId), eq(members.id, memberId)))
+    .returning();
+  return rows[0] ?? null;
+}
+
 /** How many active admins a group currently has (to block removing the last). */
 export async function countAdmins(db: Db, groupId: string): Promise<number> {
   const rows = await db

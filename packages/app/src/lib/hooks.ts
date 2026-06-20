@@ -197,6 +197,19 @@ export function useSetMemberRole() {
   });
 }
 
+/** Admin only: set a member primary/secondary (default-included in splits). */
+export function useSetMemberPrimary() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (args: { memberId: string; isPrimary: boolean }) =>
+      api.patch<MemberDto>(
+        `/api/groups/${gid()}/members/${args.memberId}/primary`,
+        { isPrimary: args.isPrimary },
+      ),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["group"] }),
+  });
+}
+
 export function useSuggestions() {
   return useQuery({
     queryKey: ["suggestions"],

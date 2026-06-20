@@ -24,6 +24,7 @@ import {
   addManualMember,
   renameMember,
   setMemberRoleById,
+  setMemberPrimaryById,
   countAdmins,
   updateGroupCurrency,
   resetGroupData,
@@ -229,6 +230,7 @@ const addMemberSchema = z.object({
 
 const renameSchema = z.object({ displayName: z.string().min(1).max(80) });
 const setRoleSchema = z.object({ role: z.enum(["admin", "member"]) });
+const setPrimarySchema = z.object({ isPrimary: z.boolean() });
 
 export interface ApiDeps {
   db: Db;
@@ -828,6 +830,29 @@ export async function registerApi(
         group.id,
         memberId,
         parsed.data.role,
+      );
+      if (!updated) return reply.code(404).send({ error: "member not found" });
+      return toMemberDto(updated);
+    },
+  );
+
+  // PATCH a member's primary flag (default-included in splits) — admin only.
+  app.patch(
+    "/api/groups/:groupId/members/:memberId/primary",
+    { preHandler: auth },
+    async (req, reply) => {
+      if (!requireAdmin(req, reply)) return;
+      const { group } = req.jemaw!;
+      const { memberId } = req.params as { memberId: string };
+      const parsed = setPrimarySchema.safeParse(req.body);
+      if (!parsed.success) {
+        return reply.code(400).send({ error: "invalid body" });
+      }
+      const updated = await setMemberPrimaryById(
+        db,
+        group.id,
+        memberId,
+        parsed.data.isPrimary,
       );
       if (!updated) return reply.code(404).send({ error: "member not found" });
       return toMemberDto(updated);

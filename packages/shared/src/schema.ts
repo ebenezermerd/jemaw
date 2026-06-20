@@ -99,6 +99,10 @@ export const members = pgTable(
     username: text("username"),
     role: memberRole("role").notNull().default("member"),
     isActive: boolean("is_active").notNull().default(true),
+    // Primary members are default-included in expense splits; secondary members
+    // are added explicitly. Independent of role/isActive. Defaults true so
+    // existing members keep the previous "everyone selected" behaviour.
+    isPrimary: boolean("is_primary").notNull().default(true),
     joinedAt: timestamp("joined_at", { withTimezone: true })
       .notNull()
       .defaultNow(),
