@@ -390,7 +390,7 @@ function Field({
               color: "var(--accent)",
               display: "grid",
               placeItems: "center",
-              fontSize: 12,
+              fontSize: 15,
             }}
           >
             {icon}
