@@ -20,15 +20,15 @@ import {
 import type { BalanceDto, ExpenseDto } from "@jemaw/shared/types";
 import { formatMoney } from "../lib/money.js";
 
+// Color-vision-deficiency-friendly categorical palette (Jemaw Brand.dc.html).
+// Distinct hues, not luminance-only greens — fixes the unreadable donut.
 const SLICE = [
-  "#34D399",
-  "#22C55E",
-  "#10B981",
-  "#6EE7B7",
-  "#A7F3D0",
-  "#059669",
-  "#84CC16",
-  "#F59E0B",
+  "#8E7BE0",
+  "#5BA8E0",
+  "#2DC4B0",
+  "#E0B23C",
+  "#E8825C",
+  "#D873B8",
 ];
 
 export function BalancesAnalytics({
@@ -111,7 +111,7 @@ export function BalancesAnalytics({
             />
             <Bar dataKey="net" radius={4}>
               {netData.map((d, i) => (
-                <Cell key={i} fill={d.net >= 0 ? "var(--accent)" : "var(--warn)"} />
+                <Cell key={i} fill={d.net >= 0 ? "var(--positive)" : "var(--warn)"} />
               ))}
             </Bar>
           </BarChart>

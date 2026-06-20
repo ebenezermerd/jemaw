@@ -34,12 +34,12 @@ export function Loader({ size = 44 }: { size?: number }) {
               : { animation: "jemaw-spin 1s linear infinite", transformOrigin: "center" }
           }
         />
-        {/* inner counter-arc */}
+        {/* inner counter-arc (teal accent for the dual-tone brand mark) */}
         <circle
           cx="22"
           cy="22"
           r="11"
-          stroke="color-mix(in srgb, var(--accent) 60%, transparent)"
+          stroke="color-mix(in srgb, var(--positive) 75%, transparent)"
           strokeWidth={stroke}
           strokeLinecap="round"
           strokeDasharray="14 120"
