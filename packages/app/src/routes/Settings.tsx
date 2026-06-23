@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   useGroup,
@@ -32,12 +32,15 @@ export function Settings() {
   const [newName, setNewName] = useState("");
   const [theme, setTheme] = useState<ThemePref>(getThemePref());
   const [confirmReset, setConfirmReset] = useState(false);
-  const [editMember, setEditMember] = useState<MemberDto | null>(null);
+  const [editMemberId, setEditMemberId] = useState<string | null>(null);
 
   if (group.isLoading) return <PageLoader />;
   const g = group.data;
   if (!g) return <Centered>Couldn't load settings.</Centered>;
   const isAdmin = g.isAdmin;
+  const editMember = editMemberId
+    ? g.members.find((m) => m.id === editMemberId) ?? null
+    : null;
 
   async function doReset() {
     await resetGroup.mutateAsync();
@@ -81,19 +84,14 @@ export function Settings() {
               {g.hasExpenses ? " · locked" : ""}
             </span>
           ) : (
-            <select
+            <CurrencyPicker
               value={g.defaultCurrency}
-              onChange={(e) =>
-                updateGroup.mutate({ defaultCurrency: e.target.value })
-              }
-              style={selectStyle}
-            >
-              {CURRENCIES.map((c) => (
-                <option key={c} value={c}>
-                  {c}
-                </option>
-              ))}
-            </select>
+              busy={updateGroup.isPending}
+              onChange={async (currency) => {
+                await updateGroup.mutateAsync({ defaultCurrency: currency });
+                await group.refetch();
+              }}
+            />
           )}
         </Row>
         {g.hasExpenses && (
@@ -109,7 +107,7 @@ export function Settings() {
           {g.members.map((m) => (
             <button
               key={m.id}
-              onClick={() => isAdmin && setEditMember(m)}
+              onClick={() => isAdmin && setEditMemberId(m.id)}
               style={{
                 display: "flex",
                 alignItems: "center",
@@ -217,7 +215,7 @@ export function Settings() {
       </Modal>
 
       {/* Per-member management (admins) */}
-      <Modal open={!!editMember} onClose={() => setEditMember(null)}>
+      <Modal open={!!editMember} onClose={() => setEditMemberId(null)}>
         {editMember && (
           <MemberEditor
             member={editMember}
@@ -225,23 +223,31 @@ export function Settings() {
               editMember.role === "admin" &&
               g.members.filter((x) => x.role === "admin").length <= 1
             }
-            busy={rename.isPending || setRole.isPending || setPrimary.isPending}
-            onRename={(name) =>
-              rename.mutate({ memberId: editMember.id, displayName: name })
-            }
-            onTogglePrimary={() =>
-              setPrimary.mutate({
+            renaming={rename.isPending}
+            togglingPrimary={setPrimary.isPending}
+            togglingRole={setRole.isPending}
+            onRename={async (name) => {
+              await rename.mutateAsync({
+                memberId: editMember.id,
+                displayName: name,
+              });
+              await group.refetch();
+            }}
+            onTogglePrimary={async () => {
+              await setPrimary.mutateAsync({
                 memberId: editMember.id,
                 isPrimary: !editMember.isPrimary,
-              })
-            }
-            onToggleRole={() =>
-              setRole.mutate({
+              });
+              await group.refetch();
+            }}
+            onToggleRole={async () => {
+              await setRole.mutateAsync({
                 memberId: editMember.id,
                 role: editMember.role === "admin" ? "member" : "admin",
-              })
-            }
-            onClose={() => setEditMember(null)}
+              });
+              await group.refetch();
+            }}
+            onClose={() => setEditMemberId(null)}
           />
         )}
       </Modal>
@@ -254,7 +260,9 @@ export function Settings() {
 function MemberEditor({
   member,
   isLastAdmin,
-  busy,
+  renaming,
+  togglingPrimary,
+  togglingRole,
   onRename,
   onTogglePrimary,
   onToggleRole,
@@ -262,18 +270,49 @@ function MemberEditor({
 }: {
   member: MemberDto;
   isLastAdmin: boolean;
-  busy: boolean;
-  onRename: (name: string) => void;
-  onTogglePrimary: () => void;
-  onToggleRole: () => void;
+  renaming: boolean;
+  togglingPrimary: boolean;
+  togglingRole: boolean;
+  onRename: (name: string) => Promise<unknown>;
+  onTogglePrimary: () => Promise<unknown>;
+  onToggleRole: () => Promise<unknown>;
   onClose: () => void;
 }) {
   const [name, setName] = useState(member.displayName);
+  const [error, setError] = useState<string | null>(null);
+  const [savingName, setSavingName] = useState(false);
+  const trimmed = name.trim();
+  const hasRename = trimmed.length > 0 && trimmed !== member.displayName;
+  const isSavingName = renaming || savingName;
+
+  useEffect(() => {
+    setName(member.displayName);
+  }, [member.displayName]);
+
+  async function saveName() {
+    if (!hasRename) {
+      onClose();
+      return;
+    }
+    setError(null);
+    setSavingName(true);
+    try {
+      await onRename(trimmed);
+      setSavingName(false);
+      onClose();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not save this name.");
+      setSavingName(false);
+    }
+  }
+
   return (
     <div style={{ display: "grid", gap: 16 }}>
       <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
         <MemberAvatar name={member.displayName} telegramUserId={member.telegramUserId} size={44} />
-        <h2 className="t-heading" style={{ margin: 0 }}>{member.displayName}</h2>
+        <h2 className="t-heading" style={{ margin: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+          {member.displayName}
+        </h2>
       </div>
 
       {/* rename */}
@@ -283,7 +322,13 @@ function MemberEditor({
           value={name}
           onChange={(e) => setName(e.target.value)}
           style={{ ...memberInput, height: 44 }}
+          disabled={isSavingName}
         />
+        {error && (
+          <span className="t-caption" style={{ color: "var(--danger)" }}>
+            {error}
+          </span>
+        )}
       </div>
 
       {/* primary toggle */}
@@ -292,7 +337,8 @@ function MemberEditor({
         hint="Included in new expense splits by default."
         on={member.isPrimary}
         onClick={onTogglePrimary}
-        disabled={busy}
+        busy={togglingPrimary}
+        disabled={togglingPrimary}
       />
 
       {/* admin toggle */}
@@ -305,23 +351,20 @@ function MemberEditor({
         }
         on={member.role === "admin"}
         onClick={onToggleRole}
-        disabled={busy || isLastAdmin}
+        busy={togglingRole}
+        disabled={togglingRole || isLastAdmin}
       />
 
       <div style={{ display: "flex", gap: 8, marginTop: 4 }}>
-        <Button variant="ghost" onClick={onClose} style={{ flex: 1 }}>
+        <Button variant="ghost" onClick={onClose} disabled={isSavingName} style={{ flex: 1 }}>
           Close
         </Button>
         <Button
-          onClick={() => {
-            const v = name.trim();
-            if (v && v !== member.displayName) onRename(v);
-            onClose();
-          }}
-          disabled={busy}
+          onClick={saveName}
+          disabled={isSavingName || trimmed.length === 0}
           style={{ flex: 1 }}
         >
-          Save
+          {isSavingName ? "Saving..." : "Save"}
         </Button>
       </div>
     </div>
@@ -333,50 +376,247 @@ function ToggleRow({
   hint,
   on,
   onClick,
+  busy,
   disabled,
 }: {
   label: string;
   hint: string;
   on: boolean;
-  onClick: () => void;
+  onClick: () => Promise<unknown>;
+  busy?: boolean;
   disabled?: boolean;
 }) {
+  const [error, setError] = useState<string | null>(null);
+  const [working, setWorking] = useState(false);
+  const isBusy = busy || working;
+  const isDisabled = disabled || working;
+
+  async function handleClick() {
+    if (isDisabled) return;
+    setError(null);
+    setWorking(true);
+    try {
+      await onClick();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not update this setting.");
+    } finally {
+      setWorking(false);
+    }
+  }
+
   return (
-    <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-      <div style={{ flex: 1, minWidth: 0 }}>
-        <div className="t-body-strong">{label}</div>
-        <div className="t-caption" style={{ color: "var(--text-faint)" }}>{hint}</div>
+    <div style={{ display: "grid", gap: 6 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div className="t-body-strong">{label}</div>
+          <div className="t-caption" style={{ color: "var(--text-faint)" }}>{hint}</div>
+        </div>
+        <button
+          role="switch"
+          aria-checked={on}
+          aria-busy={isBusy || undefined}
+          onClick={handleClick}
+          disabled={isDisabled}
+          style={{
+            flexShrink: 0,
+            width: 50,
+            height: 30,
+            borderRadius: 999,
+            border: isBusy
+              ? "1px solid var(--accent)"
+              : "1px solid var(--border-strong)",
+            padding: 3,
+            cursor: isDisabled ? "not-allowed" : "pointer",
+            opacity: isDisabled && !isBusy ? 0.5 : 1,
+            background: on ? "var(--accent)" : "var(--surface-3)",
+            transition: "background var(--dur-fast), border-color var(--dur-fast), opacity var(--dur-fast)",
+            display: "flex",
+            justifyContent: on ? "flex-end" : "flex-start",
+          }}
+        >
+          <span
+            style={{
+              width: 22,
+              height: 22,
+              borderRadius: "50%",
+              background: "#fff",
+              transition: "transform var(--dur-fast), opacity var(--dur-fast)",
+              opacity: isBusy ? 0.62 : 1,
+            }}
+          />
+        </button>
       </div>
+      {isBusy && (
+        <span className="t-caption" style={{ color: "var(--accent)" }}>
+          Updating...
+        </span>
+      )}
+      {error && (
+        <span className="t-caption" style={{ color: "var(--danger)" }}>
+          {error}
+        </span>
+      )}
+    </div>
+  );
+}
+
+function CurrencyPicker({
+  value,
+  busy,
+  onChange,
+}: {
+  value: string;
+  busy: boolean;
+  onChange: (currency: string) => Promise<unknown>;
+}) {
+  const [open, setOpen] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [savingCurrency, setSavingCurrency] = useState<string | null>(null);
+  const isSaving = busy || savingCurrency !== null;
+
+  async function choose(currency: string) {
+    if (currency === value) {
+      setOpen(false);
+      return;
+    }
+
+    setError(null);
+    setSavingCurrency(currency);
+    try {
+      await onChange(currency);
+      setOpen(false);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not save currency.");
+    } finally {
+      setSavingCurrency(null);
+    }
+  }
+
+  return (
+    <div
+      style={{
+        position: "relative",
+        width: "min(196px, 100%)",
+        display: "grid",
+        gap: 8,
+      }}
+    >
       <button
-        role="switch"
-        aria-checked={on}
-        onClick={onClick}
-        disabled={disabled}
+        type="button"
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        aria-busy={isSaving || undefined}
+        onClick={() => !isSaving && setOpen((current) => !current)}
+        disabled={isSaving}
         style={{
-          flexShrink: 0,
-          width: 46,
-          height: 28,
-          borderRadius: 999,
-          border: "none",
-          padding: 3,
-          cursor: disabled ? "not-allowed" : "pointer",
-          opacity: disabled ? 0.5 : 1,
-          background: on ? "var(--accent)" : "var(--surface-3)",
-          transition: "background var(--dur-fast)",
+          minHeight: 40,
+          width: "100%",
+          padding: "0 12px",
+          borderRadius: "var(--r-md)",
+          border: "1px solid var(--border-strong)",
+          background: "var(--surface-3)",
+          color: "var(--text)",
+          cursor: isSaving ? "wait" : "pointer",
           display: "flex",
-          justifyContent: on ? "flex-end" : "flex-start",
+          alignItems: "center",
+          justifyContent: "space-between",
+          gap: 10,
+          fontFamily: "inherit",
+          transition:
+            "border-color var(--dur-fast), background var(--dur-fast), opacity var(--dur-fast)",
+          opacity: isSaving ? 0.78 : 1,
         }}
       >
+        <span className="t-body-strong">{value}</span>
         <span
           style={{
-            width: 22,
-            height: 22,
-            borderRadius: "50%",
-            background: "#fff",
-            transition: "all var(--dur-fast)",
+            width: 8,
+            height: 8,
+            borderRight: "2px solid var(--text-muted)",
+            borderBottom: "2px solid var(--text-muted)",
+            transform: open ? "rotate(225deg) translate(-2px, -2px)" : "rotate(45deg)",
+            transition: "transform var(--dur-fast)",
+            flexShrink: 0,
           }}
         />
       </button>
+
+      {open && (
+        <div
+          role="listbox"
+          aria-label="Currency"
+          style={{
+            position: "absolute",
+            top: "calc(100% + 8px)",
+            right: 0,
+            zIndex: 10,
+            width: "min(236px, calc(100vw - 48px))",
+            padding: 6,
+            borderRadius: "var(--r-lg)",
+            border: "1px solid var(--border)",
+            background: "var(--surface-elevated)",
+            boxShadow: "0 18px 44px rgba(0, 0, 0, 0.28)",
+            display: "grid",
+            gap: 2,
+          }}
+        >
+          {CURRENCIES.map((currency) => {
+            const selected = currency === value;
+            const savingThis = savingCurrency === currency;
+
+            return (
+              <button
+                key={currency}
+                type="button"
+                role="option"
+                aria-selected={selected}
+                onClick={() => choose(currency)}
+                disabled={isSaving}
+                style={{
+                  minHeight: 38,
+                  padding: "0 10px",
+                  border: "none",
+                  borderRadius: "var(--r-md)",
+                  background: selected ? "var(--accent-soft)" : "transparent",
+                  color: selected ? "var(--accent)" : "var(--text)",
+                  cursor: isSaving ? "wait" : "pointer",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  gap: 12,
+                  fontFamily: "inherit",
+                  textAlign: "left",
+                }}
+              >
+                <span className="t-body-strong">{currency}</span>
+                <span
+                  className="t-caption"
+                  style={{
+                    color: savingThis
+                      ? "var(--accent)"
+                      : selected
+                        ? "var(--text-muted)"
+                        : "var(--text-faint)",
+                  }}
+                >
+                  {savingThis ? "Saving..." : selected ? "Current" : ""}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      )}
+
+      {isSaving && (
+        <span className="t-caption" style={{ color: "var(--accent)" }}>
+          Saving currency...
+        </span>
+      )}
+      {error && (
+        <span className="t-caption" style={{ color: "var(--danger)" }}>
+          {error}
+        </span>
+      )}
     </div>
   );
 }
@@ -489,17 +729,6 @@ function Segmented<T extends string>({
     </div>
   );
 }
-
-const selectStyle: React.CSSProperties = {
-  height: 36,
-  padding: "0 10px",
-  borderRadius: "var(--r-md)",
-  border: "1px solid var(--border-strong)",
-  background: "var(--surface)",
-  color: "var(--text)",
-  fontSize: 15,
-  fontFamily: "inherit",
-};
 
 const memberInput: React.CSSProperties = {
   flex: 1,
