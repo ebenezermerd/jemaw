@@ -158,8 +158,27 @@ export function useCreateSettlement() {
   });
 }
 
+export function useDeleteSettlement() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (settlementId: string) =>
+      api.delete<{ ok: true }>(
+        `/api/groups/${gid()}/settlements/${settlementId}`,
+      ),
+    onSuccess: () => invalidateLedger(qc),
+  });
+}
+
 function invalidateLedger(qc: ReturnType<typeof useQueryClient>) {
-  for (const key of ["balances", "expenses", "history", "settle", "group", "suggestions", "me-summary"]) {
+  for (const key of [
+    "balances",
+    "expenses",
+    "history",
+    "settle",
+    "group",
+    "suggestions",
+    "me-summary",
+  ]) {
     qc.invalidateQueries({ queryKey: [key] });
   }
 }
@@ -180,7 +199,7 @@ export function useRenameMember() {
       api.patch<MemberDto>(`/api/groups/${gid()}/members/${args.memberId}`, {
         displayName: args.displayName,
       }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["group"] }),
+    onSuccess: () => invalidateLedger(qc),
   });
 }
 

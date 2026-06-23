@@ -1,13 +1,28 @@
+import { useState } from "react";
 import { useSearchParams, useNavigate } from "react-router-dom";
-import { useGroup, useHistory } from "../lib/hooks.js";
-import { Avatar, Money } from "../ui/primitives.js";
+import {
+  type PanInfo,
+  motion,
+  useMotionValue,
+  useTransform,
+} from "framer-motion";
+import {
+  useDeleteSettlement,
+  useGroup,
+  useHistory,
+  useVoidExpense,
+} from "../lib/hooks.js";
+import { Avatar, Button, Money } from "../ui/primitives.js";
 import { SkeletonList } from "../motion/Skeleton.js";
 import { EmptyState } from "../ui/EmptyState.js";
+import { Modal } from "../motion/Modal.js";
+import { useReducedMotion } from "../motion/useReducedMotion.js";
 
 /** Roomy card row: title/meta on top, amount on its own line — no clipping. */
 const cardRow: React.CSSProperties = {
   display: "block",
   width: "100%",
+  maxWidth: "100%",
   textAlign: "left",
   padding: 14,
   border: "1px solid var(--border)",
@@ -15,6 +30,7 @@ const cardRow: React.CSSProperties = {
   borderRadius: "var(--r-lg)",
   color: "var(--text)",
   cursor: "pointer",
+  overflow: "hidden",
 };
 
 const ellipsis: React.CSSProperties = {
@@ -25,10 +41,13 @@ const ellipsis: React.CSSProperties = {
 
 export function History() {
   const [params, setParams] = useSearchParams();
+  const [removing, setRemoving] = useState<RemovingTarget | null>(null);
   const nav = useNavigate();
   const memberFilter = params.get("member") ?? undefined;
   const group = useGroup();
   const history = useHistory(memberFilter);
+  const voidExpense = useVoidExpense();
+  const deleteSettlement = useDeleteSettlement();
 
   const currency = group.data?.defaultCurrency ?? "EUR";
   const members = group.data?.members ?? [];
@@ -74,68 +93,217 @@ export function History() {
               {d.date}
             </p>
             <div style={{ display: "grid", gap: 8 }}>
-              {d.items.map((item, idx) =>
+              {d.items.map((item) =>
                 item.kind === "expense" ? (
-                  <button
+                  <SwipeRemove
                     key={item.expense.id}
-                    onClick={() => nav(`/expense/${item.expense.id}`)}
-                    style={cardRow}
+                    onRemove={() =>
+                      setRemoving({
+                        kind: "expense",
+                        id: item.expense.id,
+                        label: item.expense.description,
+                      })
+                    }
                   >
-                    <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                      <TypeGlyph kind={item.expense.kind === "loan" ? "loan" : "expense"} />
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <div className="t-body-strong" style={ellipsis}>
-                          {item.expense.description}
+                    <button
+                      onClick={() => nav(`/expense/${item.expense.id}`)}
+                      style={cardRow}
+                    >
+                      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                        <TypeGlyph kind={item.expense.kind === "loan" ? "loan" : "expense"} />
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div className="t-body-strong" style={ellipsis}>
+                            {item.expense.description}
+                          </div>
+                          <div className="t-caption" style={{ color: "var(--text-muted)", ...ellipsis }}>
+                            {item.expense.kind === "loan"
+                              ? `${nameOf(item.expense.payerMemberId)} lent · ${nameOf(item.expense.shares[0]?.memberId ?? "")} owes`
+                              : `${nameOf(item.expense.payerMemberId)} paid · split ${item.expense.shares.length}`}
+                          </div>
                         </div>
-                        <div className="t-caption" style={{ color: "var(--text-muted)" }}>
-                          {item.expense.kind === "loan"
-                            ? `${nameOf(item.expense.payerMemberId)} lent · ${nameOf(item.expense.shares[0]?.memberId ?? "")} owes`
-                            : `${nameOf(item.expense.payerMemberId)} paid · split ${item.expense.shares.length}`}
+                        {item.settled && <SettledBadge />}
+                      </div>
+                      <div
+                        className="t-body-strong"
+                        style={{ textAlign: "right", marginTop: 8 }}
+                      >
+                        <Money value={item.expense.amount} currency={currency} />
+                      </div>
+                    </button>
+                  </SwipeRemove>
+                ) : (
+                  <SwipeRemove
+                    key={item.settlement.id}
+                    onRemove={() =>
+                      setRemoving({
+                        kind: "settlement",
+                        id: item.settlement.id,
+                        label: `${nameOf(item.settlement.fromMemberId)} to ${nameOf(item.settlement.toMemberId)}`,
+                      })
+                    }
+                  >
+                    <div style={{ ...cardRow, cursor: "default" }}>
+                      <div
+                        style={{
+                          display: "grid",
+                          gridTemplateColumns: "auto minmax(0, 1fr)",
+                          alignItems: "center",
+                          gap: 10,
+                        }}
+                      >
+                        <TypeGlyph kind="settlement" />
+                        <div style={{ minWidth: 0 }}>
+                          <div
+                            style={{
+                              display: "flex",
+                              alignItems: "center",
+                              gap: 7,
+                              minWidth: 0,
+                            }}
+                          >
+                            <Avatar name={nameOf(item.settlement.fromMemberId)} size={24} />
+                            <span className="t-label" style={ellipsis}>
+                              {nameOf(item.settlement.fromMemberId)}
+                            </span>
+                          </div>
+                          <div
+                            style={{
+                              display: "flex",
+                              alignItems: "center",
+                              gap: 7,
+                              minWidth: 0,
+                              marginTop: 3,
+                            }}
+                          >
+                            <Avatar name={nameOf(item.settlement.toMemberId)} size={24} />
+                            <span className="t-caption" style={{ color: "var(--text-muted)", ...ellipsis }}>
+                              paid to {nameOf(item.settlement.toMemberId)}
+                            </span>
+                          </div>
                         </div>
                       </div>
-                      {item.settled && <SettledBadge />}
+                      <div
+                        style={{
+                          display: "flex",
+                          justifyContent: "space-between",
+                          alignItems: "baseline",
+                          gap: 10,
+                          marginTop: 8,
+                          minWidth: 0,
+                        }}
+                      >
+                        <span className="t-caption" style={{ color: "var(--positive)", minWidth: 0, ...ellipsis }}>
+                          {item.settled ? "fully settled" : "settled"}
+                        </span>
+                        <span className="t-body-strong" style={{ flexShrink: 0 }}>
+                          <Money value={item.settlement.amount} currency={currency} />
+                        </span>
+                      </div>
                     </div>
-                    <div
-                      className="t-body-strong"
-                      style={{ textAlign: "right", marginTop: 8 }}
-                    >
-                      <Money value={item.expense.amount} currency={currency} />
-                    </div>
-                  </button>
-                ) : (
-                  <div key={`s-${idx}`} style={{ ...cardRow, cursor: "default" }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                      <TypeGlyph kind="settlement" />
-                      <Avatar name={nameOf(item.settlement.fromMemberId)} size={24} />
-                      <span style={{ color: "var(--text-muted)" }}>→</span>
-                      <Avatar name={nameOf(item.settlement.toMemberId)} size={24} />
-                      <span className="t-label" style={{ ...ellipsis, marginLeft: 2 }}>
-                        {nameOf(item.settlement.fromMemberId)} →{" "}
-                        {nameOf(item.settlement.toMemberId)}
-                      </span>
-                    </div>
-                    <div
-                      style={{
-                        display: "flex",
-                        justifyContent: "space-between",
-                        alignItems: "baseline",
-                        marginTop: 8,
-                      }}
-                    >
-                      <span className="t-caption" style={{ color: "var(--positive)" }}>
-                        {item.settled ? "fully settled" : "settled"}
-                      </span>
-                      <span className="t-body-strong">
-                        <Money value={item.settlement.amount} currency={currency} />
-                      </span>
-                    </div>
-                  </div>
+                  </SwipeRemove>
                 ),
               )}
             </div>
           </section>
         ))
       )}
+
+      <Modal open={removing != null} onClose={() => setRemoving(null)}>
+        <h2 className="t-heading" style={{ marginTop: 0 }}>
+          Remove this {removing?.kind ?? "item"}?
+        </h2>
+        <p className="t-body" style={{ color: "var(--text-muted)" }}>
+          {removing?.kind === "expense"
+            ? "Balances and any settlement amounts registered to this expense will be updated."
+            : "This settlement and its registered expense allocations will be removed."}
+        </p>
+        {removing?.label && (
+          <p className="t-caption" style={{ color: "var(--text-faint)", ...ellipsis }}>
+            {removing.label}
+          </p>
+        )}
+        <div style={{ display: "flex", gap: 8, marginTop: 16 }}>
+          <Button variant="ghost" onClick={() => setRemoving(null)} style={{ flex: 1 }}>
+            Keep
+          </Button>
+          <Button
+            variant="danger"
+            disabled={voidExpense.isPending || deleteSettlement.isPending}
+            onClick={() => {
+              if (!removing) return;
+              if (removing.kind === "expense") voidExpense.mutate(removing.id);
+              else deleteSettlement.mutate(removing.id);
+              setRemoving(null);
+            }}
+            style={{ flex: 1 }}
+          >
+            Remove
+          </Button>
+        </div>
+      </Modal>
+    </div>
+  );
+}
+
+type RemovingTarget = {
+  kind: "expense" | "settlement";
+  id: string;
+  label: string;
+};
+
+function SwipeRemove({
+  children,
+  onRemove,
+}: {
+  children: React.ReactNode;
+  onRemove: () => void;
+}) {
+  const reduced = useReducedMotion();
+  const x = useMotionValue(0);
+  const removeOpacity = useTransform(x, [-100, 0], [1, 0]);
+  const swipeable = !reduced;
+
+  function onDragEnd(_e: unknown, info: PanInfo) {
+    if (info.offset.x < -100 || info.velocity.x < -600) onRemove();
+  }
+
+  return (
+    <div
+      style={{
+        position: "relative",
+        borderRadius: "var(--r-lg)",
+        overflow: "hidden",
+        maxWidth: "100%",
+      }}
+    >
+      {swipeable && (
+        <motion.div
+          style={{
+            position: "absolute",
+            inset: 0,
+            background: "var(--danger)",
+            color: "#fff",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "flex-end",
+            paddingRight: 20,
+            fontWeight: 700,
+            opacity: removeOpacity,
+          }}
+        >
+          Remove
+        </motion.div>
+      )}
+      <motion.div
+        drag={swipeable ? "x" : false}
+        dragConstraints={{ left: 0, right: 0 }}
+        dragElastic={0.45}
+        dragSnapToOrigin
+        onDragEnd={onDragEnd}
+        style={{ x, position: "relative", maxWidth: "100%" }}
+      >
+        {children}
+      </motion.div>
     </div>
   );
 }
@@ -204,12 +372,16 @@ function FilterChip({
       className="t-label"
       style={{
         height: 32,
+        maxWidth: "min(100%, 180px)",
         padding: "0 12px",
         borderRadius: "var(--r-full)",
         border: active ? "1px solid var(--accent)" : "1px solid var(--border-strong)",
         background: active ? "var(--accent-soft)" : "transparent",
         color: active ? "var(--accent)" : "var(--text-muted)",
         cursor: "pointer",
+        overflow: "hidden",
+        textOverflow: "ellipsis",
+        whiteSpace: "nowrap",
       }}
     >
       {label}
