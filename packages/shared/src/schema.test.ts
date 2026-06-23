@@ -9,6 +9,9 @@ import {
   suggestions,
   aiRuns,
   messages,
+  adminAuditLog,
+  announcements,
+  appConfig,
 } from "./schema.js";
 import { getTableName } from "drizzle-orm";
 
@@ -37,6 +40,11 @@ describe("schema", () => {
       "ai_runs",
       "messages",
     ]);
+  });
+
+  it("defines the admin console tables", () => {
+    const names = [adminAuditLog, announcements, appConfig].map(getTableName);
+    expect(names).toEqual(["admin_audit_log", "announcements", "app_config"]);
   });
 
   it("uses bigint mode for telegram ids (precision-safe)", () => {
