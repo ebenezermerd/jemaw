@@ -324,6 +324,82 @@ d("Allocation-based settlements", () => {
     expect(m1.telegramUserId).not.toBe(m2.telegramUserId);
   });
 
+  it("voiding an expense removes its registered settlement amount", async () => {
+    const e1 = await createExpense("100.00", "VoidLinkedExpense", "2026-03-01T12:00:00.000Z");
+    const e2 = await createExpense("50.00", "KeepLinkedExpense", "2026-03-02T12:00:00.000Z");
+    const payRes = await app.inject({
+      method: "POST",
+      url: `/api/groups/${groupId}/settlements`,
+      headers: auth(bobTg),
+      payload: {
+        fromMemberId: bobId,
+        toMemberId: aliceId,
+        amount: "75.00",
+        expenseIds: [e1.id, e2.id],
+      },
+    });
+    expect(payRes.statusCode).toBe(201);
+    const settlement = payRes.json<SettlementDto>();
+
+    const voidRes = await app.inject({
+      method: "POST",
+      url: `/api/groups/${groupId}/expenses/${e1.id}/void`,
+      headers: auth(aliceTg),
+    });
+    expect(voidRes.statusCode).toBe(200);
+
+    const settlementRows = await db
+      .select()
+      .from(settlements)
+      .where(eq(settlements.id, settlement.id));
+    expect(settlementRows).toHaveLength(1);
+    expect(settlementRows[0]!.amount).toBe("25.00");
+    expect(settlementRows[0]!.expenseIds).toEqual([e2.id]);
+
+    const allocs = await db
+      .select()
+      .from(settlementAllocations)
+      .where(eq(settlementAllocations.settlementId, settlement.id));
+    expect(allocs).toHaveLength(1);
+    expect(allocs[0]!.expenseId).toBe(e2.id);
+    expect(allocs[0]!.allocatedAmount).toBe("25.00");
+  });
+
+  it("deleting a settlement removes its allocations", async () => {
+    const expense = await createExpense("140.00", "DeleteSettlementExpense");
+    const payRes = await app.inject({
+      method: "POST",
+      url: `/api/groups/${groupId}/settlements`,
+      headers: auth(bobTg),
+      payload: {
+        fromMemberId: bobId,
+        toMemberId: aliceId,
+        amount: "70.00",
+        expenseIds: [expense.id],
+      },
+    });
+    expect(payRes.statusCode).toBe(201);
+    const settlement = payRes.json<SettlementDto>();
+
+    const deleteRes = await app.inject({
+      method: "DELETE",
+      url: `/api/groups/${groupId}/settlements/${settlement.id}`,
+      headers: auth(bobTg),
+    });
+    expect(deleteRes.statusCode).toBe(200);
+
+    const settlementRows = await db
+      .select()
+      .from(settlements)
+      .where(eq(settlements.id, settlement.id));
+    expect(settlementRows).toHaveLength(0);
+    const allocs = await db
+      .select()
+      .from(settlementAllocations)
+      .where(eq(settlementAllocations.settlementId, settlement.id));
+    expect(allocs).toHaveLength(0);
+  });
+
   it("reset clears allocations without FK error", async () => {
     const res = await app.inject({
       method: "POST",
