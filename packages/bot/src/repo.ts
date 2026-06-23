@@ -798,8 +798,8 @@ export async function resetGroupData(db: Db, groupId: string): Promise<void> {
       inArray(expenseShares.expenseId, groupExpenseIds),
     );
     await tx.delete(settlements).where(eq(settlements.groupId, groupId));
-    await tx.delete(suggestions).where(eq(suggestions.groupId, groupId));
     await tx.delete(expenses).where(eq(expenses.groupId, groupId));
+    await tx.delete(suggestions).where(eq(suggestions.groupId, groupId));
     await tx.delete(aiRuns).where(eq(aiRuns.groupId, groupId));
     await tx.delete(messages).where(eq(messages.groupId, groupId));
     await tx

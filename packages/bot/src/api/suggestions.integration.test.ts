@@ -144,6 +144,42 @@ d("Suggestions API integration", () => {
     expect(again.statusCode).toBe(409);
   });
 
+  it("resets after an AI confirmed expense references its suggestion", async () => {
+    await db
+      .update(members)
+      .set({ role: "admin" })
+      .where(eq(members.id, saraId));
+
+    const id = await seedSuggestion(saraId);
+    const confirm = await app.inject({
+      method: "POST",
+      url: `/api/groups/${groupId}/suggestions/${id}/confirm`,
+      headers: h(saraTg),
+    });
+    expect(confirm.statusCode).toBe(201);
+
+    const reset = await app.inject({
+      method: "POST",
+      url: `/api/groups/${groupId}/reset`,
+      headers: h(saraTg),
+    });
+    expect(reset.statusCode).toBe(200);
+
+    const expRes = await app.inject({
+      method: "GET",
+      url: `/api/groups/${groupId}/expenses`,
+      headers: h(saraTg),
+    });
+    expect(expRes.json<ExpenseDto[]>()).toEqual([]);
+
+    const suggRes = await app.inject({
+      method: "GET",
+      url: `/api/groups/${groupId}/suggestions`,
+      headers: h(saraTg),
+    });
+    expect(suggRes.json<SuggestionsResponse>().suggestions).toEqual([]);
+  });
+
   it("dismisses a suggestion", async () => {
     const id = await seedSuggestion(saraId);
     const res = await app.inject({
