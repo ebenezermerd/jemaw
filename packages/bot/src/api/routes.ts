@@ -16,7 +16,9 @@ import {
   groupHasExpenses,
   groupHasNewMessages,
   listSettlements,
+  getSettlement,
   createSettlementWithAllocations,
+  deleteSettlement,
   listSettlementAllocations,
   listPendingSuggestions,
   getSuggestion,
@@ -394,6 +396,30 @@ export async function registerApi(
       const { group } = req.jemaw!;
       const settlements = await listSettlements(db, group.id);
       return settlements.map(toSettlementDto);
+    },
+  );
+
+  // DELETE a recorded settlement. The payer, payee, marker, or an admin can remove it.
+  app.delete(
+    "/api/groups/:groupId/settlements/:settlementId",
+    { preHandler: auth },
+    async (req, reply) => {
+      const { group, member } = req.jemaw!;
+      const { settlementId } = req.params as { settlementId: string };
+      const existing = await getSettlement(db, group.id, settlementId);
+      if (!existing) return reply.code(404).send({ error: "not found" });
+      const canRemove =
+        member.role === "admin" ||
+        existing.fromMemberId === member.id ||
+        existing.toMemberId === member.id ||
+        existing.markedPaidByMemberId === member.id;
+      if (!canRemove) {
+        return reply.code(403).send({ error: "only an involved member or admin can remove this" });
+      }
+      const result = await deleteSettlement(db, group.id, settlementId);
+      if (result === "not_found") return reply.code(404).send({ error: "not found" });
+      await refreshGroupSummarySafe(db, group.id);
+      return reply.code(200).send({ ok: true });
     },
   );
 
