@@ -22,6 +22,7 @@ import {
   type AiRun,
   type Suggestion,
 } from "@jemaw/shared/schema";
+import { centsToDecimal, decimalToCents } from "@jemaw/shared/types";
 
 // ─── Groups ───────────────────────────────────────────────────────────
 export async function upsertGroup(
@@ -420,18 +421,63 @@ export async function voidExpense(
   expenseId: string,
   when: Date,
 ): Promise<"ok" | "not_found" | "already_voided"> {
-  const rows = await db
-    .select()
-    .from(expenses)
-    .where(and(eq(expenses.groupId, groupId), eq(expenses.id, expenseId)))
-    .limit(1);
-  if (!rows[0]) return "not_found";
-  if (rows[0].voidedAt) return "already_voided";
-  await db
-    .update(expenses)
-    .set({ voidedAt: when })
-    .where(eq(expenses.id, expenseId));
-  return "ok";
+  return db.transaction(async (tx) => {
+    const rows = await tx
+      .select()
+      .from(expenses)
+      .where(and(eq(expenses.groupId, groupId), eq(expenses.id, expenseId)))
+      .limit(1);
+    if (!rows[0]) return "not_found";
+    if (rows[0].voidedAt) return "already_voided";
+
+    const affected = await tx
+      .select({ settlementId: settlementAllocations.settlementId })
+      .from(settlementAllocations)
+      .innerJoin(settlements, eq(settlementAllocations.settlementId, settlements.id))
+      .where(
+        and(
+          eq(settlementAllocations.expenseId, expenseId),
+          eq(settlements.groupId, groupId),
+        ),
+      );
+    const affectedSettlementIds = [
+      ...new Set(affected.map((a) => a.settlementId)),
+    ];
+
+    await tx
+      .delete(settlementAllocations)
+      .where(eq(settlementAllocations.expenseId, expenseId));
+
+    for (const settlementId of affectedSettlementIds) {
+      const remaining = await tx
+        .select()
+        .from(settlementAllocations)
+        .where(eq(settlementAllocations.settlementId, settlementId));
+
+      if (remaining.length === 0) {
+        await tx
+          .delete(settlements)
+          .where(and(eq(settlements.groupId, groupId), eq(settlements.id, settlementId)));
+        continue;
+      }
+
+      const amountCents = remaining.reduce(
+        (sum, a) => sum + decimalToCents(a.allocatedAmount),
+        0,
+      );
+      const expenseIds = [...new Set(remaining.map((a) => a.expenseId))];
+      await tx
+        .update(settlements)
+        .set({ amount: centsToDecimal(amountCents), expenseIds })
+        .where(and(eq(settlements.groupId, groupId), eq(settlements.id, settlementId)));
+    }
+
+    await tx
+      .update(expenses)
+      .set({ voidedAt: when })
+      .where(eq(expenses.id, expenseId));
+    return "ok";
+  });
 }
 
 // ─── Settlements ──────────────────────────────────────────────────────
@@ -444,6 +490,19 @@ export async function listSettlements(
     .from(settlements)
     .where(eq(settlements.groupId, groupId))
     .orderBy(desc(settlements.createdAt));
+}
+
+export async function getSettlement(
+  db: Db,
+  groupId: string,
+  settlementId: string,
+): Promise<Settlement | null> {
+  const rows = await db
+    .select()
+    .from(settlements)
+    .where(and(eq(settlements.groupId, groupId), eq(settlements.id, settlementId)))
+    .limit(1);
+  return rows[0] ?? null;
 }
 
 export async function createSettlement(
@@ -486,6 +545,29 @@ export async function createSettlementWithAllocations(
       )
       .returning();
     return { settlement, allocations };
+  });
+}
+
+/** Delete a settlement and its allocation rows in one transaction. */
+export async function deleteSettlement(
+  db: Db,
+  groupId: string,
+  settlementId: string,
+): Promise<"ok" | "not_found"> {
+  return db.transaction(async (tx) => {
+    const rows = await tx
+      .select()
+      .from(settlements)
+      .where(and(eq(settlements.groupId, groupId), eq(settlements.id, settlementId)))
+      .limit(1);
+    if (!rows[0]) return "not_found";
+    await tx
+      .delete(settlementAllocations)
+      .where(eq(settlementAllocations.settlementId, settlementId));
+    await tx
+      .delete(settlements)
+      .where(and(eq(settlements.groupId, groupId), eq(settlements.id, settlementId)));
+    return "ok";
   });
 }
 
