@@ -1,4 +1,13 @@
 /* Jemaw Admin design tokens — sourced from the Jemaw Admin.dc.html mockup. */
+@font-face {
+  font-family: "Benaiah";
+  src:
+    url("/fonts/Benaiah.otf") format("opentype"),
+    url("/fonts/Benaiah.ttf") format("truetype");
+  font-weight: 400 700;
+  font-display: swap;
+}
+
 :root {
   --bg: #07070b;
   --bg-panel: #0b0a11;
@@ -26,6 +35,7 @@
   --font-display: "Bricolage Grotesque", sans-serif;
   --font-body: "Hanken Grotesk", sans-serif;
   --font-mono: "Space Mono", monospace;
+  --font-brand: "Benaiah", "Noto Sans Ethiopic", sans-serif;
 
   --radius: 16px;
   --radius-sm: 11px;
