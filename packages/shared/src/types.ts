@@ -371,6 +371,20 @@ export interface CreateAnnouncementInput {
   queue?: boolean;
 }
 
+export interface AdminExpenseDto {
+  id: string;
+  description: string;
+  /** decimal string */
+  amount: string;
+  currency: string;
+  kind: ExpenseKind;
+  source: string;
+  groupName: string;
+  payerName: string;
+  occurredAt: string; // ISO
+  voided: boolean;
+}
+
 export interface AppConfigDto {
   key: string;
   value: unknown;

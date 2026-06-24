@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect } from "vitest";
 import { makeAuthHook } from "./authHook.js";
 import type { TokenVerifier } from "./firebase.js";
 import type { Db } from "../db.js";

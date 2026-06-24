@@ -339,6 +339,57 @@ export async function recentActivity(db: Db, limit: number): Promise<RecentRow[]
   return rows.slice(0, limit);
 }
 
+export interface AdminExpenseRow {
+  id: string;
+  description: string;
+  amountCents: number;
+  currency: string;
+  kind: "expense" | "loan";
+  source: string;
+  groupName: string;
+  payerName: string;
+  occurredAt: Date;
+  voided: boolean;
+}
+
+/** Cross-group expense feed for the admin Expenses screen (most recent first). */
+export async function listRecentExpenses(
+  db: Db,
+  limit: number,
+): Promise<AdminExpenseRow[]> {
+  const payer = members;
+  const rows = await db
+    .select({
+      id: expenses.id,
+      description: expenses.description,
+      amount: expenses.amount,
+      currency: expenses.currency,
+      kind: expenses.kind,
+      source: expenses.source,
+      occurredAt: expenses.occurredAt,
+      voidedAt: expenses.voidedAt,
+      groupName: groups.name,
+      payerName: payer.displayName,
+    })
+    .from(expenses)
+    .innerJoin(groups, eq(expenses.groupId, groups.id))
+    .innerJoin(payer, eq(expenses.payerMemberId, payer.id))
+    .orderBy(desc(expenses.occurredAt))
+    .limit(limit);
+  return rows.map((r) => ({
+    id: r.id,
+    description: r.description,
+    amountCents: Math.round(Number(r.amount) * 100),
+    currency: r.currency,
+    kind: r.kind,
+    source: r.source,
+    groupName: r.groupName,
+    payerName: r.payerName,
+    occurredAt: r.occurredAt,
+    voided: r.voidedAt !== null,
+  }));
+}
+
 export interface TopGroupRow {
   id: string;
   name: string;

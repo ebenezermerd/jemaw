@@ -12,6 +12,7 @@ import type {
   AdminOverviewDto,
   AdminUserDto,
   AdminGroupDto,
+  AdminExpenseDto,
   AdminAuditEntryDto,
   AnnouncementDto,
   AppConfigDto,
@@ -20,6 +21,7 @@ import {
   listUsers,
   setUserActive,
   listGroupsWithStats,
+  listRecentExpenses,
   listAudit,
   writeAudit,
   listAnnouncements,
@@ -40,6 +42,7 @@ import {
   toTopGroupDto,
   toAuditDto,
   toAnnouncementDto,
+  toExpenseDto,
 } from "./mappers.js";
 
 export interface ApiDeps {
@@ -177,6 +180,14 @@ export async function registerApi(
   app.get("/api/admin/groups", { preHandler: auth }, async () => {
     const rows = await listGroupsWithStats(db);
     const res: AdminGroupDto[] = rows.map(toGroupDto);
+    return res;
+  });
+
+  // ─── expenses (cross-group feed) ───────────────────────────────────
+  app.get("/api/admin/expenses", { preHandler: auth }, async (req) => {
+    const { limit } = req.query as { limit?: string };
+    const rows = await listRecentExpenses(db, Math.min(Number(limit ?? 100), 300));
+    const res: AdminExpenseDto[] = rows.map(toExpenseDto);
     return res;
   });
 

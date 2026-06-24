@@ -9,12 +9,14 @@ import {
   type AdminAuditEntryDto,
   type AnnouncementDto,
   type AdminTopGroupDto,
+  type AdminExpenseDto,
 } from "@jemaw/shared/types";
 import type { AdminAuditLog, Announcement } from "@jemaw/shared/schema";
 import type {
   AdminUserRow,
   AdminGroupRow,
   TopGroupRow,
+  AdminExpenseRow,
 } from "./repo.js";
 
 const IDLE_AFTER_DAYS = 14;
@@ -57,6 +59,21 @@ export function toGroupDto(row: AdminGroupRow): AdminGroupDto {
 
 export function toTopGroupDto(row: TopGroupRow): AdminTopGroupDto {
   return { id: row.id, name: row.name, volume: centsToDecimal(row.volumeCents) };
+}
+
+export function toExpenseDto(row: AdminExpenseRow): AdminExpenseDto {
+  return {
+    id: row.id,
+    description: row.description,
+    amount: centsToDecimal(row.amountCents),
+    currency: row.currency,
+    kind: row.kind,
+    source: row.source,
+    groupName: row.groupName,
+    payerName: row.payerName,
+    occurredAt: row.occurredAt.toISOString(),
+    voided: row.voided,
+  };
 }
 
 export function toAuditDto(row: AdminAuditLog): AdminAuditEntryDto {
