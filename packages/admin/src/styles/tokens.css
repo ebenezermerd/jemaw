@@ -1,0 +1,76 @@
+/* Jemaw Admin design tokens — sourced from the Jemaw Admin.dc.html mockup. */
+:root {
+  --bg: #07070b;
+  --bg-panel: #0b0a11;
+  --sidebar: #0d0c14;
+  --surface: #16151f;
+  --surface-2: #14131d;
+  --row-hover: #1b1a26;
+  --track: #1e1c2a;
+
+  --text: #f4f2fb;
+  --text-dim: rgba(244, 242, 251, 0.55);
+  --text-faint: rgba(244, 242, 251, 0.4);
+  --hairline: rgba(255, 255, 255, 0.06);
+  --hairline-2: rgba(255, 255, 255, 0.1);
+
+  --accent: #6e59c7;
+  --accent-soft: #a99ce3;
+  --accent-2: #8a78d6;
+  --success: #2dd4a7;
+  --teal: #2dc4b0;
+  --warn: #e0b23c;
+  --danger: #f2685f;
+  --info: #5ba8e0;
+
+  --font-display: "Bricolage Grotesque", sans-serif;
+  --font-body: "Hanken Grotesk", sans-serif;
+  --font-mono: "Space Mono", monospace;
+
+  --radius: 16px;
+  --radius-sm: 11px;
+}
+
+* {
+  box-sizing: border-box;
+}
+html,
+body {
+  margin: 0;
+  padding: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-body);
+}
+#root {
+  min-height: 100vh;
+}
+::selection {
+  background: var(--accent);
+  color: #fff;
+}
+a {
+  color: inherit;
+  text-decoration: none;
+}
+button {
+  font-family: inherit;
+}
+
+.jx-scroll::-webkit-scrollbar {
+  width: 9px;
+  height: 9px;
+}
+.jx-scroll::-webkit-scrollbar-thumb {
+  background: #2a2838;
+  border-radius: 9px;
+}
+.jx-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+.jx-navitem:hover {
+  background: rgba(255, 255, 255, 0.04) !important;
+}
+.jx-row:hover {
+  background: var(--row-hover) !important;
+}
