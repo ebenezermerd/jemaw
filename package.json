@@ -14,7 +14,9 @@
     "db:generate": "pnpm --filter @jemaw/shared db:generate",
     "db:migrate": "pnpm --filter @jemaw/shared db:migrate",
     "dev:bot": "pnpm --filter @jemaw/bot dev",
-    "dev:app": "pnpm --filter @jemaw/app dev"
+    "dev:app": "pnpm --filter @jemaw/app dev",
+    "dev:api": "pnpm --filter @jemaw/api dev",
+    "dev:admin": "pnpm --filter @jemaw/admin dev"
   },
   "devDependencies": {
     "typescript": "^5.7.3"
