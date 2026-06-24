@@ -28,8 +28,9 @@ export function Card({
 const STATUS_COLORS: Record<string, { fg: string; bg: string }> = {
   active: { fg: "#2DD4A7", bg: "rgba(45,212,167,.12)" },
   idle: { fg: "#E0B23C", bg: "rgba(224,178,60,.12)" },
-  new: { fg: "#5BA8E0", bg: "rgba(91,168,224,.12)" },
-  suspended: { fg: "#F2685F", bg: "rgba(242,104,95,.12)" },
+  new: { fg: "#A99CE3", bg: "rgba(110,89,199,.16)" },
+  suspended: { fg: "rgba(244,242,251,.55)", bg: "rgba(255,255,255,.06)" },
+  flagged: { fg: "#F2685F", bg: "rgba(242,104,95,.12)" },
   sent: { fg: "#2DD4A7", bg: "rgba(45,212,167,.12)" },
   queued: { fg: "#E0B23C", bg: "rgba(224,178,60,.12)" },
   sending: { fg: "#5BA8E0", bg: "rgba(91,168,224,.12)" },

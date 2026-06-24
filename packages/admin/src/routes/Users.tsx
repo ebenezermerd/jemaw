@@ -1,7 +1,7 @@
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "../lib/api.js";
-import type { AdminUserDto, AdminExpenseDto } from "@jemaw/shared/types";
+import type { AdminUserDto, AdminExpenseDto, AdminGroupDto } from "@jemaw/shared/types";
 import { StatusPill, CenteredMessage } from "../ui/primitives.js";
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
@@ -13,8 +13,11 @@ function fmtDate(iso: string | null): string {
 
 function fmtDateTime(iso: string): string {
   const d = new Date(iso);
-  return d.toLocaleDateString("en-US", { month: "short", day: "numeric" }) +
-    " · " + d.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" });
+  return (
+    d.toLocaleDateString("en-US", { month: "short", day: "numeric" }) +
+    " · " +
+    d.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" })
+  );
 }
 
 function relativeTime(iso: string | null): string {
@@ -33,10 +36,13 @@ function relativeTime(iso: string | null): string {
 }
 
 function initials(name: string): string {
-  return name.split(" ").slice(0, 2).map((w) => w[0]?.toUpperCase() ?? "").join("");
+  return name
+    .split(" ")
+    .slice(0, 2)
+    .map((w) => w[0]?.toUpperCase() ?? "")
+    .join("");
 }
 
-// Deterministic avatar gradient based on first character — matches the design's per-user colors
 const GRADIENTS: Record<string, [string, string, string?]> = {
   A: ["#6E59C7", "#A99CE3"],
   B: ["#1C5E4B", "#2DD4A7", "#063226"],
@@ -69,10 +75,7 @@ const GRADIENTS: Record<string, [string, string, string?]> = {
 function getAvatarStyle(name: string): { bg: string; color: string } {
   const key = name[0]?.toUpperCase() ?? "A";
   const g = GRADIENTS[key] ?? ["#6E59C7", "#A99CE3"];
-  return {
-    bg: `linear-gradient(140deg,${g[0]},${g[1]})`,
-    color: g[2] ?? "#fff",
-  };
+  return { bg: `linear-gradient(140deg,${g[0]},${g[1]})`, color: g[2] ?? "#fff" };
 }
 
 // ─── group icon (three-circle mark) ──────────────────────────────────────────
@@ -99,7 +102,520 @@ function GroupIcon({ size = 34 }: { size?: number }) {
   );
 }
 
-// ─── USER DETAIL PAGE ────────────────────────────────────────────────────────
+// ─── MESSAGE COMPOSE DIALOG ───────────────────────────────────────────────────
+
+function MessageDialog({
+  user,
+  onClose,
+}: {
+  user: AdminUserDto;
+  onClose: () => void;
+}) {
+  const qc = useQueryClient();
+  const [title, setTitle] = useState(`Hi ${user.displayName.split(" ")[0]}!`);
+  const [body, setBody] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [sent, setSent] = useState(false);
+  const textRef = useRef<HTMLTextAreaElement>(null);
+
+  // close on Escape
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") onClose();
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
+  // focus body on mount
+  useEffect(() => {
+    textRef.current?.focus();
+  }, []);
+
+  async function send() {
+    if (!body.trim() || busy) return;
+    setBusy(true);
+    try {
+      await api.post("/api/admin/announcements", {
+        title: title.trim() || `Message to ${user.displayName}`,
+        body: body.trim(),
+        audience: "user",
+        targetId: user.telegramUserId,
+        queue: true,
+      });
+      await qc.invalidateQueries({ queryKey: ["announcements"] });
+      setSent(true);
+      setTimeout(onClose, 1400);
+    } catch {
+      setBusy(false);
+    }
+  }
+
+  const charCount = body.length;
+  const charMax = 4000;
+
+  return (
+    <>
+      {/* backdrop */}
+      <div
+        onClick={onClose}
+        style={{
+          position: "fixed",
+          inset: 0,
+          background: "rgba(7,7,11,.72)",
+          backdropFilter: "blur(4px)",
+          zIndex: 1000,
+        }}
+      />
+
+      {/* dialog */}
+      <div
+        style={{
+          position: "fixed",
+          top: "50%",
+          left: "50%",
+          transform: "translate(-50%,-50%)",
+          width: 520,
+          background: "#16151F",
+          border: "1px solid rgba(255,255,255,.1)",
+          borderRadius: 20,
+          overflow: "hidden",
+          zIndex: 1001,
+          boxShadow: "0 32px 80px -16px rgba(0,0,0,.7), 0 0 0 1px rgba(110,89,199,.18)",
+        }}
+      >
+        {/* header */}
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            padding: "18px 22px",
+            borderBottom: "1px solid rgba(255,255,255,.07)",
+          }}
+        >
+          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+            <div
+              style={{
+                width: 36,
+                height: 36,
+                borderRadius: "50%",
+                background: getAvatarStyle(user.displayName).bg,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                fontWeight: 700,
+                fontSize: 14,
+                color: getAvatarStyle(user.displayName).color,
+                flex: "none",
+              }}
+            >
+              {initials(user.displayName)}
+            </div>
+            <div>
+              <div style={{ fontSize: 15, fontWeight: 700 }}>Message {user.displayName}</div>
+              <div style={{ fontSize: 12, color: "rgba(244,242,251,.45)", marginTop: 1 }}>
+                {user.username ? `@${user.username} · ` : ""}Direct via Telegram bot
+              </div>
+            </div>
+          </div>
+          <button
+            onClick={onClose}
+            style={{
+              width: 30,
+              height: 30,
+              borderRadius: 8,
+              background: "rgba(255,255,255,.06)",
+              border: "none",
+              color: "rgba(244,242,251,.6)",
+              cursor: "pointer",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+            }}
+          >
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round">
+              <path d="M18 6 6 18M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+
+        <div style={{ padding: "20px 22px" }}>
+          {/* title row */}
+          <div style={{ marginBottom: 14 }}>
+            <div
+              style={{
+                fontSize: 11,
+                fontWeight: 700,
+                letterSpacing: ".05em",
+                color: "rgba(244,242,251,.45)",
+                marginBottom: 6,
+              }}
+            >
+              TITLE
+            </div>
+            <input
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              maxLength={120}
+              style={{
+                width: "100%",
+                background: "#252333",
+                border: "1px solid rgba(255,255,255,.1)",
+                borderRadius: 10,
+                padding: "11px 13px",
+                fontSize: 14,
+                color: "#F4F2FB",
+                outline: "none",
+                boxSizing: "border-box",
+              }}
+            />
+          </div>
+
+          {/* message composer */}
+          <div style={{ marginBottom: 16 }}>
+            <div
+              style={{
+                fontSize: 11,
+                fontWeight: 700,
+                letterSpacing: ".05em",
+                color: "rgba(244,242,251,.45)",
+                marginBottom: 6,
+              }}
+            >
+              MESSAGE
+            </div>
+            <div
+              style={{
+                border: "1px solid rgba(255,255,255,.1)",
+                borderRadius: 11,
+                overflow: "hidden",
+              }}
+            >
+              {/* formatting toolbar */}
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 3,
+                  padding: "8px 10px",
+                  background: "#1E1C2A",
+                  borderBottom: "1px solid rgba(255,255,255,.07)",
+                }}
+              >
+                {[
+                  { label: "B", style: { fontWeight: 800 }, title: "Bold", wrap: ["**", "**"] as [string, string] },
+                  { label: "i", style: { fontStyle: "italic" }, title: "Italic", wrap: ["_", "_"] as [string, string] },
+                  { label: "U", style: { textDecoration: "underline" }, title: "Underline", wrap: ["", ""] as [string, string] },
+                ].map((btn) => (
+                  <button
+                    key={btn.title}
+                    title={btn.title}
+                    onClick={() => {
+                      const ta = textRef.current;
+                      if (!ta) return;
+                      const start = ta.selectionStart ?? 0;
+                      const end = ta.selectionEnd ?? 0;
+                      const sel = body.slice(start, end);
+                      const next =
+                        body.slice(0, start) +
+                        btn.wrap[0] +
+                        sel +
+                        btn.wrap[1] +
+                        body.slice(end);
+                      setBody(next);
+                      setTimeout(() => {
+                        ta.focus();
+                        ta.setSelectionRange(start + btn.wrap[0].length, end + btn.wrap[0].length);
+                      }, 0);
+                    }}
+                    style={{
+                      width: 30,
+                      height: 30,
+                      borderRadius: 7,
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      fontSize: 14,
+                      color: "rgba(244,242,251,.7)",
+                      background: "none",
+                      border: "none",
+                      cursor: "pointer",
+                      ...btn.style,
+                    }}
+                  >
+                    {btn.label}
+                  </button>
+                ))}
+                <span
+                  style={{
+                    width: 1,
+                    height: 18,
+                    background: "rgba(255,255,255,.1)",
+                    margin: "0 5px",
+                  }}
+                />
+                {/* token hint */}
+                <span
+                  style={{
+                    fontSize: 11,
+                    color: "rgba(244,242,251,.4)",
+                    marginLeft: "auto",
+                  }}
+                >
+                  {"{name}"} token available
+                </span>
+              </div>
+
+              {/* textarea */}
+              <textarea
+                ref={textRef}
+                value={body}
+                onChange={(e) => setBody(e.target.value)}
+                maxLength={charMax}
+                placeholder={`Write a message to ${user.displayName}…`}
+                rows={6}
+                style={{
+                  width: "100%",
+                  padding: 14,
+                  fontSize: 14,
+                  lineHeight: 1.6,
+                  color: "rgba(244,242,251,.85)",
+                  background: "#252333",
+                  border: "none",
+                  outline: "none",
+                  resize: "vertical",
+                  fontFamily: "inherit",
+                  boxSizing: "border-box",
+                }}
+              />
+            </div>
+            <div
+              style={{
+                textAlign: "right",
+                fontSize: 11,
+                color: charCount > charMax * 0.9 ? "#E0B23C" : "rgba(244,242,251,.3)",
+                marginTop: 4,
+              }}
+            >
+              {charCount}/{charMax}
+            </div>
+          </div>
+
+          {/* actions */}
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <button
+              onClick={onClose}
+              style={{
+                fontSize: 13,
+                fontWeight: 600,
+                color: "rgba(244,242,251,.7)",
+                border: "1px solid rgba(255,255,255,.12)",
+                background: "none",
+                padding: "10px 16px",
+                borderRadius: 10,
+                cursor: "pointer",
+              }}
+            >
+              Cancel
+            </button>
+            <div style={{ flex: 1 }} />
+            <button
+              onClick={send}
+              disabled={!body.trim() || busy || sent}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 8,
+                fontSize: 14,
+                fontWeight: 700,
+                color: "#fff",
+                background: sent ? "#2DD4A7" : "#6E59C7",
+                border: "none",
+                padding: "10px 22px",
+                borderRadius: 10,
+                cursor: !body.trim() || busy || sent ? "default" : "pointer",
+                opacity: !body.trim() && !sent ? 0.5 : 1,
+                boxShadow: sent
+                  ? "0 10px 24px -10px rgba(45,212,167,.5)"
+                  : "0 10px 24px -10px rgba(110,89,199,.6)",
+                transition: "background .2s, box-shadow .2s",
+              }}
+            >
+              {sent ? (
+                <>
+                  <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                    <polyline points="4 12 10 18 20 6" />
+                  </svg>
+                  Sent!
+                </>
+              ) : busy ? (
+                "Sending…"
+              ) : (
+                <>
+                  <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M3 11l18-8-8 18-2-7-8-3z" />
+                  </svg>
+                  Send message
+                </>
+              )}
+            </button>
+          </div>
+        </div>
+      </div>
+    </>
+  );
+}
+
+// ─── ALL GROUPS DROPDOWN ──────────────────────────────────────────────────────
+
+function GroupsDropdown({
+  groups,
+  selectedGroupId,
+  onSelect,
+}: {
+  groups: AdminGroupDto[];
+  selectedGroupId: string | null;
+  onSelect: (id: string | null) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    function onClick(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    }
+    document.addEventListener("mousedown", onClick);
+    return () => document.removeEventListener("mousedown", onClick);
+  }, [open]);
+
+  const selected = groups.find((g) => g.id === selectedGroupId);
+  const label = selected ? selected.name : "All groups";
+
+  return (
+    <div ref={ref} style={{ position: "relative" }}>
+      <button
+        onClick={() => setOpen((v) => !v)}
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: 8,
+          fontSize: 13,
+          fontWeight: 600,
+          color: selectedGroupId ? "#fff" : "rgba(244,242,251,.7)",
+          background: selectedGroupId ? "#6E59C7" : "#16151F",
+          border: selectedGroupId ? "none" : "1px solid rgba(255,255,255,.1)",
+          padding: "9px 13px",
+          borderRadius: 9,
+          cursor: "pointer",
+          whiteSpace: "nowrap",
+        }}
+      >
+        <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke={selectedGroupId ? "#fff" : "#A99CE3"} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <circle cx="12" cy="9" r="3" />
+          <circle cx="6" cy="14" r="2.2" />
+          <circle cx="18" cy="14" r="2.2" />
+        </svg>
+        {label}
+        <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="rgba(244,242,251,.5)" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"
+          style={{ transform: open ? "rotate(180deg)" : "none", transition: "transform .15s" }}>
+          <polyline points="6 9 12 15 18 9" />
+        </svg>
+      </button>
+
+      {open && (
+        <div
+          style={{
+            position: "absolute",
+            top: "calc(100% + 6px)",
+            left: 0,
+            minWidth: 200,
+            background: "#1E1C2A",
+            border: "1px solid rgba(255,255,255,.1)",
+            borderRadius: 12,
+            overflow: "hidden",
+            zIndex: 100,
+            boxShadow: "0 16px 40px -8px rgba(0,0,0,.5)",
+          }}
+        >
+          {/* "All groups" option */}
+          <button
+            onClick={() => { onSelect(null); setOpen(false); }}
+            style={{
+              width: "100%",
+              display: "flex",
+              alignItems: "center",
+              gap: 10,
+              padding: "10px 14px",
+              fontSize: 13,
+              fontWeight: selectedGroupId === null ? 700 : 400,
+              color: selectedGroupId === null ? "#A99CE3" : "rgba(244,242,251,.8)",
+              background: selectedGroupId === null ? "rgba(110,89,199,.1)" : "none",
+              border: "none",
+              cursor: "pointer",
+              textAlign: "left",
+              borderBottom: "1px solid rgba(255,255,255,.06)",
+            }}
+          >
+            All groups
+            {selectedGroupId === null && (
+              <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="#A99CE3" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ marginLeft: "auto" }}>
+                <polyline points="4 12 10 18 20 6" />
+              </svg>
+            )}
+          </button>
+
+          {/* group rows */}
+          {groups.length === 0 ? (
+            <div style={{ padding: "10px 14px", fontSize: 13, color: "rgba(244,242,251,.4)" }}>
+              No groups found
+            </div>
+          ) : (
+            <div style={{ maxHeight: 260, overflowY: "auto" }}>
+              {groups.map((g) => (
+                <button
+                  key={g.id}
+                  onClick={() => { onSelect(g.id); setOpen(false); }}
+                  style={{
+                    width: "100%",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 10,
+                    padding: "10px 14px",
+                    fontSize: 13,
+                    fontWeight: selectedGroupId === g.id ? 700 : 400,
+                    color: selectedGroupId === g.id ? "#A99CE3" : "rgba(244,242,251,.8)",
+                    background: selectedGroupId === g.id ? "rgba(110,89,199,.1)" : "none",
+                    border: "none",
+                    borderBottom: "1px solid rgba(255,255,255,.04)",
+                    cursor: "pointer",
+                    textAlign: "left",
+                  }}
+                >
+                  <GroupIcon size={22} />
+                  <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    {g.name}
+                  </span>
+                  <span style={{ fontSize: 11, color: "rgba(244,242,251,.35)", flex: "none" }}>
+                    {g.memberCount}
+                  </span>
+                  {selectedGroupId === g.id && (
+                    <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="#A99CE3" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                      <polyline points="4 12 10 18 20 6" />
+                    </svg>
+                  )}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── USER DETAIL PAGE ─────────────────────────────────────────────────────────
 
 function UserDetail({
   user,
@@ -114,15 +630,15 @@ function UserDetail({
   onToggle: () => void;
   isPending: boolean;
 }) {
+  const [showMessage, setShowMessage] = useState(false);
   const { bg, color } = getAvatarStyle(user.displayName);
 
   const userExpenses = expenses
     .filter((e) => e.payerName === user.displayName && !e.voided)
-    .slice(0, 6);
+    .slice(0, 30);
 
   const totalPaid = userExpenses.reduce((s, e) => s + Number(e.amount), 0);
 
-  // Build a fake groups list from expenses (group names they've appeared in)
   const groupMap = new Map<string, { name: string; entries: number; amount: number }>();
   expenses
     .filter((e) => e.payerName === user.displayName && !e.voided)
@@ -134,305 +650,338 @@ function UserDetail({
     });
   const groups = [...groupMap.values()].sort((a, b) => b.amount - a.amount);
 
-  // Activity timeline from expenses
   const timeline = expenses
     .filter((e) => e.payerName === user.displayName)
     .slice(0, 5)
     .map((e) => ({
       id: e.id,
-      dot: e.kind === "loan" ? "#E0B23C" : "#8A78D6",
-      text: e.kind === "loan"
-        ? <>Recorded loan <b>{Number(e.amount).toLocaleString()} {e.currency}</b> · {e.groupName}</>
-        : <>Added expense <b>{e.description} · {Number(e.amount).toLocaleString()} {e.currency}</b></>,
+      dot: e.kind === "loan" ? "#E0B23C" : e.kind === "expense" ? "#8A78D6" : "#5BA8E0",
+      text:
+        e.kind === "loan" ? (
+          <>
+            Recorded loan <b>{Number(e.amount).toLocaleString()} {e.currency}</b> · {e.groupName}
+          </>
+        ) : (
+          <>
+            Added expense <b>{e.description} · {Number(e.amount).toLocaleString()} {e.currency}</b>
+          </>
+        ),
       at: e.occurredAt,
     }));
 
   return (
-    <div>
-      {/* back link */}
-      <button
-        onClick={onBack}
-        style={{
-          display: "inline-flex",
-          alignItems: "center",
-          gap: 7,
-          fontSize: 13,
-          fontWeight: 600,
-          color: "#A99CE3",
-          background: "none",
-          border: "none",
-          cursor: "pointer",
-          padding: 0,
-          marginBottom: 16,
-        }}
-      >
-        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-          <path d="M15 18l-6-6 6-6" />
-        </svg>
-        All users
-      </button>
+    <>
+      {showMessage && (
+        <MessageDialog user={user} onClose={() => setShowMessage(false)} />
+      )}
 
-      {/* header card */}
-      <div
-        style={{
-          background: "#16151F",
-          border: "1px solid rgba(255,255,255,.07)",
-          borderRadius: 18,
-          padding: 22,
-          display: "flex",
-          alignItems: "center",
-          gap: 18,
-          marginBottom: 18,
-        }}
-      >
-        {/* large circle avatar */}
-        <div
+      <div>
+        {/* back link */}
+        <button
+          onClick={onBack}
           style={{
-            width: 64,
-            height: 64,
-            borderRadius: "50%",
-            background: bg,
-            display: "flex",
+            display: "inline-flex",
             alignItems: "center",
-            justifyContent: "center",
-            fontWeight: 700,
-            fontSize: 24,
-            color,
-            flex: "none",
+            gap: 7,
+            fontSize: 13,
+            fontWeight: 600,
+            color: "#A99CE3",
+            background: "none",
+            border: "none",
+            cursor: "pointer",
+            padding: 0,
+            marginBottom: 16,
           }}
         >
-          {initials(user.displayName)}
-        </div>
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M15 18l-6-6 6-6" />
+          </svg>
+          All users
+        </button>
 
-        <div style={{ flex: 1 }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-            <h2
+        {/* header card */}
+        <div
+          style={{
+            background: "#16151F",
+            border: "1px solid rgba(255,255,255,.07)",
+            borderRadius: 18,
+            padding: 22,
+            display: "flex",
+            alignItems: "center",
+            gap: 18,
+            marginBottom: 18,
+          }}
+        >
+          <div
+            style={{
+              width: 64,
+              height: 64,
+              borderRadius: "50%",
+              background: bg,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              fontWeight: 700,
+              fontSize: 24,
+              color,
+              flex: "none",
+            }}
+          >
+            {initials(user.displayName)}
+          </div>
+
+          <div style={{ flex: 1 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              <h2
+                style={{
+                  fontFamily: "var(--font-display)",
+                  fontWeight: 700,
+                  fontSize: 24,
+                  letterSpacing: "-.02em",
+                  margin: 0,
+                }}
+              >
+                {user.displayName}
+              </h2>
+              <StatusPill status={user.status} />
+            </div>
+            <div style={{ fontSize: 13, color: "rgba(244,242,251,.5)", marginTop: 3 }}>
+              {user.username ? `@${user.username} · ` : ""}ID {user.telegramUserId}
+              {user.lastActiveAt ? ` · Last active ${fmtDate(user.lastActiveAt)}` : ""}
+            </div>
+          </div>
+
+          <div style={{ display: "flex", gap: 9 }}>
+            <button
+              onClick={() => setShowMessage(true)}
               style={{
-                fontFamily: "var(--font-display)",
-                fontWeight: 700,
-                fontSize: 24,
-                letterSpacing: "-.02em",
-                margin: 0,
+                fontSize: 13,
+                fontWeight: 600,
+                color: "rgba(244,242,251,.7)",
+                border: "1px solid rgba(255,255,255,.12)",
+                background: "none",
+                padding: "9px 14px",
+                borderRadius: 9,
+                cursor: "pointer",
               }}
             >
-              {user.displayName}
-            </h2>
-            <StatusPill status={user.status} />
-          </div>
-          <div style={{ fontSize: 13, color: "rgba(244,242,251,.5)", marginTop: 3 }}>
-            {user.username ? `@${user.username} · ` : ""}
-            ID {user.telegramUserId}
-            {user.lastActiveAt ? ` · Last active ${fmtDate(user.lastActiveAt)}` : ""}
+              Message
+            </button>
+            <button
+              onClick={onToggle}
+              disabled={isPending}
+              style={{
+                fontSize: 13,
+                fontWeight: 700,
+                color: user.isActive ? "#F2685F" : "#2DD4A7",
+                border: `1px solid ${user.isActive ? "rgba(242,104,95,.3)" : "rgba(45,212,167,.3)"}`,
+                background: "transparent",
+                padding: "9px 14px",
+                borderRadius: 9,
+                cursor: isPending ? "default" : "pointer",
+                opacity: isPending ? 0.6 : 1,
+              }}
+            >
+              {isPending ? "Working…" : user.isActive ? "Suspend user" : "Activate user"}
+            </button>
           </div>
         </div>
 
-        {/* action buttons */}
-        <div style={{ display: "flex", gap: 9 }}>
-          <span
-            style={{
-              fontSize: 13,
-              fontWeight: 600,
-              color: "rgba(244,242,251,.7)",
-              border: "1px solid rgba(255,255,255,.12)",
-              padding: "9px 14px",
-              borderRadius: 9,
-              cursor: "default",
-            }}
-          >
-            Message
-          </span>
-          <button
-            onClick={onToggle}
-            disabled={isPending}
-            style={{
-              fontSize: 13,
-              fontWeight: 700,
-              color: user.isActive ? "#F2685F" : "#2DD4A7",
-              border: `1px solid ${user.isActive ? "rgba(242,104,95,.3)" : "rgba(45,212,167,.3)"}`,
-              background: "transparent",
-              padding: "9px 14px",
-              borderRadius: 9,
-              cursor: isPending ? "default" : "pointer",
-              opacity: isPending ? 0.6 : 1,
-            }}
-          >
-            {isPending ? "Working…" : user.isActive ? "Suspend user" : "Activate user"}
-          </button>
-        </div>
-      </div>
+        {/* 4-stat grid */}
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 16, marginBottom: 18 }}>
+          {[
+            { value: String(user.groupCount), label: "Groups" },
+            {
+              value: totalPaid,
+              label: "Total paid",
+              suffix: " Br",
+            },
+            {
+              value: null,
+              label: "Net balance",
+              accent: "#2DD4A7",
+            },
+            { value: userExpenses.length, label: "Entries logged" },
+          ].map(({ value, label, suffix, accent }) => {
+            const display =
+              value === null
+                ? "—"
+                : typeof value === "number" && value > 0
+                  ? value.toLocaleString(undefined, { maximumFractionDigits: 0 })
+                  : typeof value === "number"
+                    ? String(value)
+                    : value;
 
-      {/* 4-stat grid */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 16, marginBottom: 18 }}>
-        {[
-          { value: String(user.groupCount), label: "Groups" },
-          {
-            value: totalPaid > 0
-              ? `${totalPaid.toLocaleString(undefined, { maximumFractionDigits: 0 })} Br`
-              : "—",
-            label: "Total paid",
-          },
-          {
-            value: "—",
-            label: "Net balance",
-            accent: "#2DD4A7",
-          },
-          { value: String(userExpenses.length), label: "Entries logged" },
-        ].map(({ value, label, accent }) => (
+            return (
+              <div
+                key={label}
+                style={{
+                  background: "#16151F",
+                  border: "1px solid rgba(255,255,255,.07)",
+                  borderRadius: 14,
+                  padding: 16,
+                }}
+              >
+                <div
+                  style={{
+                    fontFamily: "var(--font-display)",
+                    fontWeight: 800,
+                    fontSize: 24,
+                    fontVariantNumeric: "tabular-nums",
+                    color: accent ?? "var(--text)",
+                    lineHeight: 1,
+                  }}
+                >
+                  {display}
+                  {suffix && value !== null && Number(value) > 0 && (
+                    <span style={{ fontSize: 14, opacity: 0.6 }}>{suffix}</span>
+                  )}
+                </div>
+                <div style={{ fontSize: 12, color: "rgba(244,242,251,.5)", marginTop: 6 }}>{label}</div>
+              </div>
+            );
+          })}
+        </div>
+
+        {/* two-column */}
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
+          {/* group memberships */}
           <div
-            key={label}
             style={{
               background: "#16151F",
               border: "1px solid rgba(255,255,255,.07)",
-              borderRadius: 14,
-              padding: 16,
+              borderRadius: 16,
+              overflow: "hidden",
             }}
           >
             <div
               style={{
-                fontFamily: "var(--font-display)",
-                fontWeight: 800,
-                fontSize: 24,
-                fontVariantNumeric: "tabular-nums",
-                color: accent ?? "var(--text)",
-                lineHeight: 1,
+                padding: "15px 20px",
+                borderBottom: "1px solid rgba(255,255,255,.07)",
+                fontSize: 15,
+                fontWeight: 700,
               }}
             >
-              {value}
+              Group memberships
             </div>
-            <div style={{ fontSize: 12, color: "rgba(244,242,251,.5)", marginTop: 6 }}>{label}</div>
-          </div>
-        ))}
-      </div>
-
-      {/* two-column: group memberships + activity */}
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
-
-        {/* group memberships */}
-        <div
-          style={{
-            background: "#16151F",
-            border: "1px solid rgba(255,255,255,.07)",
-            borderRadius: 16,
-            overflow: "hidden",
-          }}
-        >
-          <div
-            style={{
-              padding: "15px 20px",
-              borderBottom: "1px solid rgba(255,255,255,.07)",
-              fontSize: 15,
-              fontWeight: 700,
-            }}
-          >
-            Group memberships
-          </div>
-          {groups.length === 0 ? (
-            <div style={{ padding: "16px 20px", fontSize: 13, color: "rgba(244,242,251,.4)" }}>
-              No group data available.
-            </div>
-          ) : (
-            groups.map((g, i) => (
-              <div
-                key={g.name}
-                className="jx-row"
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 11,
-                  padding: "13px 20px",
-                  borderBottom: i < groups.length - 1 ? "1px solid rgba(255,255,255,.04)" : "none",
-                }}
-              >
-                <GroupIcon size={34} />
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: 14, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                    {g.name}
-                  </div>
-                  <div style={{ fontSize: 11, color: "rgba(244,242,251,.45)" }}>
-                    Member · {g.entries} {g.entries === 1 ? "entry" : "entries"}
-                  </div>
-                </div>
-                <span
+            {groups.length === 0 ? (
+              <div style={{ padding: "16px 20px", fontSize: 13, color: "rgba(244,242,251,.4)" }}>
+                No group activity found.
+              </div>
+            ) : (
+              groups.map((g, i) => (
+                <div
+                  key={g.name}
+                  className="jx-row"
                   style={{
-                    fontSize: 13,
-                    fontWeight: 700,
-                    color: g.amount >= 0 ? "#2DD4A7" : "#F0A640",
-                    fontVariantNumeric: "tabular-nums",
-                    flex: "none",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 11,
+                    padding: "13px 20px",
+                    borderBottom: i < groups.length - 1 ? "1px solid rgba(255,255,255,.04)" : "none",
+                    cursor: "default",
                   }}
                 >
-                  {g.amount >= 0 ? "+" : "−"}{Math.abs(g.amount).toLocaleString(undefined, { maximumFractionDigits: 0 })} Br
-                </span>
-              </div>
-            ))
-          )}
-        </div>
-
-        {/* recent activity timeline */}
-        <div
-          style={{
-            background: "#16151F",
-            border: "1px solid rgba(255,255,255,.07)",
-            borderRadius: 16,
-            padding: 20,
-          }}
-        >
-          <div style={{ fontSize: 15, fontWeight: 700, marginBottom: 16 }}>Recent activity</div>
-          {timeline.length === 0 ? (
-            <div style={{ fontSize: 13, color: "rgba(244,242,251,.4)" }}>No activity recorded.</div>
-          ) : (
-            <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-              {timeline.map((item, i) => (
-                <div key={item.id} style={{ display: "flex", gap: 11 }}>
-                  {/* timeline spine */}
-                  <div style={{ display: "flex", flexDirection: "column", alignItems: "center" }}>
-                    <span
-                      style={{
-                        width: 9,
-                        height: 9,
-                        borderRadius: "50%",
-                        background: item.dot,
-                        flex: "none",
-                        marginTop: 3,
-                      }}
-                    />
-                    {i < timeline.length - 1 && (
-                      <span
-                        style={{
-                          flex: 1,
-                          width: 2,
-                          background: "rgba(255,255,255,.08)",
-                          marginTop: 4,
-                        }}
-                      />
-                    )}
-                  </div>
-                  <div style={{ paddingBottom: i < timeline.length - 1 ? 0 : 0 }}>
-                    <div style={{ fontSize: 13 }}>{item.text}</div>
+                  <GroupIcon size={34} />
+                  <div style={{ flex: 1, minWidth: 0 }}>
                     <div
                       style={{
-                        fontSize: 11,
-                        color: "rgba(244,242,251,.4)",
-                        marginTop: 2,
-                        fontVariantNumeric: "tabular-nums",
+                        fontSize: 14,
+                        fontWeight: 600,
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
+                        whiteSpace: "nowrap",
                       }}
                     >
-                      {fmtDateTime(item.at)}
+                      {g.name}
+                    </div>
+                    <div style={{ fontSize: 11, color: "rgba(244,242,251,.45)" }}>
+                      Member · {g.entries} {g.entries === 1 ? "entry" : "entries"}
                     </div>
                   </div>
+                  <span
+                    style={{
+                      fontSize: 13,
+                      fontWeight: 700,
+                      color: g.amount >= 0 ? "#2DD4A7" : "#F0A640",
+                      fontVariantNumeric: "tabular-nums",
+                      flex: "none",
+                    }}
+                  >
+                    {g.amount >= 0 ? "+" : "−"}
+                    {Math.abs(g.amount).toLocaleString(undefined, { maximumFractionDigits: 0 })} Br
+                  </span>
                 </div>
-              ))}
-            </div>
-          )}
+              ))
+            )}
+          </div>
+
+          {/* recent activity timeline */}
+          <div
+            style={{
+              background: "#16151F",
+              border: "1px solid rgba(255,255,255,.07)",
+              borderRadius: 16,
+              padding: 20,
+            }}
+          >
+            <div style={{ fontSize: 15, fontWeight: 700, marginBottom: 16 }}>Recent activity</div>
+            {timeline.length === 0 ? (
+              <div style={{ fontSize: 13, color: "rgba(244,242,251,.4)" }}>No activity recorded.</div>
+            ) : (
+              <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+                {timeline.map((item, i) => (
+                  <div key={item.id} style={{ display: "flex", gap: 11 }}>
+                    <div style={{ display: "flex", flexDirection: "column", alignItems: "center" }}>
+                      <span
+                        style={{
+                          width: 9,
+                          height: 9,
+                          borderRadius: "50%",
+                          background: item.dot,
+                          flex: "none",
+                          marginTop: 3,
+                        }}
+                      />
+                      {i < timeline.length - 1 && (
+                        <span
+                          style={{
+                            flex: 1,
+                            width: 2,
+                            background: "rgba(255,255,255,.08)",
+                            marginTop: 4,
+                          }}
+                        />
+                      )}
+                    </div>
+                    <div>
+                      <div style={{ fontSize: 13 }}>{item.text}</div>
+                      <div
+                        style={{
+                          fontSize: 11,
+                          color: "rgba(244,242,251,.4)",
+                          marginTop: 2,
+                          fontVariantNumeric: "tabular-nums",
+                        }}
+                      >
+                        {fmtDateTime(item.at)}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
       </div>
-    </div>
+    </>
   );
 }
 
-// ─── USERS LIST ──────────────────────────────────────────────────────────────
+// ─── USERS LIST ───────────────────────────────────────────────────────────────
 
 const COLS = "2.2fr 1.4fr 1fr 1.1fr 1.1fr 0.6fr";
+const PAGE_SIZE = 50;
 
 type Filter = "all" | "active" | "idle" | "new" | "suspended";
 const FILTERS: { key: Filter; label: string }[] = [
@@ -445,6 +994,8 @@ export function Users() {
   const qc = useQueryClient();
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState<Filter>("all");
+  const [groupId, setGroupId] = useState<string | null>(null);
+  const [page, setPage] = useState(1);
   const [selected, setSelected] = useState<AdminUserDto | null>(null);
 
   const { data: users = [], isLoading, error } = useQuery({
@@ -457,6 +1008,11 @@ export function Users() {
     queryFn: () => api.get<AdminExpenseDto[]>("/api/admin/expenses"),
   });
 
+  const { data: groups = [] } = useQuery({
+    queryKey: ["groups"],
+    queryFn: () => api.get<AdminGroupDto[]>("/api/admin/groups"),
+  });
+
   const toggle = useMutation({
     mutationFn: (u: AdminUserDto) =>
       api.post(`/api/admin/users/${u.telegramUserId}/${u.isActive ? "suspend" : "activate"}`),
@@ -466,12 +1022,10 @@ export function Users() {
   if (isLoading) return <CenteredMessage>Loading users…</CenteredMessage>;
   if (error) return <CenteredMessage>Could not load users.</CenteredMessage>;
 
-  // keep detail in sync after mutation
   const liveSelected = selected
     ? (users.find((u) => u.telegramUserId === selected.telegramUserId) ?? selected)
     : null;
 
-  // ── detail page ────────────────────────────────────────────────────────────
   if (liveSelected) {
     return (
       <UserDetail
@@ -484,10 +1038,17 @@ export function Users() {
     );
   }
 
-  // ── list ───────────────────────────────────────────────────────────────────
+  // ── derive group membership lookup from expenses ──────────────────────────
+  // { groupId → Set<payerName> } for group filtering
+  const groupNameById = new Map(groups.map((g) => [g.id, g.name]));
+  const usersInGroup = groupId
+    ? new Set(expenses.filter((e) => e.groupName === groupNameById.get(groupId ?? "")).map((e) => e.payerName))
+    : null;
+
   const q = search.trim().toLowerCase();
-  const rows = users
+  const filtered = users
     .filter((u) => filter === "all" || u.status === filter)
+    .filter((u) => !usersInGroup || usersInGroup.has(u.displayName))
     .filter(
       (u) =>
         !q ||
@@ -495,6 +1056,10 @@ export function Users() {
         (u.username ?? "").toLowerCase().includes(q) ||
         u.telegramUserId.includes(q),
     );
+
+  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  const safePage = Math.min(page, totalPages);
+  const rows = filtered.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE);
 
   const counts: Record<Filter, number> = {
     all: users.length,
@@ -504,14 +1069,62 @@ export function Users() {
     suspended: users.filter((u) => u.status === "suspended").length,
   };
 
+  function changeFilter(f: Filter) {
+    setFilter(f);
+    setPage(1);
+  }
+
+  function changeGroup(id: string | null) {
+    setGroupId(id);
+    setPage(1);
+  }
+
+  // page numbers to show
+  const pageNums: (number | "…")[] = [];
+  if (totalPages <= 5) {
+    for (let i = 1; i <= totalPages; i++) pageNums.push(i);
+  } else {
+    pageNums.push(1);
+    if (safePage > 3) pageNums.push("…");
+    for (let i = Math.max(2, safePage - 1); i <= Math.min(totalPages - 1, safePage + 1); i++) {
+      pageNums.push(i);
+    }
+    if (safePage < totalPages - 2) pageNums.push("…");
+    pageNums.push(totalPages);
+  }
+
+  // CSV export
+  function exportCsv() {
+    const cols = ["Name", "Username", "Telegram ID", "Groups", "Status", "Last Active"];
+    const lines = [
+      cols.join(","),
+      ...filtered.map((u) =>
+        [
+          `"${u.displayName}"`,
+          u.username ? `@${u.username}` : "",
+          u.telegramUserId,
+          u.groupCount,
+          u.status,
+          u.lastActiveAt ?? "",
+        ].join(","),
+      ),
+    ];
+    const blob = new Blob([lines.join("\n")], { type: "text/csv" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "jemaw-users.csv";
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
   return (
     <div>
       {/* toolbar */}
-      <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 18 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 18, flexWrap: "wrap" }}>
         {/* search */}
         <div
           style={{
-            flex: 1,
             background: "#16151F",
             border: "1px solid rgba(255,255,255,.08)",
             borderRadius: 11,
@@ -519,7 +1132,7 @@ export function Users() {
             display: "flex",
             alignItems: "center",
             gap: 10,
-            maxWidth: 340,
+            width: 300,
           }}
         >
           <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="rgba(244,242,251,.4)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -528,7 +1141,7 @@ export function Users() {
           </svg>
           <input
             value={search}
-            onChange={(e) => setSearch(e.target.value)}
+            onChange={(e) => { setSearch(e.target.value); setPage(1); }}
             placeholder="Search by name or @handle…"
             style={{
               flex: 1,
@@ -539,6 +1152,16 @@ export function Users() {
               color: "var(--text)",
             }}
           />
+          {search && (
+            <button
+              onClick={() => { setSearch(""); setPage(1); }}
+              style={{ background: "none", border: "none", cursor: "pointer", color: "rgba(244,242,251,.4)", padding: 0 }}
+            >
+              <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round">
+                <path d="M18 6 6 18M6 6l12 12" />
+              </svg>
+            </button>
+          )}
         </div>
 
         {/* status filter pills */}
@@ -548,7 +1171,7 @@ export function Users() {
             return (
               <button
                 key={key}
-                onClick={() => setFilter(key)}
+                onClick={() => changeFilter(key)}
                 style={{
                   fontSize: 13,
                   fontWeight: 600,
@@ -560,44 +1183,25 @@ export function Users() {
                   cursor: "pointer",
                 }}
               >
-                {label}{isActive && counts[key] > 0 ? ` · ${counts[key].toLocaleString()}` : ""}
+                {label}
+                {key === "all" ? ` · ${counts.all.toLocaleString()}` : ""}
               </button>
             );
           })}
         </div>
 
-        {/* group filter chip */}
-        <div
-          className="jx-chip"
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: 8,
-            fontSize: 13,
-            fontWeight: 600,
-            color: "rgba(244,242,251,.7)",
-            background: "#16151F",
-            border: "1px solid rgba(255,255,255,.1)",
-            padding: "9px 13px",
-            borderRadius: 9,
-            cursor: "pointer",
-          }}
-        >
-          <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="#A99CE3" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <circle cx="12" cy="9" r="3" />
-            <circle cx="6" cy="14" r="2.2" />
-            <circle cx="18" cy="14" r="2.2" />
-          </svg>
-          All groups
-          <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="rgba(244,242,251,.5)" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
-            <polyline points="6 9 12 15 18 9" />
-          </svg>
-        </div>
+        {/* groups dropdown */}
+        <GroupsDropdown
+          groups={groups}
+          selectedGroupId={groupId}
+          onSelect={changeGroup}
+        />
 
         <div style={{ flex: 1 }} />
 
         {/* export */}
-        <div
+        <button
+          onClick={exportCsv}
           style={{
             display: "flex",
             alignItems: "center",
@@ -618,7 +1222,7 @@ export function Users() {
             <path d="M5 21h14" />
           </svg>
           Export CSV
-        </div>
+        </button>
       </div>
 
       {/* table */}
@@ -630,7 +1234,7 @@ export function Users() {
           overflow: "hidden",
         }}
       >
-        {/* header row */}
+        {/* header */}
         <div
           style={{
             display: "grid",
@@ -653,9 +1257,10 @@ export function Users() {
           <span />
         </div>
 
-        {/* rows */}
         {rows.length === 0 ? (
-          <CenteredMessage>{q || filter !== "all" ? "No users match." : "No users yet."}</CenteredMessage>
+          <CenteredMessage>
+            {q || filter !== "all" || groupId ? "No users match." : "No users yet."}
+          </CenteredMessage>
         ) : (
           rows.map((u, i) => {
             const { bg, color } = getAvatarStyle(u.displayName);
@@ -674,7 +1279,6 @@ export function Users() {
                   cursor: "pointer",
                 }}
               >
-                {/* name */}
                 <div style={{ display: "flex", alignItems: "center", gap: 11 }}>
                   <div
                     style={{
@@ -695,37 +1299,26 @@ export function Users() {
                   </div>
                   <div>
                     <div style={{ fontSize: 14, fontWeight: 600 }}>{u.displayName}</div>
-                    <div
-                      style={{
-                        fontSize: 11,
-                        color: "rgba(244,242,251,.4)",
-                        fontVariantNumeric: "tabular-nums",
-                      }}
-                    >
+                    <div style={{ fontSize: 11, color: "rgba(244,242,251,.4)", fontVariantNumeric: "tabular-nums" }}>
                       ID {u.telegramUserId}
                     </div>
                   </div>
                 </div>
 
-                {/* username */}
                 <span style={{ fontSize: 13, color: "#A99CE3" }}>
                   {u.username ? `@${u.username}` : "—"}
                 </span>
 
-                {/* groups */}
                 <span style={{ fontSize: 13, fontVariantNumeric: "tabular-nums" }}>
                   {u.groupCount}
                 </span>
 
-                {/* status */}
                 <StatusPill status={u.status} />
 
-                {/* last active */}
                 <span style={{ fontSize: 13, color: "rgba(244,242,251,.55)" }}>
                   {relativeTime(u.lastActiveAt)}
                 </span>
 
-                {/* three-dot menu */}
                 <svg
                   viewBox="0 0 24 24"
                   width="18"
@@ -746,7 +1339,7 @@ export function Users() {
         )}
       </div>
 
-      {/* pagination footer */}
+      {/* pagination */}
       <div
         style={{
           display: "flex",
@@ -756,27 +1349,80 @@ export function Users() {
         }}
       >
         <span style={{ fontSize: 13, color: "rgba(244,242,251,.45)" }}>
-          Showing {rows.length} of {users.length.toLocaleString()} users
+          Showing {Math.min((safePage - 1) * PAGE_SIZE + 1, filtered.length)}–{Math.min(safePage * PAGE_SIZE, filtered.length)} of{" "}
+          {filtered.length.toLocaleString()} users
         </span>
-        <div style={{ display: "flex", gap: 6 }}>
-          {["‹ Prev", "1", "2", "3", "Next ›"].map((p, i) => (
-            <span
-              key={p}
+
+        {totalPages > 1 && (
+          <div style={{ display: "flex", gap: 6 }}>
+            <button
+              onClick={() => setPage((p) => Math.max(1, p - 1))}
+              disabled={safePage === 1}
               style={{
                 fontSize: 13,
-                fontWeight: i === 1 ? 700 : 400,
-                color: i === 1 ? "#fff" : "rgba(244,242,251,.6)",
-                background: i === 1 ? "#6E59C7" : "transparent",
-                border: i === 1 ? "none" : "1px solid rgba(255,255,255,.1)",
+                color: safePage === 1 ? "rgba(244,242,251,.25)" : "rgba(244,242,251,.6)",
+                background: "transparent",
+                border: "1px solid rgba(255,255,255,.1)",
                 padding: "7px 12px",
                 borderRadius: 8,
-                cursor: "pointer",
+                cursor: safePage === 1 ? "default" : "pointer",
               }}
             >
-              {p}
-            </span>
-          ))}
-        </div>
+              ‹ Prev
+            </button>
+
+            {pageNums.map((p, i) =>
+              p === "…" ? (
+                <span
+                  key={`ell-${i}`}
+                  style={{
+                    fontSize: 13,
+                    color: "rgba(244,242,251,.4)",
+                    padding: "7px 6px",
+                    display: "flex",
+                    alignItems: "center",
+                  }}
+                >
+                  …
+                </span>
+              ) : (
+                <button
+                  key={p}
+                  onClick={() => setPage(p)}
+                  style={{
+                    fontSize: 13,
+                    fontWeight: safePage === p ? 700 : 400,
+                    color: safePage === p ? "#fff" : "rgba(244,242,251,.6)",
+                    background: safePage === p ? "#6E59C7" : "transparent",
+                    border: safePage === p ? "none" : "1px solid rgba(255,255,255,.1)",
+                    padding: "7px 12px",
+                    borderRadius: 8,
+                    cursor: "pointer",
+                    minWidth: 34,
+                  }}
+                >
+                  {p}
+                </button>
+              ),
+            )}
+
+            <button
+              onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+              disabled={safePage === totalPages}
+              style={{
+                fontSize: 13,
+                color: safePage === totalPages ? "rgba(244,242,251,.25)" : "rgba(244,242,251,.6)",
+                background: "transparent",
+                border: "1px solid rgba(255,255,255,.1)",
+                padding: "7px 12px",
+                borderRadius: 8,
+                cursor: safePage === totalPages ? "default" : "pointer",
+              }}
+            >
+              Next ›
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );
