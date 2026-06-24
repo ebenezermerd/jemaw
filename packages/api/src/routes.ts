@@ -9,6 +9,7 @@ import { makeAuthHook, type AuthDeps } from "./auth/authHook.js";
 import { centsToDecimal } from "@jemaw/shared/types";
 import type {
   AdminMeDto,
+  AdminPublicStatsDto,
   AdminOverviewDto,
   AdminUserDto,
   AdminGroupDto,
@@ -71,6 +72,23 @@ export async function registerApi(
   const { db, now } = deps;
   const authDeps: AuthDeps = { db, verifier: deps.verifier };
   const auth = makeAuthHook(authDeps);
+
+  // ─── public ────────────────────────────────────────────────────────
+  // Unauthenticated headline counts for the login brand panel. Aggregate
+  // counts only — no per-user or per-group detail is exposed.
+  app.get("/api/admin/public-stats", async () => {
+    const [totalUsers, activeGroups, expensesCents] = await Promise.all([
+      countDistinctUsers(db),
+      countActiveGroups(db),
+      sumLiveExpensesCents(db),
+    ]);
+    const res: AdminPublicStatsDto = {
+      totalUsers,
+      activeGroups,
+      expensesTracked: centsToDecimal(expensesCents),
+    };
+    return res;
+  });
 
   // ─── identity ──────────────────────────────────────────────────────
   app.get("/api/admin/me", { preHandler: auth }, async (req) => {

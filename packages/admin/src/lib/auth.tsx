@@ -8,6 +8,8 @@ import {
 import {
   onAuthStateChanged,
   signInWithEmailAndPassword,
+  signInWithPopup,
+  GoogleAuthProvider,
   signOut,
   type User,
 } from "firebase/auth";
@@ -17,6 +19,7 @@ interface AuthState {
   user: User | null;
   loading: boolean;
   signIn: (email: string, password: string, remember: boolean) => Promise<void>;
+  signInWithGoogle: (remember: boolean) => Promise<void>;
   logout: () => Promise<void>;
 }
 
@@ -38,12 +41,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     await signInWithEmailAndPassword(auth, email, password);
   }
 
+  async function signInWithGoogle(remember: boolean) {
+    await setRememberDevice(remember);
+    await signInWithPopup(auth, new GoogleAuthProvider());
+  }
+
   async function logout() {
     await signOut(auth);
   }
 
   return (
-    <AuthContext.Provider value={{ user, loading, signIn, logout }}>
+    <AuthContext.Provider value={{ user, loading, signIn, signInWithGoogle, logout }}>
       {children}
     </AuthContext.Provider>
   );

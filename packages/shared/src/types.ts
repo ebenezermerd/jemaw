@@ -254,6 +254,14 @@ export interface AdminHealthResponse {
   service: "jemaw-api";
 }
 
+/** Unauthenticated headline counts for the login brand panel. */
+export interface AdminPublicStatsDto {
+  totalUsers: number;
+  activeGroups: number;
+  /** decimal string — sum of all live expenses */
+  expensesTracked: string;
+}
+
 export interface AdminMeDto {
   uid: string;
   email: string | null;

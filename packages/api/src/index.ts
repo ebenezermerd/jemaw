@@ -1,3 +1,11 @@
+// Load the repo-root .env for local dev (Node >=20.6). Ignored in prod where
+// Cloud Run injects real env vars and no .env file is present.
+try {
+  process.loadEnvFile(new URL("../../../.env", import.meta.url));
+} catch {
+  // no .env file — rely on the ambient environment
+}
+
 import { loadEnv, parseAdminEmails } from "./env.js";
 import { createDb } from "./db.js";
 import { createFirebaseVerifier } from "./auth/firebase.js";
