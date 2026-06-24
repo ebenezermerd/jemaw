@@ -2,13 +2,120 @@ import type { ReactNode } from "react";
 import { NavLink, useLocation } from "react-router-dom";
 import { useAuth } from "../lib/auth.js";
 
-const NAV = [
-  { to: "/", label: "Overview", end: true },
-  { to: "/users", label: "Users" },
-  { to: "/groups", label: "Groups" },
-  { to: "/expenses", label: "Expenses" },
-  { to: "/logs", label: "Activity & Logs" },
-  { to: "/announcements", label: "Announcements" },
+// ─── Nav icons ────────────────────────────────────────────────────────────────
+
+function IcoOverview({ active }: { active: boolean }) {
+  const c = active ? "var(--text)" : "var(--text-dim)";
+  return (
+    <svg width="16" height="16" viewBox="0 0 20 20" fill="none">
+      <rect x="2" y="2" width="7" height="8" rx="2" stroke={c} strokeWidth="1.7" />
+      <rect x="11" y="2" width="7" height="4" rx="2" stroke={c} strokeWidth="1.7" />
+      <rect x="2" y="12" width="7" height="6" rx="2" stroke={c} strokeWidth="1.7" />
+      <rect x="11" y="8" width="7" height="10" rx="2" stroke={c} strokeWidth="1.7" />
+    </svg>
+  );
+}
+
+function IcoUsers({ active }: { active: boolean }) {
+  const c = active ? "var(--text)" : "var(--text-dim)";
+  return (
+    <svg width="16" height="16" viewBox="0 0 20 20" fill="none">
+      <circle cx="7.5" cy="6" r="3" stroke={c} strokeWidth="1.7" />
+      <path d="M1.5 17c0-3.314 2.686-6 6-6s6 2.686 6 6" stroke={c} strokeWidth="1.7" strokeLinecap="round" />
+      <path d="M14 8a3 3 0 0 1 0-6M18.5 17c0-2.761-1.79-5.11-4.25-5.83" stroke={c} strokeWidth="1.7" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+function IcoGroups({ active }: { active: boolean }) {
+  const c = active ? "var(--text)" : "var(--text-dim)";
+  return (
+    <svg width="16" height="16" viewBox="0 0 20 20" fill="none">
+      <rect x="2" y="3" width="7" height="7" rx="2" stroke={c} strokeWidth="1.7" />
+      <rect x="11" y="3" width="7" height="7" rx="2" stroke={c} strokeWidth="1.7" />
+      <rect x="5" y="12" width="10" height="5.5" rx="2" stroke={c} strokeWidth="1.7" />
+    </svg>
+  );
+}
+
+function IcoExpenses({ active }: { active: boolean }) {
+  const c = active ? "var(--text)" : "var(--text-dim)";
+  return (
+    <svg width="16" height="16" viewBox="0 0 20 20" fill="none">
+      <rect x="2.5" y="4" width="15" height="12" rx="2" stroke={c} strokeWidth="1.7" />
+      <path d="M2.5 8h15" stroke={c} strokeWidth="1.7" />
+      <path d="M7 12.5h6" stroke={c} strokeWidth="1.7" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+function IcoLogs({ active }: { active: boolean }) {
+  const c = active ? "var(--text)" : "var(--text-dim)";
+  return (
+    <svg width="16" height="16" viewBox="0 0 20 20" fill="none">
+      <path d="M4 5h12M4 9.5h8M4 14h10" stroke={c} strokeWidth="1.7" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+function IcoAnnouncements({ active }: { active: boolean }) {
+  const c = active ? "var(--text)" : "var(--text-dim)";
+  return (
+    <svg width="16" height="16" viewBox="0 0 20 20" fill="none">
+      <path d="M3 7.5C3 6.12 4.12 5 5.5 5H15c.83 0 1.5.67 1.5 1.5v5c0 .83-.67 1.5-1.5 1.5H9l-4 3v-3H5.5C4.12 13 3 11.88 3 10.5v-3z" stroke={c} strokeWidth="1.7" />
+    </svg>
+  );
+}
+
+function IcoSettings({ active }: { active: boolean }) {
+  const c = active ? "var(--text)" : "var(--text-dim)";
+  return (
+    <svg width="16" height="16" viewBox="0 0 20 20" fill="none">
+      <circle cx="10" cy="10" r="2.5" stroke={c} strokeWidth="1.7" />
+      <path
+        d="M10 2v2M10 16v2M2 10h2M16 10h2M4.22 4.22l1.42 1.42M14.36 14.36l1.42 1.42M4.22 15.78l1.42-1.42M14.36 5.64l1.42-1.42"
+        stroke={c}
+        strokeWidth="1.7"
+        strokeLinecap="round"
+      />
+    </svg>
+  );
+}
+
+// ─── Three-circle logo mark ────────────────────────────────────────────────────
+
+function LogoMark({ size = 32 }: { size?: number }) {
+  return (
+    <div
+      style={{
+        width: size,
+        height: size,
+        borderRadius: Math.round(size * 0.29),
+        background: "rgba(255,255,255,.08)",
+        border: "1px solid rgba(255,255,255,.18)",
+        position: "relative",
+        overflow: "hidden",
+        flex: "none",
+      }}
+    >
+      <svg viewBox="0 0 100 100" style={{ position: "absolute", inset: size * 0.14 }}>
+        <circle cx="50" cy="40" r="24" fill="#fff" opacity={0.94} style={{ mixBlendMode: "screen" }} />
+        <circle cx="36" cy="63" r="24" fill="#E5DFF5" opacity={0.92} style={{ mixBlendMode: "screen" }} />
+        <circle cx="64" cy="63" r="24" fill="#C8BFEF" opacity={0.9} style={{ mixBlendMode: "screen" }} />
+      </svg>
+    </div>
+  );
+}
+
+// ─── Nav items ────────────────────────────────────────────────────────────────
+
+const NAV_MANAGE = [
+  { to: "/", label: "Overview", end: true, Icon: IcoOverview },
+  { to: "/users", label: "Users", Icon: IcoUsers },
+  { to: "/groups", label: "Groups", Icon: IcoGroups },
+  { to: "/expenses", label: "Expenses", Icon: IcoExpenses },
+  { to: "/logs", label: "Activity & Logs", Icon: IcoLogs },
+  { to: "/announcements", label: "Announcements", Icon: IcoAnnouncements },
 ];
 
 const TITLES: Record<string, string> = {
@@ -21,143 +128,229 @@ const TITLES: Record<string, string> = {
   "/settings": "Bot & Settings",
 };
 
-function Logo() {
+const SUBTITLES: Record<string, string> = {
+  "/": "Platform at a glance",
+  "/users": "Manage Telegram users",
+  "/groups": "Active group chats",
+  "/expenses": "Cross-group expense feed",
+  "/logs": "Admin audit trail",
+  "/announcements": "Broadcast messages",
+  "/settings": "Bot configuration",
+};
+
+// ─── Reusable nav link ────────────────────────────────────────────────────────
+
+function NavItem({
+  to,
+  label,
+  end,
+  Icon,
+}: {
+  to: string;
+  label: string;
+  end?: boolean;
+  Icon: React.ComponentType<{ active: boolean }>;
+}) {
   return (
-    <div style={{ display: "flex", alignItems: "center", gap: 11, padding: "4px 8px 24px" }}>
-      <div
-        style={{
-          width: 38,
-          height: 38,
-          borderRadius: 11,
-          background: "linear-gradient(150deg,#3B2C84,#6E59C7 65%,#8A78D6)",
-        }}
-      />
-      <div>
-        <div style={{ fontFamily: "var(--font-display)", fontWeight: 800, fontSize: 18, letterSpacing: "-.02em", lineHeight: 1 }}>
-          Jemaw
-        </div>
-        <div style={{ fontFamily: "var(--font-mono)", fontSize: 9, letterSpacing: ".14em", textTransform: "uppercase", color: "var(--text-faint)" }}>
-          Admin
-        </div>
-      </div>
-    </div>
+    <NavLink
+      to={to}
+      end={end}
+      className="jx-navitem"
+      style={({ isActive }) => ({
+        display: "flex",
+        alignItems: "center",
+        gap: 10,
+        padding: "9px 12px",
+        borderRadius: 10,
+        fontSize: 13.5,
+        fontWeight: 600,
+        textDecoration: "none",
+        background: isActive ? "rgba(110,89,199,.16)" : "transparent",
+        color: isActive ? "var(--text)" : "var(--text-dim)",
+        transition: "background .12s",
+      })}
+    >
+      {({ isActive }) => (
+        <>
+          <Icon active={isActive} />
+          {label}
+        </>
+      )}
+    </NavLink>
   );
 }
+
+// ─── Shell ────────────────────────────────────────────────────────────────────
 
 export function AppShell({ children }: { children: ReactNode }) {
   const { user, logout } = useAuth();
   const location = useLocation();
   const title = TITLES[location.pathname] ?? "Jemaw Admin";
+  const subtitle = SUBTITLES[location.pathname];
 
   return (
     <div style={{ display: "flex", height: "100vh", minHeight: 760, overflow: "hidden" }}>
+
       {/* Sidebar */}
       <div
         style={{
-          width: 248,
+          width: 244,
           flex: "none",
           background: "var(--sidebar)",
           borderRight: "1px solid var(--hairline)",
           display: "flex",
           flexDirection: "column",
-          padding: "22px 16px",
+          padding: "20px 14px",
         }}
       >
-        <Logo />
-        <div style={{ fontFamily: "var(--font-mono)", fontSize: 10, letterSpacing: ".14em", textTransform: "uppercase", color: "rgba(244,242,251,.32)", padding: "6px 10px 8px" }}>
+        {/* Logo */}
+        <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "4px 8px 22px" }}>
+          <LogoMark size={36} />
+          <div>
+            <div
+              style={{
+                fontFamily: "var(--font-display)",
+                fontWeight: 800,
+                fontSize: 17,
+                letterSpacing: "-.02em",
+                lineHeight: 1,
+              }}
+            >
+              Jemaw
+            </div>
+            <div
+              style={{
+                fontFamily: "var(--font-mono)",
+                fontSize: 9,
+                letterSpacing: ".15em",
+                textTransform: "uppercase",
+                color: "var(--text-faint)",
+                marginTop: 2,
+              }}
+            >
+              Admin Console
+            </div>
+          </div>
+        </div>
+
+        {/* Manage section */}
+        <div
+          style={{
+            fontFamily: "var(--font-mono)",
+            fontSize: 9.5,
+            letterSpacing: ".14em",
+            textTransform: "uppercase",
+            color: "rgba(244,242,251,.28)",
+            padding: "2px 10px 7px",
+          }}
+        >
           Manage
         </div>
-        <nav style={{ display: "flex", flexDirection: "column", gap: 3 }}>
-          {NAV.map((item) => (
-            <NavLink
-              key={item.to}
-              to={item.to}
-              end={item.end}
-              className="jx-navitem"
-              style={({ isActive }) => ({
-                display: "flex",
-                alignItems: "center",
-                gap: 12,
-                padding: "11px 12px",
-                borderRadius: 11,
-                fontSize: 14,
-                fontWeight: 600,
-                background: isActive ? "rgba(110,89,199,.16)" : "transparent",
-                color: isActive ? "var(--text)" : "var(--text-dim)",
-              })}
-            >
-              {item.label}
-            </NavLink>
+        <nav style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+          {NAV_MANAGE.map((item) => (
+            <NavItem key={item.to} to={item.to} label={item.label} end={item.end} Icon={item.Icon} />
           ))}
         </nav>
 
-        <div style={{ fontFamily: "var(--font-mono)", fontSize: 10, letterSpacing: ".14em", textTransform: "uppercase", color: "rgba(244,242,251,.32)", padding: "22px 10px 8px" }}>
+        {/* System section */}
+        <div
+          style={{
+            fontFamily: "var(--font-mono)",
+            fontSize: 9.5,
+            letterSpacing: ".14em",
+            textTransform: "uppercase",
+            color: "rgba(244,242,251,.28)",
+            padding: "18px 10px 7px",
+          }}
+        >
           System
         </div>
-        <NavLink
-          to="/settings"
-          className="jx-navitem"
-          style={({ isActive }) => ({
-            display: "flex",
-            alignItems: "center",
-            gap: 12,
-            padding: "11px 12px",
-            borderRadius: 11,
-            fontSize: 14,
-            fontWeight: 600,
-            background: isActive ? "rgba(110,89,199,.16)" : "transparent",
-            color: isActive ? "var(--text)" : "var(--text-dim)",
-          })}
-        >
-          Bot &amp; Settings
-        </NavLink>
+        <NavItem to="/settings" label="Bot & Settings" Icon={IcoSettings} />
+
+        <div style={{ flex: 1 }} />
 
         {/* Bot status */}
         <div
           style={{
-            marginTop: "auto",
             background: "var(--surface-2)",
             border: "1px solid var(--hairline)",
-            borderRadius: 14,
-            padding: 13,
+            borderRadius: 13,
+            padding: "11px 14px",
+            marginBottom: 10,
           }}
         >
-          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
-            <span style={{ width: 8, height: 8, borderRadius: "50%", background: "var(--success)", boxShadow: "0 0 0 3px rgba(45,212,167,.18)" }} />
+          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 5 }}>
+            <span
+              style={{
+                width: 7,
+                height: 7,
+                borderRadius: "50%",
+                background: "var(--success)",
+                boxShadow: "0 0 0 3px rgba(45,212,167,.18)",
+                flex: "none",
+              }}
+            />
             <span style={{ fontSize: 12, fontWeight: 700 }}>Bot online</span>
           </div>
-          <div style={{ fontSize: 11, color: "var(--text-dim)", lineHeight: 1.4 }}>
+          <div style={{ fontSize: 11, color: "var(--text-dim)", lineHeight: 1.45 }}>
             @JemawBot · webhook healthy
           </div>
         </div>
 
-        {/* Admin profile */}
-        <div style={{ display: "flex", alignItems: "center", gap: 11, marginTop: 12, padding: "8px 6px" }}>
+        {/* Admin user */}
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 10,
+            padding: "8px 8px",
+            borderRadius: 10,
+            cursor: "default",
+          }}
+        >
           <div
             style={{
-              width: 36,
-              height: 36,
+              width: 32,
+              height: 32,
               borderRadius: "50%",
               background: "linear-gradient(140deg,#6E59C7,#A99CE3)",
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
               fontWeight: 700,
-              fontSize: 14,
+              fontSize: 13,
+              flex: "none",
             }}
           >
             {(user?.email ?? "A").charAt(0).toUpperCase()}
           </div>
           <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontSize: 13, fontWeight: 700, lineHeight: 1.1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+            <div
+              style={{
+                fontSize: 12.5,
+                fontWeight: 700,
+                lineHeight: 1.2,
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                whiteSpace: "nowrap",
+              }}
+            >
               {user?.email ?? "Admin"}
             </div>
-            <div style={{ fontSize: 11, color: "var(--text-faint)" }}>Admin</div>
+            <div style={{ fontSize: 10.5, color: "var(--text-faint)" }}>Super admin</div>
           </div>
           <button
             onClick={() => void logout()}
             title="Sign out"
-            style={{ background: "none", border: "none", color: "var(--text-faint)", cursor: "pointer", fontSize: 13 }}
+            style={{
+              background: "none",
+              border: "none",
+              color: "var(--text-faint)",
+              cursor: "pointer",
+              fontSize: 12,
+              padding: "4px 6px",
+              borderRadius: 6,
+            }}
           >
             Exit
           </button>
@@ -165,13 +358,49 @@ export function AppShell({ children }: { children: ReactNode }) {
       </div>
 
       {/* Main */}
-      <div style={{ flex: 1, display: "flex", flexDirection: "column", minWidth: 0, background: "var(--bg-panel)" }}>
-        <div style={{ height: 70, flex: "none", borderBottom: "1px solid var(--hairline)", display: "flex", alignItems: "center", gap: 18, padding: "0 28px" }}>
-          <div style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 21, letterSpacing: "-.01em" }}>
-            {title}
+      <div
+        style={{
+          flex: 1,
+          display: "flex",
+          flexDirection: "column",
+          minWidth: 0,
+          background: "var(--bg-panel)",
+        }}
+      >
+        {/* Top bar */}
+        <div
+          style={{
+            height: 66,
+            flex: "none",
+            borderBottom: "1px solid var(--hairline)",
+            display: "flex",
+            alignItems: "center",
+            padding: "0 28px",
+          }}
+        >
+          <div>
+            <div
+              style={{
+                fontFamily: "var(--font-display)",
+                fontWeight: 700,
+                fontSize: 20,
+                letterSpacing: "-.02em",
+                lineHeight: 1.1,
+              }}
+            >
+              {title}
+            </div>
+            {subtitle && (
+              <div style={{ fontSize: 11.5, color: "var(--text-faint)", marginTop: 1 }}>{subtitle}</div>
+            )}
           </div>
         </div>
-        <div className="jx-scroll" style={{ flex: 1, overflowY: "auto", overflowX: "hidden", padding: "26px 28px" }}>
+
+        {/* Content */}
+        <div
+          className="jx-scroll"
+          style={{ flex: 1, overflowY: "auto", overflowX: "hidden", padding: "24px 26px" }}
+        >
           {children}
         </div>
       </div>
