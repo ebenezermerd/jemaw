@@ -243,10 +243,19 @@ export async function scanGroup(
       dropped++;
       continue;
     }
-    if (splitMemberIds.length === 0) {
-      // No members clued from chat — default to primary members only (the
-      // group's regular participants), falling back to all if none are primary.
+    // "No participants named" — the chat didn't clue who shares the cost. This
+    // is the empty split_with the prompt asks for, but also covers the model
+    // still emitting just the payer (which is not an explicit participant list).
+    // In that case default the split to the group's PRIMARY members only (its
+    // regular participants), not everyone — falling back to all if none are
+    // marked primary. Loans always name their borrower, so this never applies.
+    const noParticipantsNamed =
+      s.kind !== "loan" &&
+      (splitMemberIds.length === 0 ||
+        (splitMemberIds.length === 1 && payer != null && splitMemberIds[0] === payer.id));
+    if (noParticipantsNamed) {
       const primaryIds = members.filter((m) => m.isPrimary).map((m) => m.id);
+      splitMemberIds.length = 0;
       splitMemberIds.push(...(primaryIds.length ? primaryIds : allMemberIds));
       sawUnknownSplit = true;
       console.log(`[scan] fallback "${s.description}": split defaulted to primary members`);
