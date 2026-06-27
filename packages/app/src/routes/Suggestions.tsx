@@ -80,6 +80,7 @@ export function Suggestions() {
             fromName={nameOf(s.fromMemberId)}
             toName={nameOf(s.toMemberId)}
             alreadySettled={isAlreadySettled(s)}
+            untied={s.kind === "settlement" && s.expenseIds.length === 0}
             onAdd={() => {
               if (s.kind === "settlement") {
                 if (s.amount && s.expenseIds.length > 0) {
@@ -110,6 +111,7 @@ function Card({
   fromName,
   toName,
   alreadySettled,
+  untied,
   onAdd,
   onDismiss,
   onEdit,
@@ -123,6 +125,7 @@ function Card({
   fromName: string;
   toName: string;
   alreadySettled: boolean;
+  untied: boolean;
   onAdd: () => void;
   onDismiss: () => void;
   onEdit: () => void;
@@ -155,7 +158,9 @@ function Card({
         background: "var(--surface)",
         border: alreadySettled
           ? "1px solid var(--destructive, #e53e3e)"
-          : "1px solid var(--border)",
+          : untied
+            ? "1px solid var(--warn, #d69e2e)"
+            : "1px solid var(--border)",
         borderRadius: "var(--r-lg)",
         padding: 16,
         overflow: "hidden",
@@ -186,8 +191,9 @@ function Card({
         </div>
       </div>
 
-      {/* evidence / reasoning — replaced by an "already settled" note when the
-          pair is even, so the user knows to dismiss rather than retry. */}
+      {/* evidence / reasoning — replaced by a status note when the pair is
+          already even (red, blocked) or has no expenses matched yet (amber,
+          actionable), so the user knows what to do. */}
       {alreadySettled ? (
         <div
           className="t-caption"
@@ -200,6 +206,19 @@ function Card({
           }}
         >
           Already settled — you can dismiss this suggestion.
+        </div>
+      ) : untied ? (
+        <div
+          className="t-caption"
+          style={{
+            color: "var(--warn, #d69e2e)",
+            marginTop: 12,
+            paddingLeft: 10,
+            borderLeft: "2px solid var(--warn, #d69e2e)",
+            fontWeight: 600,
+          }}
+        >
+          No expenses matched — tap Settle to choose what this payment covers.
         </div>
       ) : (
         <div
