@@ -12,7 +12,9 @@ export const suggestionSchema = z.object({
   currency: z.string().length(3),
   payer_telegram_id: z.number().int().nullable(),
   split_type: z.enum(["equal", "shares", "exact"]),
-  split_with: z.array(z.number().int()).min(1),
+  // Empty when the chat names no participants — the scan then defaults the split
+  // to the group's primary members rather than guessing a subset.
+  split_with: z.array(z.number().int()),
   shares: z.record(z.string(), z.number().int().positive()).nullable(),
   // Drop any stray nulls the model occasionally emits in the id list.
   evidence_message_ids: z
