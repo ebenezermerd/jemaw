@@ -67,10 +67,16 @@ export function useResetGroup() {
   });
 }
 
-export function useExpenses() {
+/**
+ * Live expenses. Pass `forMember` to drop entries that member has already
+ * settled (their share allocated within tolerance), so the settle form never
+ * lists an expense the payer has already cleared.
+ */
+export function useExpenses(forMember?: string) {
+  const q = forMember ? `?forMember=${forMember}` : "";
   return useQuery({
-    queryKey: ["expenses"],
-    queryFn: () => api.get<ExpenseDto[]>(`/api/groups/${gid()}/expenses`),
+    queryKey: ["expenses", forMember ?? "all"],
+    queryFn: () => api.get<ExpenseDto[]>(`/api/groups/${gid()}/expenses${q}`),
   });
 }
 
