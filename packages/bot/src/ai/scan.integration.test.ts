@@ -4,7 +4,13 @@
  */
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { createDb, type Db } from "../db.js";
-import { upsertGroup, upsertMember, captureMessage, getGroupById } from "../repo.js";
+import {
+  upsertGroup,
+  upsertMember,
+  captureMessage,
+  getGroupById,
+  setMemberPrimaryById,
+} from "../repo.js";
 import { scanGroup } from "./scan.js";
 import type { GeminiClient } from "./geminiClient.js";
 import {
@@ -25,6 +31,8 @@ d("scanGroup (mocked Gemini)", () => {
   let group: Group;
   let saraTg: number;
   let tomTg: number;
+  let saraId: string;
+  let tomId: string;
   const now = () => 1_780_000_000_000;
 
   function mockGemini(json: unknown): GeminiClient {
@@ -43,8 +51,8 @@ d("scanGroup (mocked Gemini)", () => {
     tomTg = Number(base - 2n);
     const g = await upsertGroup(db, base, "ScanTrip", "EUR");
     group = g;
-    await upsertMember(db, g.id, BigInt(saraTg), "Sara", null);
-    await upsertMember(db, g.id, BigInt(tomTg), "Tom", null);
+    saraId = (await upsertMember(db, g.id, BigInt(saraTg), "Sara", null)).id;
+    tomId = (await upsertMember(db, g.id, BigInt(tomTg), "Tom", null)).id;
     // Two messages mentioning an expense.
     await captureMessage(db, g.id, 1001n, BigInt(saraTg), "I got dinner ~50", new Date());
     await captureMessage(db, g.id, 1002n, BigInt(tomTg), "thanks!", new Date());
@@ -215,6 +223,74 @@ d("scanGroup (mocked Gemini)", () => {
     // Same message cited again → deduped, nothing new written.
     const r2 = await scanGroup({ db, gemini: mockGemini(resp), now }, g, null, "keyword");
     expect(r2.written).toBe(0);
+  });
+
+  it("defaults the split to primary members when no participants are named", async () => {
+    await db.update(groups).set({ lastScanMessageId: null }).where(eq(groups.id, group.id));
+    await db.delete(suggestions).where(eq(suggestions.groupId, group.id));
+    // Tom is secondary; only Sara is primary.
+    await setMemberPrimaryById(db, group.id, tomId, false);
+    await setMemberPrimaryById(db, group.id, saraId, true);
+    const g = (await getGroupById(db, group.id))!;
+    const res = await scanGroup(
+      { db, gemini: mockGemini({
+        suggestions: [
+          {
+            confidence: 0.9,
+            description: "Breakfast",
+            amount: 30,
+            currency: "EUR",
+            payer_telegram_id: saraTg,
+            split_type: "equal",
+            split_with: [], // no one named in chat
+            shares: null,
+            evidence_message_ids: [1001],
+            reasoning: "Sara paid 30 for breakfast",
+          },
+        ],
+        scan_window: { from_message_id: 1001, to_message_id: 1002 },
+      }), now },
+      g,
+      null,
+      "keyword",
+    );
+    expect(res.written).toBe(1);
+    const rows = await db.select().from(suggestions).where(eq(suggestions.groupId, group.id));
+    expect(rows[0]!.splitWith).toEqual([saraId]); // only the primary member
+    // Restore both to primary for later tests.
+    await setMemberPrimaryById(db, group.id, tomId, true);
+  });
+
+  it("treats a payer-only split as unnamed and defaults to primary members", async () => {
+    await db.update(groups).set({ lastScanMessageId: null }).where(eq(groups.id, group.id));
+    await db.delete(suggestions).where(eq(suggestions.groupId, group.id));
+    const g = (await getGroupById(db, group.id))!;
+    const res = await scanGroup(
+      { db, gemini: mockGemini({
+        suggestions: [
+          {
+            confidence: 0.9,
+            description: "Taxi",
+            amount: 20,
+            currency: "EUR",
+            payer_telegram_id: saraTg,
+            split_type: "equal",
+            split_with: [saraTg], // only the payer — not an explicit list
+            shares: null,
+            evidence_message_ids: [1001],
+            reasoning: "Sara paid 20 for taxi",
+          },
+        ],
+        scan_window: { from_message_id: 1001, to_message_id: 1002 },
+      }), now },
+      g,
+      null,
+      "keyword",
+    );
+    expect(res.written).toBe(1);
+    const rows = await db.select().from(suggestions).where(eq(suggestions.groupId, group.id));
+    // Both primary now → split spans both, not just the payer.
+    expect([...(rows[0]!.splitWith as string[])].sort()).toEqual([saraId, tomId].sort());
   });
 
   it("returns no_messages only when the group has no messages at all", async () => {
