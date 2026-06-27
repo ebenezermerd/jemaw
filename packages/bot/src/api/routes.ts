@@ -514,13 +514,21 @@ export async function registerApi(
     }
     const paidCents = Math.min(requestedCents, maxAllocatableCents);
 
+    // "Leave it": when the payment falls just short of the full owed amount by a
+    // sub-tolerance remainder (e.g. a few cents from rounding), treat the
+    // selected expenses as fully covered and allocate each one's full residual.
+    // The recorded settlement amount still reflects what was actually paid; only
+    // the allocations complete so no ghost sub-tolerance debt lingers.
+    const coversInFull =
+      maxAllocatableCents - requestedCents <= COVERAGE_TOLERANCE_CENTS;
+
     const sortedExpenses = [...selectedExpenses].sort(
       (a, b) => a.expense.occurredAt.getTime() - b.expense.occurredAt.getTime(),
     );
     const allocationInputs: AllocationInput[] = [];
     let remaining = paidCents;
     for (const e of sortedExpenses) {
-      if (remaining <= 0) break;
+      if (!coversInFull && remaining <= 0) break;
       const efd = expensesForDebtMap.get(e.expense.id);
       const share = efd?.shares.find((s) => s.memberId === fromMemberId);
       if (!share) continue;
@@ -528,7 +536,7 @@ export async function registerApi(
         .filter((a) => a.expenseId === e.expense.id && a.memberId === fromMemberId)
         .reduce((sum, a) => sum + a.allocatedCents, 0);
       const residual = Math.max(0, share.shareCents - allocated);
-      const give = Math.min(remaining, residual);
+      const give = coversInFull ? residual : Math.min(remaining, residual);
       if (give > 0) {
         allocationInputs.push({
           expenseId: e.expense.id,
