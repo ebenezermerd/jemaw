@@ -354,6 +354,86 @@ d("Allocation-based settlements", () => {
     expect(expRes.json<ExpenseDto[]>().find((e) => e.id === expense.id)).toBeUndefined();
   });
 
+  it("forMember hides an expense the member already settled, even if others still owe", async () => {
+    // Alice pays 90, split 3 ways → Bob and Carol each owe 30.
+    const triRes = await app.inject({
+      method: "POST",
+      url: `/api/groups/${groupId}/expenses`,
+      headers: auth(aliceTg),
+      payload: {
+        description: "TriDinner",
+        amount: "90.00",
+        payerMemberId: aliceId,
+        splitType: "equal",
+        splitWith: [aliceId, bobId, carolId],
+        occurredAt: "2026-05-01T12:00:00.000Z",
+      },
+    });
+    expect(triRes.statusCode).toBe(201);
+    const tri = triRes.json<ExpenseDto>();
+
+    // Bob settles his 30 share; Carol has not.
+    const payRes = await app.inject({
+      method: "POST",
+      url: `/api/groups/${groupId}/settlements`,
+      headers: auth(bobTg),
+      payload: { fromMemberId: bobId, toMemberId: aliceId, amount: "30.00", expenseIds: [tri.id] },
+    });
+    expect(payRes.statusCode).toBe(201);
+
+    // Expense is still live overall (Carol owes) → present without forMember.
+    const allRes = await app.inject({
+      method: "GET",
+      url: `/api/groups/${groupId}/expenses`,
+      headers: auth(aliceTg),
+    });
+    expect(allRes.json<ExpenseDto[]>().find((e) => e.id === tri.id)).toBeDefined();
+
+    // But hidden for Bob, who already settled his share.
+    const bobRes = await app.inject({
+      method: "GET",
+      url: `/api/groups/${groupId}/expenses?forMember=${bobId}`,
+      headers: auth(bobTg),
+    });
+    expect(bobRes.json<ExpenseDto[]>().find((e) => e.id === tri.id)).toBeUndefined();
+
+    // Still shown for Carol, and her share carries remainingOwed.
+    const carolRes = await app.inject({
+      method: "GET",
+      url: `/api/groups/${groupId}/expenses?forMember=${carolId}`,
+      headers: auth(carolTg),
+    });
+    const carolExp = carolRes.json<ExpenseDto[]>().find((e) => e.id === tri.id);
+    expect(carolExp).toBeDefined();
+    const carolShare = carolExp!.shares.find((s) => s.memberId === carolId);
+    expect(carolShare?.remainingOwed).toBe("30.00");
+    const bobShare = carolExp!.shares.find((s) => s.memberId === bobId);
+    expect(bobShare?.remainingOwed).toBe("0.00");
+    expect(bobShare?.allocatedAmount).toBe("30.00");
+  });
+
+  it("recording a stale already-settled expense is rejected", async () => {
+    const expense = await createExpense("100.00", "StaleDinner", "2026-05-10T12:00:00.000Z");
+    // Bob settles it fully.
+    const first = await app.inject({
+      method: "POST",
+      url: `/api/groups/${groupId}/settlements`,
+      headers: auth(bobTg),
+      payload: { fromMemberId: bobId, toMemberId: aliceId, amount: "50.00", expenseIds: [expense.id] },
+    });
+    expect(first.statusCode).toBe(201);
+
+    // Trying to settle the same (now covered) expense again is rejected, not
+    // silently re-recorded.
+    const again = await app.inject({
+      method: "POST",
+      url: `/api/groups/${groupId}/settlements`,
+      headers: auth(bobTg),
+      payload: { fromMemberId: bobId, toMemberId: aliceId, amount: "50.00", expenseIds: [expense.id] },
+    });
+    expect(again.statusCode).toBe(409);
+  });
+
   it("addManualMember: two calls produce distinct telegram ids", async () => {
     const m1 = await addManualMember(db, groupId, "Manual1", null);
     const m2 = await addManualMember(db, groupId, "Manual2", null);

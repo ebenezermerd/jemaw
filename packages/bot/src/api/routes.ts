@@ -53,6 +53,7 @@ import {
   type HistoryResponse,
   type HistoryItem,
   type SettlePlanResponse,
+  type ExpenseDto,
 } from "@jemaw/shared/types";
 import type { Transfer } from "../domain/settle.js";
 import type { Member, Settlement } from "@jemaw/shared/schema";
@@ -142,6 +143,31 @@ async function loadLedger(
   const transfers = computePairwiseTransfers(pairDebts);
 
   return { members, nets, expensesForDebt, allocations, coveredExpenseIds, transfers };
+}
+
+/**
+ * Annotate each share with how much is already settled (allocatedAmount) and
+ * what remains owed (remainingOwed), so the client can hide shares a member has
+ * already cleared without re-deriving allocation math.
+ */
+function enrichExpenseShares(
+  dto: ExpenseDto,
+  allocations: AllocationForDebt[],
+): ExpenseDto {
+  return {
+    ...dto,
+    shares: dto.shares.map((s) => {
+      const allocatedCents = allocations
+        .filter((a) => a.expenseId === dto.id && a.memberId === s.memberId)
+        .reduce((sum, a) => sum + a.allocatedCents, 0);
+      const remainingCents = Math.max(0, decimalToCents(s.shareAmount) - allocatedCents);
+      return {
+        ...s,
+        allocatedAmount: centsToDecimal(allocatedCents),
+        remainingOwed: centsToDecimal(remainingCents),
+      };
+    }),
+  };
 }
 
 /** Validated expense input shape (shared by create + edit). */
@@ -469,11 +495,26 @@ export async function registerApi(
     }
 
     const liveExpenses = await listLiveExpenses(db, group.id);
-    const selectedExpenses = expenseIds
+    const expensesForDebtMap = new Map(expensesForDebt.map((e) => [e.expenseId, e]));
+
+    // Residual the from member still owes on an expense (share minus allocations).
+    const residualFor = (expenseId: string): number => {
+      const efd = expensesForDebtMap.get(expenseId);
+      const share = efd?.shares.find((s) => s.memberId === fromMemberId);
+      if (!share) return 0;
+      const allocated = allocations
+        .filter((a) => a.expenseId === expenseId && a.memberId === fromMemberId)
+        .reduce((sum, a) => sum + a.allocatedCents, 0);
+      return Math.max(0, share.shareCents - allocated);
+    };
+
+    const namedExpenses = expenseIds
       .map((id) => liveExpenses.find((e) => e.expense.id === id))
       .filter((e): e is NonNullable<typeof e> => e !== undefined);
 
-    for (const e of selectedExpenses) {
+    // Validate the named expenses first, so genuine mistakes (wrong payer, no
+    // share) surface a precise error before we drop any already-settled ones.
+    for (const e of namedExpenses) {
       if (e.expense.payerMemberId !== toMemberId) {
         return {
           error: `expense "${e.expense.description}" was not paid by the payee`,
@@ -488,7 +529,21 @@ export async function registerApi(
       }
     }
 
-    const expensesForDebtMap = new Map(expensesForDebt.map((e) => [e.expenseId, e]));
+    // Drop expenses the from member has already settled (residual within
+    // tolerance). A stale suggestion may still carry them; recording would
+    // either over-pay or re-touch a cleared share.
+    const selectedExpenses = namedExpenses.filter(
+      (e) => residualFor(e.expense.id) > COVERAGE_TOLERANCE_CENTS,
+    );
+
+    // After dropping settled entries, nothing remains to record.
+    if (selectedExpenses.length === 0) {
+      return {
+        error: "these expenses are already settled",
+        status: 409,
+      };
+    }
+
     let maxAllocatableCents = 0;
     for (const e of selectedExpenses) {
       const efd = expensesForDebtMap.get(e.expense.id);
@@ -572,13 +627,31 @@ export async function registerApi(
     { preHandler: auth },
     async (req) => {
       const { group } = req.jemaw!;
-      const { includeCovered } = req.query as { includeCovered?: string };
+      const { includeCovered, forMember } = req.query as {
+        includeCovered?: string;
+        forMember?: string;
+      };
       const expenses = await listLiveExpenses(db, group.id);
       if (includeCovered === "1") return expenses.map(toExpenseDto);
-      const { coveredExpenseIds } = await loadLedger(db, group.id);
-      return expenses
-        .filter((e) => !coveredExpenseIds.has(e.expense.id))
-        .map(toExpenseDto);
+
+      const { coveredExpenseIds, allocations } = await loadLedger(db, group.id);
+      let live = expenses.filter((e) => !coveredExpenseIds.has(e.expense.id));
+
+      // forMember: drop expenses where this member's own share is already
+      // settled (allocated within tolerance), even if other debtors still owe.
+      // Keeps a settler from re-seeing entries they've already cleared.
+      if (forMember) {
+        live = live.filter((e) => {
+          const share = e.shares.find((s) => s.memberId === forMember);
+          if (!share) return false;
+          const allocated = allocations
+            .filter((a) => a.expenseId === e.expense.id && a.memberId === forMember)
+            .reduce((sum, a) => sum + a.allocatedCents, 0);
+          return decimalToCents(share.shareAmount) - allocated > COVERAGE_TOLERANCE_CENTS;
+        });
+      }
+
+      return live.map((e) => enrichExpenseShares(toExpenseDto(e), allocations));
     },
   );
 
