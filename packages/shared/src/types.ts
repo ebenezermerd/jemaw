@@ -77,6 +77,10 @@ export interface ExpenseShareDto {
   memberId: string;
   /** decimal string */
   shareAmount: string;
+  /** decimal string — total already settled toward this member's share. */
+  allocatedAmount?: string;
+  /** decimal string — shareAmount minus allocatedAmount, floored at 0. */
+  remainingOwed?: string;
 }
 
 export interface ExpenseDto {
