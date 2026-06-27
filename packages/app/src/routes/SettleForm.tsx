@@ -23,6 +23,7 @@ import { Centered } from "./Balances.js";
 import { decimalToCents, centsToDecimal } from "@jemaw/shared/types";
 import type { PaymentMethod, ExpenseDto } from "@jemaw/shared/types";
 import { formatMoney } from "../lib/money.js";
+import { ApiError } from "../lib/api.js";
 import { currentTelegramId } from "../telegram.js";
 
 const METHODS: { value: PaymentMethod; label: string }[] = [
@@ -73,7 +74,7 @@ export function SettleForm() {
   const [description, setDescription] = useState("");
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [query, setQuery] = useState("");
-  const [overPayError, setOverPayError] = useState<string | null>(null);
+  const [formError, setFormError] = useState<string | null>(null);
 
   // Prefill from params. The amount is the settle plan's net (e.g. 450), which
   // already accounts for both directions and prior settlements — we trust it
@@ -159,7 +160,7 @@ export function SettleForm() {
   }
 
   async function submit() {
-    setOverPayError(null);
+    setFormError(null);
     const input = {
       fromMemberId: from,
       toMemberId: to,
@@ -177,10 +178,13 @@ export function SettleForm() {
       }
       nav("/settle");
     } catch (err: unknown) {
-      const body = (err as { response?: { maxAllocatable?: string; error?: string } })?.response;
-      if (body?.maxAllocatable) {
-        setOverPayError(`Exceeds what you owe. Max: ${formatMoney(body.maxAllocatable, currency)}`);
-        setAmount(body.maxAllocatable);
+      if (err instanceof ApiError && err.body.maxAllocatable) {
+        setFormError(`Exceeds what you owe. Max: ${formatMoney(err.body.maxAllocatable, currency)}`);
+        setAmount(err.body.maxAllocatable);
+      } else if (err instanceof ApiError && err.body.error) {
+        setFormError(err.body.error);
+      } else {
+        setFormError("Couldn't record this settlement. Please try again.");
       }
     }
   }
@@ -201,7 +205,7 @@ export function SettleForm() {
           <span className="t-mono-label" style={{ color: "var(--text-muted)" }}>Amount</span>
           <input
             value={amount}
-            onChange={(e) => { setAmount(e.target.value.replace(/[^\d.]/g, "")); setOverPayError(null); }}
+            onChange={(e) => { setAmount(e.target.value.replace(/[^\d.]/g, "")); setFormError(null); }}
             inputMode="decimal"
             placeholder="0.00"
             className="tnum"
@@ -347,9 +351,9 @@ export function SettleForm() {
         </div>
       )}
 
-      {overPayError && (
+      {formError && (
         <p className="t-caption" style={{ color: "var(--destructive, #e53e3e)", margin: 0 }}>
-          {overPayError}
+          {formError}
         </p>
       )}
       {to && selected.size === 0 && (

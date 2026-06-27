@@ -7,6 +7,21 @@ import { getInitData } from "../telegram.js";
 
 const BASE = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8080";
 
+/**
+ * Thrown on any non-2xx response. Carries the HTTP status and the parsed JSON
+ * body so callers can read structured fields (`error`, `maxAllocatable`, …)
+ * instead of scraping a string message.
+ */
+export class ApiError extends Error {
+  constructor(
+    readonly status: number,
+    readonly body: { error?: string; maxAllocatable?: string; [k: string]: unknown },
+  ) {
+    super(body.error ?? `${status}: request failed`);
+    this.name = "ApiError";
+  }
+}
+
 export function getGroupId(): string | null {
   const fromQuery = new URLSearchParams(window.location.search).get("group");
   if (fromQuery) return fromQuery;
@@ -27,8 +42,14 @@ async function request<T>(
     },
   });
   if (!res.ok) {
-    const body = await res.text();
-    throw new Error(`${res.status}: ${body}`);
+    const text = await res.text();
+    let body: { error?: string; maxAllocatable?: string; [k: string]: unknown };
+    try {
+      body = JSON.parse(text);
+    } catch {
+      body = { error: text };
+    }
+    throw new ApiError(res.status, body);
   }
   return res.json() as Promise<T>;
 }
