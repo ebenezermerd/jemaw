@@ -24,6 +24,7 @@ import { decimalToCents, centsToDecimal } from "@jemaw/shared/types";
 import type { PaymentMethod, ExpenseDto } from "@jemaw/shared/types";
 import { formatMoney } from "../lib/money.js";
 import { ApiError } from "../lib/api.js";
+import { AlertBanner } from "../ui/AlertBanner.js";
 import { currentTelegramId } from "../telegram.js";
 
 const METHODS: { value: PaymentMethod; label: string }[] = [
@@ -34,12 +35,16 @@ const METHODS: { value: PaymentMethod; label: string }[] = [
 
 export function SettleForm() {
   const group = useGroup();
-  const expensesQ = useExpenses();
+  const [params] = useSearchParams();
+  // Filter the selectable list to what the payer still owes. The `from` param
+  // is present for every settle entry point (settle list + AI suggestion), so
+  // it's a reliable hint; the client-side remaining filter below covers the
+  // rest once the resolved `from` state is known.
+  const expensesQ = useExpenses(params.get("from") ?? undefined);
   const suggestionsQ = useSuggestions();
   const create = useCreateSettlement();
   const editSuggestion = useEditSettlementSuggestion();
   const nav = useNavigate();
-  const [params] = useSearchParams();
   const suggestionId = params.get("suggestion") ?? undefined;
 
   const members = group.data?.members.filter((m) => m.isActive) ?? [];
@@ -74,7 +79,9 @@ export function SettleForm() {
   const [description, setDescription] = useState("");
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [query, setQuery] = useState("");
-  const [formError, setFormError] = useState<string | null>(null);
+  const [formError, setFormError] = useState<
+    { title: string; message: string; showSuggestions?: boolean } | null
+  >(null);
 
   // Prefill from params. The amount is the settle plan's net (e.g. 450), which
   // already accounts for both directions and prior settlements — we trust it
@@ -95,11 +102,12 @@ export function SettleForm() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [group.data, settlementSuggestion?.id]);
 
-  // Expenses relevant to this from→to pair: ones where `from` owes `to`
-  // (to paid, from has a share). Shown as the context behind this balance and
-  // attached to the settlement; they do NOT drive the amount (the net does).
+  // Expenses relevant to this from→to pair: ones where `from` still owes `to`
+  // (to paid, from has an unsettled share). Already-settled shares are excluded
+  // so a payer never re-sees an entry they've cleared. They do NOT drive the
+  // amount (the net does).
   const relevant = useMemo(
-    () => expenses.filter((e) => isOwedBetween(e, from, to)),
+    () => expenses.filter((e) => isOwedBetween(e, from, to) && owedShareCents(e, from) > 0),
     [expenses, from, to],
   );
 
@@ -179,12 +187,27 @@ export function SettleForm() {
       nav("/settle");
     } catch (err: unknown) {
       if (err instanceof ApiError && err.body.maxAllocatable) {
-        setFormError(`Exceeds what you owe. Max: ${formatMoney(err.body.maxAllocatable, currency)}`);
+        setFormError({
+          title: "Amount too high",
+          message: `That's more than ${toName} is owed here. The most you can settle is ${formatMoney(err.body.maxAllocatable, currency)} — we've adjusted it for you.`,
+        });
         setAmount(err.body.maxAllocatable);
+      } else if (
+        err instanceof ApiError &&
+        /no current debt|already settled/i.test(err.body.error ?? "")
+      ) {
+        setFormError({
+          title: "Already settled",
+          message: "This pair is already even — there's nothing left to record. You can dismiss the suggestion instead.",
+          showSuggestions: true,
+        });
       } else if (err instanceof ApiError && err.body.error) {
-        setFormError(err.body.error);
+        setFormError({ title: "Cannot settle", message: err.body.error });
       } else {
-        setFormError("Couldn't record this settlement. Please try again.");
+        setFormError({
+          title: "Something went wrong",
+          message: "Couldn't record this settlement. Please check your connection and try again.",
+        });
       }
     }
   }
@@ -352,9 +375,17 @@ export function SettleForm() {
       )}
 
       {formError && (
-        <p className="t-caption" style={{ color: "var(--destructive, #e53e3e)", margin: 0 }}>
-          {formError}
-        </p>
+        <AlertBanner
+          tone="error"
+          title={formError.title}
+          message={formError.message}
+          action={
+            formError.showSuggestions
+              ? { label: "View suggestions", onClick: () => nav("/suggestions") }
+              : undefined
+          }
+          onDismiss={() => setFormError(null)}
+        />
       )}
       {to && selected.size === 0 && (
         <p className="t-caption" style={{ color: "var(--text-muted)", margin: 0 }}>
@@ -449,7 +480,10 @@ function isOwedBetween(e: ExpenseDto, from: string, to: string): boolean {
 }
 function owedShareCents(e: ExpenseDto, from: string): number {
   const share = e.shares.find((s) => s.memberId === from);
-  return share ? decimalToCents(share.shareAmount) : 0;
+  if (!share) return 0;
+  // Prefer the server-computed remaining (share minus what's already settled);
+  // fall back to the full share when the field isn't present.
+  return decimalToCents(share.remainingOwed ?? share.shareAmount);
 }
 
 // ── small form bits ──
