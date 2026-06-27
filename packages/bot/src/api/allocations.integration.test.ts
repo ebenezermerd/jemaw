@@ -318,6 +318,42 @@ d("Allocation-based settlements", () => {
     expect(a2?.allocatedAmount).toBe("20.00");
   });
 
+  it("sub-tolerance shortfall covers the expense in full (leave it)", async () => {
+    // Bob owes 50 on a fresh expense. Pay 48.00 → 2.00 short, within the 3.00
+    // tolerance. The expense should be marked fully covered and the allocation
+    // should clear the whole 50.00 residual, leaving no ghost debt.
+    const expense = await createExpense("100.00", "LeaveItDinner", "2026-04-01T12:00:00.000Z");
+    const res = await app.inject({
+      method: "POST",
+      url: `/api/groups/${groupId}/settlements`,
+      headers: auth(bobTg),
+      payload: {
+        fromMemberId: bobId,
+        toMemberId: aliceId,
+        amount: "48.00", // owes 50, 2.00 short < tolerance
+        expenseIds: [expense.id],
+      },
+    });
+    expect(res.statusCode).toBe(201);
+    const s = res.json<SettlementDto>();
+
+    // Allocation clears the full residual, not just the 48.00 paid.
+    const allocs = await db
+      .select()
+      .from(settlementAllocations)
+      .where(eq(settlementAllocations.settlementId, s.id));
+    expect(allocs).toHaveLength(1);
+    expect(allocs[0]!.allocatedAmount).toBe("50.00");
+
+    // Expense is covered → omitted from the active list.
+    const expRes = await app.inject({
+      method: "GET",
+      url: `/api/groups/${groupId}/expenses`,
+      headers: auth(aliceTg),
+    });
+    expect(expRes.json<ExpenseDto[]>().find((e) => e.id === expense.id)).toBeUndefined();
+  });
+
   it("addManualMember: two calls produce distinct telegram ids", async () => {
     const m1 = await addManualMember(db, groupId, "Manual1", null);
     const m2 = await addManualMember(db, groupId, "Manual2", null);
