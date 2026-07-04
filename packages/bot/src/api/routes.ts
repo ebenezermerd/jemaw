@@ -29,6 +29,7 @@ import {
   setMemberPrimaryById,
   assignMemberTelegram,
   listMessageSenderIds,
+  removeMemberById,
   countAdmins,
   updateGroupCurrency,
   resetGroupData,
@@ -73,6 +74,10 @@ import type {
   MeSummaryDto,
   TelegramCandidateDto,
   TelegramCandidatesResponse,
+  MemberDataSummaryDto,
+  MemberExpenseItemDto,
+  MemberSettlementItemDto,
+  RemoveMemberResponse,
 } from "@jemaw/shared/types";
 import type { ScanRateLimiter } from "../ai/rateLimit.js";
 
@@ -402,7 +407,15 @@ export async function registerApi(
       const { members, nets } = await loadLedger(db, group.id);
       const nameOf = (id: string) =>
         members.find((m) => m.id === id)?.displayName ?? "Member";
-      return toBalanceDtos(nets, nameOf);
+      // Removed (inactive) members stay visible only while their net is
+      // nonzero; once square they drop off the board.
+      const inactive = new Set(
+        members.filter((m) => !m.isActive).map((m) => m.id),
+      );
+      const visible = nets.filter(
+        (n) => !inactive.has(n.memberId) || n.netCents !== 0,
+      );
+      return toBalanceDtos(visible, nameOf);
     },
   );
 
@@ -957,6 +970,117 @@ export async function registerApi(
       );
       if (!updated) return reply.code(404).send({ error: "member not found" });
       return toMemberDto(updated);
+    },
+  );
+
+  // GET everything recorded about one member — admin only. Feeds the removal
+  // review modal: KPIs plus the expenses and settlements the member appears in.
+  app.get(
+    "/api/groups/:groupId/members/:memberId/summary",
+    { preHandler: auth },
+    async (req, reply) => {
+      if (!requireAdmin(req, reply)) return;
+      const { group } = req.jemaw!;
+      const { memberId } = req.params as { memberId: string };
+      const members = await listMembers(db, group.id);
+      const target = members.find((m) => m.id === memberId);
+      if (!target) return reply.code(404).send({ error: "member not found" });
+
+      const { nets, transfers, coveredExpenseIds } = await loadLedger(
+        db,
+        group.id,
+      );
+      const liveExpenses = await listLiveExpenses(db, group.id);
+      const settlements = await listSettlements(db, group.id);
+      const nameOf = (id: string) =>
+        members.find((m) => m.id === id)?.displayName ?? "Member";
+
+      let paidCents = 0;
+      let shareCents = 0;
+      const expenseItems: MemberExpenseItemDto[] = [];
+      for (const e of liveExpenses) {
+        const isPayer = e.expense.payerMemberId === memberId;
+        const myShare = e.shares.find((s) => s.memberId === memberId);
+        if (!isPayer && !myShare) continue;
+        if (isPayer) paidCents += decimalToCents(e.expense.amount);
+        if (myShare) shareCents += decimalToCents(myShare.shareAmount);
+        expenseItems.push({
+          id: e.expense.id,
+          description: e.expense.description,
+          amount: e.expense.amount,
+          share: myShare ? myShare.shareAmount : "0.00",
+          role: isPayer && myShare ? "both" : isPayer ? "payer" : "participant",
+          occurredAt: e.expense.occurredAt.toISOString(),
+          settled: coveredExpenseIds.has(e.expense.id),
+        });
+      }
+      expenseItems.sort((a, b) => (a.occurredAt < b.occurredAt ? 1 : -1));
+
+      const settlementItems: MemberSettlementItemDto[] = settlements
+        .filter(
+          (s) => s.fromMemberId === memberId || s.toMemberId === memberId,
+        )
+        .map((s) => ({
+          id: s.id,
+          amount: s.amount,
+          direction: (s.fromMemberId === memberId ? "sent" : "received") as
+            | "sent"
+            | "received",
+          counterpartName: nameOf(
+            s.fromMemberId === memberId ? s.toMemberId : s.fromMemberId,
+          ),
+          method: s.method,
+          when: (s.markedPaidAt ?? s.createdAt).toISOString(),
+        }))
+        .sort((a, b) => (a.when < b.when ? 1 : -1));
+
+      const net = nets.find((n) => n.memberId === memberId)?.netCents ?? 0;
+      const owes = transfers
+        .filter((t) => t.fromMemberId === memberId)
+        .reduce((sum, t) => sum + t.amountCents, 0);
+      const owed = transfers
+        .filter((t) => t.toMemberId === memberId)
+        .reduce((sum, t) => sum + t.amountCents, 0);
+
+      const res: MemberDataSummaryDto = {
+        member: toMemberDto(target),
+        kpis: {
+          totalPaid: centsToDecimal(paidCents),
+          totalShare: centsToDecimal(shareCents),
+          net: centsToDecimal(net),
+          outstandingOwes: centsToDecimal(owes),
+          outstandingOwed: centsToDecimal(owed),
+          expenseCount: expenseItems.length,
+          settlementCount: settlementItems.length,
+        },
+        expenses: expenseItems,
+        settlements: settlementItems,
+      };
+      return res;
+    },
+  );
+
+  // DELETE a member — admin only. Hard-deletes when the member has no ledger
+  // history; deactivates (kept for history, hidden from pickers) otherwise.
+  app.delete(
+    "/api/groups/:groupId/members/:memberId",
+    { preHandler: auth },
+    async (req, reply) => {
+      if (!requireAdmin(req, reply)) return;
+      const { group, member } = req.jemaw!;
+      const { memberId } = req.params as { memberId: string };
+      if (memberId === member.id) {
+        return reply
+          .code(409)
+          .send({ error: "you can't remove yourself — ask another admin" });
+      }
+      const result = await removeMemberById(db, group.id, memberId);
+      if (result === "not_found") {
+        return reply.code(404).send({ error: "member not found" });
+      }
+      await refreshGroupSummarySafe(db, group.id);
+      const res: RemoveMemberResponse = { removed: result };
+      return res;
     },
   );
 

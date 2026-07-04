@@ -154,6 +154,56 @@ export interface RenameMemberInput {
   displayName: string;
 }
 
+// ─── Member removal (admin) ───────────────────────────────────────────
+export interface MemberKpisDto {
+  /** sum of expenses this member fronted (decimal) */
+  totalPaid: string;
+  /** sum of this member's shares (decimal) */
+  totalShare: string;
+  /** signed decimal net position */
+  net: string;
+  /** residual this member still owes others (decimal) */
+  outstandingOwes: string;
+  /** residual others still owe this member (decimal) */
+  outstandingOwed: string;
+  expenseCount: number;
+  settlementCount: number;
+}
+
+export interface MemberExpenseItemDto {
+  id: string;
+  description: string;
+  /** full expense amount (decimal) */
+  amount: string;
+  /** this member's own share ("0.00" when payer only) */
+  share: string;
+  role: "payer" | "participant" | "both";
+  occurredAt: string; // ISO
+  settled: boolean;
+}
+
+export interface MemberSettlementItemDto {
+  id: string;
+  amount: string;
+  direction: "sent" | "received";
+  counterpartName: string;
+  method: PaymentMethod;
+  when: string; // ISO
+}
+
+/** Everything recorded about one member, for the removal review modal. */
+export interface MemberDataSummaryDto {
+  member: MemberDto;
+  kpis: MemberKpisDto;
+  expenses: MemberExpenseItemDto[];
+  settlements: MemberSettlementItemDto[];
+}
+
+export interface RemoveMemberResponse {
+  /** deleted = row gone entirely; deactivated = kept for history, marked removed */
+  removed: "deleted" | "deactivated";
+}
+
 /** An assignable Telegram identity for the admin account switcher. */
 export interface TelegramCandidateDto {
   telegramUserId: TelegramIdString;
