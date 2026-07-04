@@ -27,6 +27,8 @@ import {
   renameMember,
   setMemberRoleById,
   setMemberPrimaryById,
+  assignMemberTelegram,
+  listMessageSenderIds,
   countAdmins,
   updateGroupCurrency,
   resetGroupData,
@@ -69,6 +71,8 @@ import {
 import type {
   SuggestionsResponse,
   MeSummaryDto,
+  TelegramCandidateDto,
+  TelegramCandidatesResponse,
 } from "@jemaw/shared/types";
 import type { ScanRateLimiter } from "../ai/rateLimit.js";
 
@@ -255,6 +259,10 @@ const addMemberSchema = z.object({
 const renameSchema = z.object({ displayName: z.string().min(1).max(80) });
 const setRoleSchema = z.object({ role: z.enum(["admin", "member"]) });
 const setPrimarySchema = z.object({ isPrimary: z.boolean() });
+const assignTelegramSchema = z.object({
+  telegramUserId: z.string().regex(/^\d+$/).nullable(),
+  username: z.string().min(1).max(80).nullable().optional(),
+});
 
 export interface ApiDeps {
   db: Db;
@@ -949,6 +957,99 @@ export async function registerApi(
       );
       if (!updated) return reply.code(404).send({ error: "member not found" });
       return toMemberDto(updated);
+    },
+  );
+
+  // GET assignable Telegram identities — admin only. Every linked member's
+  // current account plus chat message senders not yet attached to any member
+  // (names resolved via the bot API when available).
+  app.get(
+    "/api/groups/:groupId/members/telegram-candidates",
+    { preHandler: auth },
+    async (req, reply) => {
+      if (!requireAdmin(req, reply)) return;
+      const { group } = req.jemaw!;
+      const memberRows = await listMembers(db, group.id);
+      const senderIds = await listMessageSenderIds(db, group.id);
+
+      const candidates: TelegramCandidateDto[] = [];
+      const linked = new Set<string>();
+      for (const m of memberRows) {
+        if (m.telegramUserId <= 0n) continue;
+        linked.add(m.telegramUserId.toString());
+        candidates.push({
+          telegramUserId: m.telegramUserId.toString(),
+          username: m.username,
+          displayName: m.displayName,
+          memberId: m.id,
+          memberName: m.displayName,
+        });
+      }
+      for (const tid of senderIds) {
+        if (tid <= 0n || linked.has(tid.toString())) continue;
+        let displayName: string | null = null;
+        let username: string | null = null;
+        if (deps.botApi) {
+          try {
+            const cm = await deps.botApi.getChatMember(
+              Number(group.telegramChatId),
+              Number(tid),
+            );
+            const full = [cm.user.first_name, cm.user.last_name]
+              .filter(Boolean)
+              .join(" ")
+              .trim();
+            displayName = full || cm.user.username || null;
+            username = cm.user.username ?? null;
+          } catch {
+            // Left the chat or bot lacks rights — keep the raw id.
+          }
+        }
+        candidates.push({
+          telegramUserId: tid.toString(),
+          username,
+          displayName,
+          memberId: null,
+          memberName: null,
+        });
+      }
+
+      const res: TelegramCandidatesResponse = { candidates };
+      return res;
+    },
+  );
+
+  // PATCH a member's Telegram account — admin only. Assigns, swaps (when the
+  // id is held by another member), or unlinks (null) the account.
+  app.patch(
+    "/api/groups/:groupId/members/:memberId/telegram",
+    { preHandler: auth },
+    async (req, reply) => {
+      if (!requireAdmin(req, reply)) return;
+      const { group } = req.jemaw!;
+      const { memberId } = req.params as { memberId: string };
+      const parsed = assignTelegramSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return reply.code(400).send({ error: "invalid body" });
+      }
+      const tid =
+        parsed.data.telegramUserId === null
+          ? null
+          : BigInt(parsed.data.telegramUserId);
+      if (tid !== null && tid <= 0n) {
+        return reply.code(400).send({ error: "invalid telegram user id" });
+      }
+      const result = await assignMemberTelegram(
+        db,
+        group.id,
+        memberId,
+        tid,
+        parsed.data.username ?? null,
+      );
+      if (result.status === "not_found") {
+        return reply.code(404).send({ error: "member not found" });
+      }
+      return toMemberDto(result.member);
     },
   );
 
