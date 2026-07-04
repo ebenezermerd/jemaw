@@ -227,6 +227,18 @@ export async function countAdmins(db: Db, groupId: string): Promise<number> {
   return rows.length;
 }
 
+/**
+ * Random large-negative synthetic Telegram id for members without a linked
+ * account. Collisions are guarded by unique(group_id, telegram_user_id), not
+ * by the random value being globally unique.
+ */
+function syntheticTelegramId(): bigint {
+  return -(
+    BigInt(Date.now()) * 1_000_000n +
+    BigInt(Math.floor(Math.random() * 1_000_000))
+  );
+}
+
 export async function addManualMember(
   db: Db,
   groupId: string,
@@ -240,14 +252,9 @@ export async function addManualMember(
       .returning();
     return inserted[0]!;
   }
-  // No Telegram id: generate a random large-negative synthetic id and retry on
-  // unique(group_id, telegram_user_id) collision. Correctness rests on the DB
-  // constraint, not on the random value being globally unique.
+  // No Telegram id: generate a synthetic id and retry on unique collision.
   for (let attempt = 0; attempt < 10; attempt++) {
-    const tid = -(
-      BigInt(Date.now()) * 1_000_000n +
-      BigInt(Math.floor(Math.random() * 1_000_000))
-    );
+    const tid = syntheticTelegramId();
     try {
       const inserted = await db
         .insert(members)
@@ -286,6 +293,106 @@ export async function listMembers(
     .from(members)
     .where(eq(members.groupId, groupId))
     .orderBy(members.joinedAt);
+}
+
+export type AssignTelegramResult =
+  | { status: "ok"; member: Member; swappedMember: Member | null }
+  | { status: "not_found" };
+
+/**
+ * Assign a Telegram account to a member. Passing null unlinks the member
+ * (fresh synthetic id). If another member of the group already holds the
+ * target id, the two members SWAP identities (ids and usernames) in one
+ * transaction, so crossed identities are fixed in a single action and taking
+ * an account over from an auto created duplicate leaves that row unlinked.
+ */
+export async function assignMemberTelegram(
+  db: Db,
+  groupId: string,
+  memberId: string,
+  telegramUserId: bigint | null,
+  username: string | null,
+): Promise<AssignTelegramResult> {
+  return db.transaction(async (tx) => {
+    const targetRows = await tx
+      .select()
+      .from(members)
+      .where(and(eq(members.groupId, groupId), eq(members.id, memberId)))
+      .limit(1);
+    const target = targetRows[0];
+    if (!target) return { status: "not_found" as const };
+
+    if (telegramUserId === null) {
+      const rows = await tx
+        .update(members)
+        .set({ telegramUserId: syntheticTelegramId(), username: null })
+        .where(eq(members.id, target.id))
+        .returning();
+      return { status: "ok" as const, member: rows[0]!, swappedMember: null };
+    }
+
+    if (telegramUserId === target.telegramUserId) {
+      return { status: "ok" as const, member: target, swappedMember: null };
+    }
+
+    const holderRows = await tx
+      .select()
+      .from(members)
+      .where(
+        and(
+          eq(members.groupId, groupId),
+          eq(members.telegramUserId, telegramUserId),
+        ),
+      )
+      .limit(1);
+    const holder = holderRows[0];
+
+    if (holder) {
+      // Park the holder on a temporary synthetic id so the unique constraint
+      // never sees both members on the same Telegram id mid swap.
+      await tx
+        .update(members)
+        .set({ telegramUserId: syntheticTelegramId() })
+        .where(eq(members.id, holder.id));
+      const updated = await tx
+        .update(members)
+        .set({ telegramUserId, username: username ?? holder.username })
+        .where(eq(members.id, target.id))
+        .returning();
+      const swapped = await tx
+        .update(members)
+        .set({
+          telegramUserId: target.telegramUserId,
+          username: target.username,
+        })
+        .where(eq(members.id, holder.id))
+        .returning();
+      return {
+        status: "ok" as const,
+        member: updated[0]!,
+        swappedMember: swapped[0]!,
+      };
+    }
+
+    const updated = await tx
+      .update(members)
+      .set({ telegramUserId, username: username ?? null })
+      .where(eq(members.id, target.id))
+      .returning();
+    return { status: "ok" as const, member: updated[0]!, swappedMember: null };
+  });
+}
+
+/** Distinct Telegram user ids seen sending messages in this group's chat. */
+export async function listMessageSenderIds(
+  db: Db,
+  groupId: string,
+): Promise<bigint[]> {
+  const rows = await db
+    .selectDistinct({ senderTelegramUserId: messages.senderTelegramUserId })
+    .from(messages)
+    .where(eq(messages.groupId, groupId));
+  return rows.map((r) => r.senderTelegramUserId);
 }
 
 export async function findMemberByTelegramId(

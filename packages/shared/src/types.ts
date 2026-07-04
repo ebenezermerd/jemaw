@@ -55,6 +55,8 @@ export interface MemberDto {
   displayName: string;
   username: string | null;
   telegramUserId: TelegramIdString;
+  /** True when a real Telegram account holds this member (synthetic ids are negative). */
+  telegramLinked: boolean;
   role: "admin" | "member";
   isActive: boolean;
   /** Default-included in expense splits; secondary members are added explicitly. */
@@ -150,6 +152,27 @@ export interface AddMemberInput {
 
 export interface RenameMemberInput {
   displayName: string;
+}
+
+/** An assignable Telegram identity for the admin account switcher. */
+export interface TelegramCandidateDto {
+  telegramUserId: TelegramIdString;
+  username: string | null;
+  /** Best known name for this account (member name or chat profile). */
+  displayName: string | null;
+  /** Member currently holding this account, if any. */
+  memberId: string | null;
+  memberName: string | null;
+}
+
+export interface TelegramCandidatesResponse {
+  candidates: TelegramCandidateDto[];
+}
+
+/** Assign (or swap) a Telegram account to a member; null unlinks it. */
+export interface AssignTelegramInput {
+  telegramUserId: TelegramIdString | null;
+  username?: string | null;
 }
 
 // ─── Settlements ──────────────────────────────────────────────────────

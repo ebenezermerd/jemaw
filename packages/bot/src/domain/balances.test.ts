@@ -6,7 +6,6 @@ describe("computeBalances", () => {
     const expenses: ExpenseForBalance[] = [
       {
         payerMemberId: "a",
-        amountCents: 1200,
         shares: [
           { memberId: "a", shareCents: 400 },
           { memberId: "b", shareCents: 400 },
@@ -19,11 +18,28 @@ describe("computeBalances", () => {
     expect(by).toEqual({ a: 800, b: -400, c: -400 });
   });
 
+  it("credits payer only the collectible share total when cents are absorbed", () => {
+    // 10.01 paid by a, floored to 3.00 per member: a absorbs the 1.01 leftover.
+    const expenses: ExpenseForBalance[] = [
+      {
+        payerMemberId: "a",
+        shares: [
+          { memberId: "a", shareCents: 300 },
+          { memberId: "b", shareCents: 300 },
+          { memberId: "c", shareCents: 300 },
+        ],
+      },
+    ];
+    const r = computeBalances(["a", "b", "c"], expenses);
+    const by = Object.fromEntries(r.map((x) => [x.memberId, x.netCents]));
+    expect(by).toEqual({ a: 600, b: -300, c: -300 });
+    expect(r.reduce((s, x) => s + x.netCents, 0)).toBe(0);
+  });
+
   it("all nets sum to zero across multiple expenses", () => {
     const expenses: ExpenseForBalance[] = [
       {
         payerMemberId: "a",
-        amountCents: 1000,
         shares: [
           { memberId: "a", shareCents: 500 },
           { memberId: "b", shareCents: 500 },
@@ -31,7 +47,6 @@ describe("computeBalances", () => {
       },
       {
         payerMemberId: "b",
-        amountCents: 600,
         shares: [
           { memberId: "a", shareCents: 300 },
           { memberId: "b", shareCents: 300 },
@@ -53,7 +68,6 @@ describe("computeBalances", () => {
     const expenses: ExpenseForBalance[] = [
       {
         payerMemberId: "sara",
-        amountCents: 30000,
         shares: [{ memberId: "tom", shareCents: 30000 }],
       },
     ];
@@ -67,7 +81,6 @@ describe("computeBalances", () => {
     const expenses: ExpenseForBalance[] = [
       {
         payerMemberId: "a",
-        amountCents: 1000,
         shares: [
           { memberId: "a", shareCents: 500 },
           { memberId: "b", shareCents: 500 },
@@ -87,7 +100,6 @@ describe("computeBalances", () => {
     const expenses: ExpenseForBalance[] = [
       {
         payerMemberId: "a",
-        amountCents: 1000,
         shares: [
           { memberId: "a", shareCents: 500 },
           { memberId: "b", shareCents: 500 },

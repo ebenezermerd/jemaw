@@ -2,19 +2,22 @@
  * Balance computation. Pure: takes plain expense/share/settlement data and
  * returns each member's net position in integer cents.
  *
- * net(member) = (amounts they PAID as payer)
+ * net(member) = (the COLLECTIBLE total of expenses they paid: sum of shares)
  *             - (their SHARES across all expenses)
  *             + (settlements they PAID as `from`)     // paying down their debt
  *             - (settlements they RECEIVED as `to`)   // reduces what they're owed
  *
+ * The payer is credited the sum of an expense's shares, not the raw amount
+ * they fronted: whole unit splits floor member shares and let the payer
+ * absorb the leftover cents, so crediting the full amount would leave the
+ * payer forever owed a remainder nobody carries.
+ *
  * Voided expenses are excluded by the caller (pass only live ones).
- * Invariant: all nets sum to 0.
+ * Invariant: all nets sum to 0 (credit and debits both total the shares).
  */
 
 export interface ExpenseForBalance {
   payerMemberId: string;
-  /** total amount in cents */
-  amountCents: number;
   shares: { memberId: string; shareCents: number }[];
 }
 
@@ -38,8 +41,9 @@ export function computeBalances(
   for (const id of memberIds) net.set(id, 0);
 
   for (const e of expenses) {
-    // Payer is credited the full amount they fronted.
-    net.set(e.payerMemberId, (net.get(e.payerMemberId) ?? 0) + e.amountCents);
+    // Payer is credited what the shares actually collect (absorbed cents excluded).
+    const collectible = e.shares.reduce((sum, s) => sum + s.shareCents, 0);
+    net.set(e.payerMemberId, (net.get(e.payerMemberId) ?? 0) + collectible);
     // Each participant is debited their share.
     for (const s of e.shares) {
       net.set(s.memberId, (net.get(s.memberId) ?? 0) - s.shareCents);
