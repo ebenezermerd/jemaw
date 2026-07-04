@@ -8,8 +8,10 @@ import {
   useSetMemberPrimary,
   useUpdateGroup,
   useResetGroup,
+  useTelegramCandidates,
+  useAssignMemberTelegram,
 } from "../lib/hooks.js";
-import type { MemberDto } from "@jemaw/shared/types";
+import type { AssignTelegramInput, MemberDto } from "@jemaw/shared/types";
 import { Button } from "../ui/primitives.js";
 import { MemberAvatar } from "../ui/MemberAvatar.js";
 import { PageHeader } from "../ui/PageHeader.js";
@@ -355,6 +357,9 @@ function MemberEditor({
         disabled={togglingRole || isLastAdmin}
       />
 
+      {/* telegram account link */}
+      <TelegramSection member={member} />
+
       <div style={{ display: "flex", gap: 8, marginTop: 4 }}>
         <Button variant="ghost" onClick={onClose} disabled={isSavingName} style={{ flex: 1 }}>
           Close
@@ -367,6 +372,164 @@ function MemberEditor({
           {isSavingName ? "Saving..." : "Save"}
         </Button>
       </div>
+    </div>
+  );
+}
+
+/**
+ * Admin control for which Telegram account a member is. Assigning an account
+ * already held by another member swaps the two identities; unlinking detaches
+ * the account so the member goes back to a manual (unlinked) entry.
+ */
+function TelegramSection({ member }: { member: MemberDto }) {
+  const [open, setOpen] = useState(false);
+  const [manualId, setManualId] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const candidates = useTelegramCandidates(open);
+  const assign = useAssignMemberTelegram();
+
+  const linked = member.telegramLinked;
+  const busy = assign.isPending;
+
+  async function doAssign(input: AssignTelegramInput) {
+    setError(null);
+    try {
+      await assign.mutateAsync({ memberId: member.id, input });
+      setOpen(false);
+      setManualId("");
+    } catch (err) {
+      setError(
+        err instanceof Error ? err.message : "Could not update this account.",
+      );
+    }
+  }
+
+  const list = (candidates.data?.candidates ?? []).filter(
+    (c) => c.memberId !== member.id,
+  );
+
+  return (
+    <div style={{ display: "grid", gap: 8 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div className="t-body-strong">Telegram account</div>
+          <div className="t-caption" style={{ color: "var(--text-faint)" }}>
+            {linked
+              ? member.username
+                ? `Linked · @${member.username}`
+                : `Linked · id ${member.telegramUserId}`
+              : "Not linked · this member can't open the app yet."}
+          </div>
+        </div>
+        <Button
+          variant="ghost"
+          disabled={busy}
+          onClick={() => setOpen((v) => !v)}
+        >
+          {open ? "Close" : linked ? "Change" : "Link"}
+        </Button>
+      </div>
+
+      {open && (
+        <div
+          style={{
+            display: "grid",
+            gap: 6,
+            padding: 10,
+            borderRadius: "var(--r-md)",
+            border: "1px solid var(--border)",
+            background: "var(--bg)",
+          }}
+        >
+          <span className="t-mono-label" style={{ color: "var(--text-muted)" }}>
+            Assign account
+          </span>
+          {candidates.isLoading && (
+            <span className="t-caption" style={{ color: "var(--text-muted)" }}>
+              Loading accounts...
+            </span>
+          )}
+          {!candidates.isLoading && list.length === 0 && (
+            <span className="t-caption" style={{ color: "var(--text-muted)" }}>
+              No known accounts yet. Enter a Telegram user id below.
+            </span>
+          )}
+          {list.map((c) => (
+            <button
+              key={c.telegramUserId}
+              disabled={busy}
+              onClick={() =>
+                doAssign({
+                  telegramUserId: c.telegramUserId,
+                  username: c.username,
+                })
+              }
+              style={{
+                display: "grid",
+                gap: 2,
+                textAlign: "left",
+                minHeight: 44,
+                padding: "6px 8px",
+                borderRadius: "var(--r-sm)",
+                border: "none",
+                background: "transparent",
+                color: "var(--text)",
+                cursor: busy ? "wait" : "pointer",
+                fontFamily: "inherit",
+              }}
+            >
+              <span className="t-body-strong">
+                {c.displayName ?? `User ${c.telegramUserId}`}
+                {c.username ? ` · @${c.username}` : ""}
+              </span>
+              <span className="t-caption" style={{ color: "var(--text-faint)" }}>
+                {c.memberName
+                  ? `Currently ${c.memberName} · assigning swaps the two`
+                  : "Seen in chat · not assigned to a member"}
+              </span>
+            </button>
+          ))}
+
+          <div style={{ display: "flex", gap: 8 }}>
+            <input
+              value={manualId}
+              onChange={(e) => setManualId(e.target.value.trim())}
+              placeholder="Telegram user id"
+              inputMode="numeric"
+              disabled={busy}
+              style={{ ...memberInput, height: 40, flex: 1 }}
+            />
+            <Button
+              variant="ghost"
+              disabled={busy || !/^\d+$/.test(manualId)}
+              onClick={() => doAssign({ telegramUserId: manualId })}
+            >
+              Assign
+            </Button>
+          </div>
+
+          {linked && (
+            <Button
+              variant="danger"
+              disabled={busy}
+              onClick={() => doAssign({ telegramUserId: null })}
+            >
+              Unlink this account
+            </Button>
+          )}
+        </div>
+      )}
+
+      {busy && (
+        <span className="t-caption" style={{ color: "var(--accent)" }}>
+          Updating...
+        </span>
+      )}
+      {error && (
+        <span className="t-caption" style={{ color: "var(--danger)" }}>
+          {error}
+        </span>
+      )}
     </div>
   );
 }
