@@ -18,6 +18,8 @@ import type {
   MeSummaryDto,
   TelegramCandidatesResponse,
   AssignTelegramInput,
+  MemberDataSummaryDto,
+  RemoveMemberResponse,
 } from "@jemaw/shared/types";
 import { api, getGroupId } from "./api.js";
 
@@ -234,6 +236,30 @@ export function useSetMemberPrimary() {
         { isPrimary: args.isPrimary },
       ),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["group"] }),
+  });
+}
+
+/** Admin only: everything recorded about one member, for the removal modal. */
+export function useMemberSummary(memberId: string | null) {
+  return useQuery({
+    queryKey: ["member-summary", memberId],
+    enabled: Boolean(memberId),
+    queryFn: () =>
+      api.get<MemberDataSummaryDto>(
+        `/api/groups/${gid()}/members/${memberId}/summary`,
+      ),
+  });
+}
+
+/** Admin only: remove a member (hard delete or deactivate with history). */
+export function useRemoveMember() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (memberId: string) =>
+      api.delete<RemoveMemberResponse>(
+        `/api/groups/${gid()}/members/${memberId}`,
+      ),
+    onSuccess: () => invalidateLedger(qc),
   });
 }
 

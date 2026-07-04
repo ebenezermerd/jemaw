@@ -295,6 +295,38 @@ export async function listMembers(
     .orderBy(members.joinedAt);
 }
 
+export type RemoveMemberResult = "deleted" | "deactivated" | "not_found";
+
+/**
+ * Remove a member. Hard-deletes the row when nothing references it; if the
+ * member appears anywhere in the ledger (expenses, shares, settlements,
+ * suggestions, ai runs) the foreign keys block the delete and we deactivate
+ * instead: isActive false, no longer primary, demoted to member. History and
+ * balances stay intact; the auth hook already rejects inactive members.
+ */
+export async function removeMemberById(
+  db: Db,
+  groupId: string,
+  memberId: string,
+): Promise<RemoveMemberResult> {
+  try {
+    const rows = await db
+      .delete(members)
+      .where(and(eq(members.groupId, groupId), eq(members.id, memberId)))
+      .returning({ id: members.id });
+    return rows[0] ? "deleted" : "not_found";
+  } catch (err) {
+    // Postgres foreign-key violation — the member has ledger history.
+    if ((err as { code?: string }).code !== "23503") throw err;
+    const rows = await db
+      .update(members)
+      .set({ isActive: false, isPrimary: false, role: "member" })
+      .where(and(eq(members.groupId, groupId), eq(members.id, memberId)))
+      .returning({ id: members.id });
+    return rows[0] ? "deactivated" : "not_found";
+  }
+}
+
 export type AssignTelegramResult =
   | { status: "ok"; member: Member; swappedMember: Member | null }
   | { status: "not_found" };

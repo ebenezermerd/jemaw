@@ -10,8 +10,12 @@ import {
   useResetGroup,
   useTelegramCandidates,
   useAssignMemberTelegram,
+  useMemberSummary,
+  useRemoveMember,
+  useMeSummary,
 } from "../lib/hooks.js";
 import type { AssignTelegramInput, MemberDto } from "@jemaw/shared/types";
+import { formatMoney } from "../lib/money.js";
 import { Button } from "../ui/primitives.js";
 import { MemberAvatar } from "../ui/MemberAvatar.js";
 import { PageHeader } from "../ui/PageHeader.js";
@@ -35,11 +39,14 @@ export function Settings() {
   const [theme, setTheme] = useState<ThemePref>(getThemePref());
   const [confirmReset, setConfirmReset] = useState(false);
   const [editMemberId, setEditMemberId] = useState<string | null>(null);
+  const [removeMemberId, setRemoveMemberId] = useState<string | null>(null);
+  const me = useMeSummary();
 
   if (group.isLoading) return <PageLoader />;
   const g = group.data;
   if (!g) return <Centered>Couldn't load settings.</Centered>;
   const isAdmin = g.isAdmin;
+  const activeMembers = g.members.filter((m) => m.isActive);
   const editMember = editMemberId
     ? g.members.find((m) => m.id === editMemberId) ?? null
     : null;
@@ -106,7 +113,7 @@ export function Settings() {
       {/* Members */}
       <Section title="Members">
         <div style={{ display: "grid", gap: 4 }}>
-          {g.members.map((m) => (
+          {activeMembers.map((m) => (
             <button
               key={m.id}
               onClick={() => isAdmin && setEditMemberId(m.id)}
@@ -249,7 +256,23 @@ export function Settings() {
               });
               await group.refetch();
             }}
+            canRemove={me.data ? me.data.memberId !== editMember.id : false}
+            onRemove={() => {
+              setEditMemberId(null);
+              setRemoveMemberId(editMember.id);
+            }}
             onClose={() => setEditMemberId(null)}
+          />
+        )}
+      </Modal>
+
+      {/* Removal review + confirm (admins) */}
+      <Modal open={!!removeMemberId} onClose={() => setRemoveMemberId(null)}>
+        {removeMemberId && (
+          <RemoveMemberModal
+            memberId={removeMemberId}
+            currency={g.defaultCurrency}
+            onClose={() => setRemoveMemberId(null)}
           />
         )}
       </Modal>
@@ -268,6 +291,8 @@ function MemberEditor({
   onRename,
   onTogglePrimary,
   onToggleRole,
+  canRemove,
+  onRemove,
   onClose,
 }: {
   member: MemberDto;
@@ -278,6 +303,8 @@ function MemberEditor({
   onRename: (name: string) => Promise<unknown>;
   onTogglePrimary: () => Promise<unknown>;
   onToggleRole: () => Promise<unknown>;
+  canRemove: boolean;
+  onRemove: () => void;
   onClose: () => void;
 }) {
   const [name, setName] = useState(member.displayName);
@@ -360,6 +387,12 @@ function MemberEditor({
       {/* telegram account link */}
       <TelegramSection member={member} />
 
+      {canRemove && (
+        <Button variant="danger" onClick={onRemove} disabled={isSavingName}>
+          Remove from group...
+        </Button>
+      )}
+
       <div style={{ display: "flex", gap: 8, marginTop: 4 }}>
         <Button variant="ghost" onClick={onClose} disabled={isSavingName} style={{ flex: 1 }}>
           Close
@@ -372,6 +405,288 @@ function MemberEditor({
           {isSavingName ? "Saving..." : "Save"}
         </Button>
       </div>
+    </div>
+  );
+}
+
+const REMOVE_PAGE_SIZE = 4;
+
+/**
+ * Removal review modal: everything recorded about the member (KPIs, expenses,
+ * settlements) on tabs with pagination, then an explicit confirm. Removal is
+ * a hard delete when the member has no history, a deactivation otherwise.
+ */
+function RemoveMemberModal({
+  memberId,
+  currency,
+  onClose,
+}: {
+  memberId: string;
+  currency: string;
+  onClose: () => void;
+}) {
+  const summary = useMemberSummary(memberId);
+  const remove = useRemoveMember();
+  const [tab, setTab] = useState<"expenses" | "settlements">("expenses");
+  const [page, setPage] = useState(0);
+  const [error, setError] = useState<string | null>(null);
+
+  const s = summary.data;
+
+  async function doRemove() {
+    setError(null);
+    try {
+      await remove.mutateAsync(memberId);
+      onClose();
+    } catch (err) {
+      setError(
+        err instanceof Error ? err.message : "Could not remove this member.",
+      );
+    }
+  }
+
+  if (summary.isLoading || !s) {
+    return (
+      <div style={{ display: "grid", gap: 12 }}>
+        <h2 className="t-heading" style={{ marginTop: 0 }}>
+          Remove member?
+        </h2>
+        <p className="t-body" style={{ color: "var(--text-muted)" }}>
+          {summary.isError
+            ? "Couldn't load this member's data."
+            : "Loading this member's data..."}
+        </p>
+        <Button variant="ghost" onClick={onClose}>
+          Close
+        </Button>
+      </div>
+    );
+  }
+
+  const rows =
+    tab === "expenses"
+      ? s.expenses.map((e) => ({
+          key: e.id,
+          title: e.description,
+          amount: formatMoney(e.role === "participant" ? e.share : e.amount, currency),
+          caption: [
+            e.role === "payer"
+              ? "paid"
+              : e.role === "both"
+                ? `paid · own share ${formatMoney(e.share, currency)}`
+                : "their share",
+            e.occurredAt.slice(0, 10),
+            e.settled ? "settled" : "open",
+          ].join(" · "),
+        }))
+      : s.settlements.map((x) => ({
+          key: x.id,
+          title:
+            x.direction === "sent"
+              ? `Paid ${x.counterpartName}`
+              : `Received from ${x.counterpartName}`,
+          amount: formatMoney(x.amount, currency),
+          caption: `${x.method} · ${x.when.slice(0, 10)}`,
+        }));
+
+  const pageCount = Math.max(1, Math.ceil(rows.length / REMOVE_PAGE_SIZE));
+  const safePage = Math.min(page, pageCount - 1);
+  const visible = rows.slice(
+    safePage * REMOVE_PAGE_SIZE,
+    (safePage + 1) * REMOVE_PAGE_SIZE,
+  );
+  const busy = remove.isPending;
+
+  return (
+    <div style={{ display: "grid", gap: 14 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+        <MemberAvatar
+          name={s.member.displayName}
+          telegramUserId={s.member.telegramUserId}
+          size={44}
+        />
+        <div style={{ minWidth: 0 }}>
+          <h2 className="t-heading" style={{ margin: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+            Remove {s.member.displayName}?
+          </h2>
+          <span className="t-caption" style={{ color: "var(--text-muted)" }}>
+            Review their record before you decide.
+          </span>
+        </div>
+      </div>
+
+      {/* KPIs */}
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "1fr 1fr 1fr",
+          gap: 8,
+        }}
+      >
+        <Kpi label="Paid" value={formatMoney(s.kpis.totalPaid, currency)} />
+        <Kpi label="Their share" value={formatMoney(s.kpis.totalShare, currency)} />
+        <Kpi
+          label="Net"
+          value={formatMoney(s.kpis.net, currency)}
+          tone={
+            Number(s.kpis.net) > 0
+              ? "positive"
+              : Number(s.kpis.net) < 0
+                ? "negative"
+                : undefined
+          }
+        />
+        <Kpi label="Owes now" value={formatMoney(s.kpis.outstandingOwes, currency)} />
+        <Kpi label="Owed now" value={formatMoney(s.kpis.outstandingOwed, currency)} />
+        <Kpi
+          label="Entries"
+          value={`${s.kpis.expenseCount + s.kpis.settlementCount}`}
+        />
+      </div>
+
+      {/* Tabs */}
+      <Segmented
+        value={tab}
+        onChange={(t) => {
+          setTab(t);
+          setPage(0);
+        }}
+        options={[
+          { value: "expenses", label: `Expenses (${s.kpis.expenseCount})` },
+          {
+            value: "settlements",
+            label: `Settlements (${s.kpis.settlementCount})`,
+          },
+        ]}
+      />
+
+      {/* Paginated list */}
+      <div style={{ display: "grid", gap: 4, minHeight: 120 }}>
+        {visible.length === 0 && (
+          <span className="t-caption" style={{ color: "var(--text-muted)" }}>
+            Nothing recorded here for this member.
+          </span>
+        )}
+        {visible.map((r) => (
+          <div
+            key={r.key}
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+              gap: 10,
+              padding: "6px 2px",
+              borderBottom: "1px solid var(--border)",
+            }}
+          >
+            <div style={{ minWidth: 0 }}>
+              <div className="t-body-strong" style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                {r.title}
+              </div>
+              <div className="t-caption" style={{ color: "var(--text-faint)" }}>
+                {r.caption}
+              </div>
+            </div>
+            <span className="t-body-strong" style={{ flexShrink: 0 }}>
+              {r.amount}
+            </span>
+          </div>
+        ))}
+      </div>
+      {pageCount > 1 && (
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+          }}
+        >
+          <Button
+            variant="ghost"
+            disabled={safePage === 0}
+            onClick={() => setPage(safePage - 1)}
+            style={{ height: 34, padding: "0 14px" }}
+          >
+            Prev
+          </Button>
+          <span className="t-caption" style={{ color: "var(--text-muted)" }}>
+            Page {safePage + 1} of {pageCount}
+          </span>
+          <Button
+            variant="ghost"
+            disabled={safePage >= pageCount - 1}
+            onClick={() => setPage(safePage + 1)}
+            style={{ height: 34, padding: "0 14px" }}
+          >
+            Next
+          </Button>
+        </div>
+      )}
+
+      {/* Confirm */}
+      <p className="t-caption" style={{ color: "var(--text-faint)", margin: 0 }}>
+        Are you sure you want to proceed? History stays intact: if{" "}
+        {s.member.displayName} appears in past entries the account is kept but
+        marked removed and locked out of the app; otherwise it is deleted
+        permanently.
+      </p>
+      {error && (
+        <span className="t-caption" style={{ color: "var(--danger)" }}>
+          {error}
+        </span>
+      )}
+      <div style={{ display: "flex", gap: 8 }}>
+        <Button variant="ghost" onClick={onClose} disabled={busy} style={{ flex: 1 }}>
+          Cancel
+        </Button>
+        <Button variant="danger" onClick={doRemove} disabled={busy} style={{ flex: 1 }}>
+          {busy ? "Removing..." : "Remove member"}
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+function Kpi({
+  label,
+  value,
+  tone,
+}: {
+  label: string;
+  value: string;
+  tone?: "positive" | "negative";
+}) {
+  return (
+    <div
+      style={{
+        border: "1px solid var(--border)",
+        borderRadius: "var(--r-md)",
+        padding: "8px 10px",
+        display: "grid",
+        gap: 2,
+        minWidth: 0,
+      }}
+    >
+      <span className="t-mono-label" style={{ color: "var(--text-muted)", fontSize: 9 }}>
+        {label}
+      </span>
+      <span
+        className="t-body-strong"
+        style={{
+          fontSize: 13,
+          overflow: "hidden",
+          textOverflow: "ellipsis",
+          whiteSpace: "nowrap",
+          color:
+            tone === "positive"
+              ? "var(--positive)"
+              : tone === "negative"
+                ? "var(--danger)"
+                : "var(--text)",
+        }}
+      >
+        {value}
+      </span>
     </div>
   );
 }
