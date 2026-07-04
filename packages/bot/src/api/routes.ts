@@ -100,7 +100,6 @@ async function loadLedger(
   // Net balances (unchanged from before — keeps zero-sum invariant).
   const forBalance: ExpenseForBalance[] = liveExpenses.map((e) => ({
     payerMemberId: e.expense.payerMemberId,
-    amountCents: decimalToCents(e.expense.amount),
     shares: e.shares.map((s) => ({
       memberId: s.memberId,
       shareCents: decimalToCents(s.shareAmount),
