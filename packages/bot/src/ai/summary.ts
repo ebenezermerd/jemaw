@@ -53,7 +53,6 @@ export async function computeGroupSummary(
     members.map((m) => m.id),
     liveExpenses.map((e) => ({
       payerMemberId: e.expense.payerMemberId,
-      amountCents: decimalToCents(e.expense.amount),
       shares: e.shares.map((s) => ({
         memberId: s.memberId,
         shareCents: decimalToCents(s.shareAmount),

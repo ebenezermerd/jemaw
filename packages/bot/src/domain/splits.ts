@@ -1,11 +1,19 @@
 /**
  * Split computation. All math is in integer cents to avoid float drift
- * (JEMAW_PLAN.md §14). Every function returns per-member share cents that
- * sum EXACTLY to the total.
+ * (JEMAW_PLAN.md §14).
+ *
+ * Equal and weighted splits floor every member's share DOWN to a whole
+ * currency unit (a multiple of 100 cents), so nobody is ever asked to pay
+ * cents. The gap between the expense total and the sum of shares is absorbed
+ * by the payer: it is never assigned to a member and never becomes debt, so
+ * shares may sum to LESS than the total. Exact splits are typed explicitly
+ * and must still sum exactly to the total.
  *
  * Pure — no DB, no I/O.
  */
 import type { SplitType } from "@jemaw/shared/types";
+
+const CENTS_PER_UNIT = 100;
 
 export interface SplitInput {
   /** total expense amount in integer cents */
@@ -17,8 +25,6 @@ export interface SplitInput {
   shares?: Record<string, number>;
   /** required for "exact": memberId -> integer cents */
   exactCents?: Record<string, number>;
-  /** stable id used to pick the remainder-bearer deterministically */
-  expenseSeed: string;
 }
 
 export interface ComputedShare {
@@ -26,47 +32,31 @@ export interface ComputedShare {
   shareCents: number;
 }
 
-/** Deterministic, fair-over-time remainder bearer selection (plan §14). */
-function seedOffset(seed: string, modulo: number): number {
-  let h = 0;
-  for (let i = 0; i < seed.length; i++) {
-    h = (h * 31 + seed.charCodeAt(i)) >>> 0;
-  }
-  return modulo === 0 ? 0 : h % modulo;
-}
-
 /**
  * Distribute `totalCents` across members weighted by `weights` (parallel to
- * memberIds). Remainder cents are handed out one each, starting at a
- * seed-derived offset so the bearer rotates fairly across expenses.
+ * memberIds), flooring each share to a whole currency unit. The remainder is
+ * intentionally dropped — the payer absorbs it.
  */
 function distribute(
   memberIds: string[],
   weights: number[],
   totalCents: number,
-  seed: string,
 ): ComputedShare[] {
   const totalWeight = weights.reduce((a, b) => a + b, 0);
   if (totalWeight <= 0) {
     throw new Error("Split weights must sum to a positive value");
   }
-  const base = memberIds.map((id, i) => ({
-    memberId: id,
-    shareCents: Math.floor((totalCents * weights[i]!) / totalWeight),
-  }));
-  let remainder = totalCents - base.reduce((a, b) => a + b.shareCents, 0);
-  // Hand out leftover cents, rotating the starting point by the seed.
-  const n = base.length;
-  const start = seedOffset(seed, n);
-  for (let k = 0; remainder > 0 && k < n; k++) {
-    base[(start + k) % n]!.shareCents += 1;
-    remainder -= 1;
-  }
-  return base;
+  return memberIds.map((id, i) => {
+    const raw = Math.floor((totalCents * weights[i]!) / totalWeight);
+    return {
+      memberId: id,
+      shareCents: Math.floor(raw / CENTS_PER_UNIT) * CENTS_PER_UNIT,
+    };
+  });
 }
 
 export function computeSplit(input: SplitInput): ComputedShare[] {
-  const { totalCents, splitType, memberIds, expenseSeed } = input;
+  const { totalCents, splitType, memberIds } = input;
   if (memberIds.length === 0) {
     throw new Error("Split must include at least one member");
   }
@@ -80,7 +70,6 @@ export function computeSplit(input: SplitInput): ComputedShare[] {
         memberIds,
         memberIds.map(() => 1),
         totalCents,
-        expenseSeed,
       );
     }
     case "shares": {
@@ -92,7 +81,7 @@ export function computeSplit(input: SplitInput): ComputedShare[] {
         }
         return w as number;
       });
-      return distribute(memberIds, weights, totalCents, expenseSeed);
+      return distribute(memberIds, weights, totalCents);
     }
     case "exact": {
       const exact = input.exactCents ?? {};

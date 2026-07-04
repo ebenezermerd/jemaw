@@ -28,6 +28,7 @@ export function toMemberDto(m: Member): MemberDto {
     displayName: m.displayName,
     username: m.username,
     telegramUserId: telegramIdToString(m.telegramUserId),
+    telegramLinked: m.telegramUserId > 0n,
     role: m.role,
     isActive: m.isActive,
     isPrimary: m.isPrimary,

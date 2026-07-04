@@ -16,6 +16,8 @@ import type {
   CreateSettlementInput,
   SuggestionsResponse,
   MeSummaryDto,
+  TelegramCandidatesResponse,
+  AssignTelegramInput,
 } from "@jemaw/shared/types";
 import { api, getGroupId } from "./api.js";
 
@@ -232,6 +234,34 @@ export function useSetMemberPrimary() {
         { isPrimary: args.isPrimary },
       ),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["group"] }),
+  });
+}
+
+/** Admin only: assignable Telegram identities for the account switcher. */
+export function useTelegramCandidates(enabled: boolean) {
+  return useQuery({
+    queryKey: ["telegram-candidates"],
+    enabled,
+    queryFn: () =>
+      api.get<TelegramCandidatesResponse>(
+        `/api/groups/${gid()}/members/telegram-candidates`,
+      ),
+  });
+}
+
+/** Admin only: assign, swap, or unlink a member's Telegram account. */
+export function useAssignMemberTelegram() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (args: { memberId: string; input: AssignTelegramInput }) =>
+      api.patch<MemberDto>(
+        `/api/groups/${gid()}/members/${args.memberId}/telegram`,
+        args.input,
+      ),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["group"] });
+      qc.invalidateQueries({ queryKey: ["telegram-candidates"] });
+    },
   });
 }
 
