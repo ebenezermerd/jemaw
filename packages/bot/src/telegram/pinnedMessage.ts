@@ -23,11 +23,13 @@ export interface EnsurePinnedMessageOptions {
   createIfMissing?: boolean;
 }
 
+// Label format per the wireframe K1 spec: "Open Jemaw ↗", or with a middle
+// dot counter ("Open Jemaw · 3 suggestions ↗") when suggestions are pending.
 function buttonText(suggestionCount: number): string {
-  if (suggestionCount <= 0) return "Open Jemaw";
-  return `Open Jemaw • ${suggestionCount} suggestion${
+  if (suggestionCount <= 0) return "Open Jemaw ↗";
+  return `Open Jemaw · ${suggestionCount} suggestion${
     suggestionCount === 1 ? "" : "s"
-  }`;
+  } ↗`;
 }
 
 /**
@@ -59,7 +61,7 @@ export async function ensurePinnedMessage(
   suggestionCount = 0,
   options: EnsurePinnedMessageOptions = {},
 ): Promise<void> {
-  const text = "<b>Jemaw</b>\nYour group's expense tracker";
+  const text = "<b>Jemaw</b>\nYour group's quiet bookkeeper";
   // `web_app` inline buttons are rejected in GROUPS (BUTTON_TYPE_INVALID). A
   // t.me deep link opens the Mini App in Telegram with group context; see
   // openButton().
