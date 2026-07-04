@@ -21,7 +21,7 @@ const JEMAW_RE = /(?<![a-z0-9])jemaw(?![a-z0-9])/i;
 // ─── Reply copy (pure, testable) ──────────────────────────────────────
 /** Fallback reply, used only when the pinned message can't be posted. */
 export function startGroupText(): string {
-  return "Jemaw — your group's expense tracker.";
+  return "Jemaw — your group's quiet bookkeeper.";
 }
 
 export function startPrivateText(): string {

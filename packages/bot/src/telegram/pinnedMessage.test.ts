@@ -18,9 +18,19 @@ describe("buildOpenButton", () => {
     );
   });
 
+  it("labels the zero state with the open arrow", () => {
+    const b = buildOpenButton(base, 0);
+    expect(b.text).toBe("Open Jemaw ↗");
+  });
+
   it("reflects the suggestion count in the label", () => {
     const b = buildOpenButton(base, 3);
-    expect(b.text).toBe("Open Jemaw • 3 suggestions");
+    expect(b.text).toBe("Open Jemaw · 3 suggestions ↗");
+  });
+
+  it("uses the singular form for one suggestion", () => {
+    const b = buildOpenButton(base, 1);
+    expect(b.text).toBe("Open Jemaw · 1 suggestion ↗");
   });
 
   it("falls back to a plain url when deep-link config is missing", () => {
