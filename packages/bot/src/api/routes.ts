@@ -178,9 +178,7 @@ type ExpenseInput = z.infer<typeof createExpenseSchema>;
  */
 function buildShareRows(
   input: ExpenseInput,
-  groupId: string,
   memberIds: Set<string>,
-  seedSuffix: string,
 ): { shares: { memberId: string; shareAmount: string }[] } | { error: string } {
   if (!memberIds.has(input.payerMemberId)) return { error: "payer not in group" };
   const totalCents = decimalToCents(input.amount);
@@ -211,7 +209,6 @@ function buildShareRows(
             Object.entries(input.exact).map(([k, v]) => [k, decimalToCents(v)]),
           )
         : undefined,
-      expenseSeed: `${groupId}:${input.description}:${input.amount}:${seedSuffix}`,
     });
     return {
       shares: computed.map((c) => ({
@@ -689,12 +686,7 @@ export async function registerApi(
       }
       const body = parsed.data;
       const members = await listMembers(db, group.id);
-      const built = buildShareRows(
-        body,
-        group.id,
-        new Set(members.map((m) => m.id)),
-        expenseId,
-      );
+      const built = buildShareRows(body, new Set(members.map((m) => m.id)));
       if ("error" in built) return reply.code(400).send({ error: built.error });
 
       try {
@@ -764,12 +756,7 @@ export async function registerApi(
       const body = parsed.data;
 
       const members = await listMembers(db, group.id);
-      const built = buildShareRows(
-        body,
-        group.id,
-        new Set(members.map((m) => m.id)),
-        "create",
-      );
+      const built = buildShareRows(body, new Set(members.map((m) => m.id)));
       if ("error" in built) return reply.code(400).send({ error: built.error });
       const totalCents = decimalToCents(body.amount);
 
@@ -1089,7 +1076,6 @@ export async function registerApi(
             splitType: s.splitType,
             memberIds: splitWith,
             shares: (s.shares as Record<string, number> | null) ?? undefined,
-            expenseSeed: s.id,
           });
           shares = computed.map((c) => ({
             memberId: c.memberId,
@@ -1153,12 +1139,7 @@ export async function registerApi(
       if (!parsed.success) return reply.code(400).send({ error: "invalid body" });
       const body = parsed.data;
       const members = await listMembers(db, group.id);
-      const built = buildShareRows(
-        body,
-        group.id,
-        new Set(members.map((m) => m.id)),
-        s.id,
-      );
+      const built = buildShareRows(body, new Set(members.map((m) => m.id)));
       if ("error" in built) return reply.code(400).send({ error: built.error });
 
       const created = await createExpenseWithShares(

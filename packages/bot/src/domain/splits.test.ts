@@ -5,57 +5,70 @@ const sum = (s: { shareCents: number }[]) =>
   s.reduce((a, b) => a + b.shareCents, 0);
 
 describe("computeSplit — equal", () => {
-  it("splits evenly when divisible", () => {
+  it("splits evenly when divisible into whole units", () => {
     const r = computeSplit({
       totalCents: 1200,
       splitType: "equal",
       memberIds: ["a", "b", "c"],
-      expenseSeed: "x",
     });
     expect(r.map((x) => x.shareCents)).toEqual([400, 400, 400]);
   });
 
-  it("distributes remainder cents and still sums to total", () => {
+  it("floors every share to a whole unit and lets the payer absorb the rest", () => {
+    // 10.00 across 3 → 3.00 each; the leftover 1.00 is never assigned.
     const r = computeSplit({
       totalCents: 1000,
       splitType: "equal",
       memberIds: ["a", "b", "c"],
-      expenseSeed: "seed-1",
     });
-    expect(sum(r)).toBe(1000);
-    // one member gets 334, two get 333
-    expect(r.map((x) => x.shareCents).sort()).toEqual([333, 333, 334]);
+    expect(r.map((x) => x.shareCents)).toEqual([300, 300, 300]);
+    expect(sum(r)).toBe(900);
   });
 
-  it("remainder bearer is deterministic for the same seed", () => {
-    const a = computeSplit({
-      totalCents: 1000,
+  it("never assigns cents even when the total carries them", () => {
+    // 100.50 across 4 → 25.00 each, payer absorbs 0.50.
+    const r = computeSplit({
+      totalCents: 10050,
       splitType: "equal",
-      memberIds: ["a", "b", "c"],
-      expenseSeed: "same",
+      memberIds: ["a", "b", "c", "d"],
     });
-    const b = computeSplit({
-      totalCents: 1000,
+    expect(r.every((x) => x.shareCents % 100 === 0)).toBe(true);
+    expect(sum(r)).toBe(10000);
+  });
+
+  it("floors to zero shares when the total is below one unit per member", () => {
+    const r = computeSplit({
+      totalCents: 150,
       splitType: "equal",
-      memberIds: ["a", "b", "c"],
-      expenseSeed: "same",
+      memberIds: ["a", "b"],
     });
-    expect(a).toEqual(b);
+    expect(r.map((x) => x.shareCents)).toEqual([0, 0]);
   });
 });
 
 describe("computeSplit — shares", () => {
-  it("weights by share counts and sums to total", () => {
+  it("weights by share counts in whole units", () => {
     const r = computeSplit({
       totalCents: 1000,
       splitType: "shares",
       memberIds: ["a", "b"],
       shares: { a: 3, b: 1 },
-      expenseSeed: "s",
     });
-    expect(sum(r)).toBe(1000);
-    expect(r.find((x) => x.memberId === "a")!.shareCents).toBe(750);
-    expect(r.find((x) => x.memberId === "b")!.shareCents).toBe(250);
+    expect(r.find((x) => x.memberId === "a")!.shareCents).toBe(700);
+    expect(r.find((x) => x.memberId === "b")!.shareCents).toBe(200);
+    expect(sum(r)).toBe(900);
+  });
+
+  it("keeps exact weighted amounts when they divide into whole units", () => {
+    const r = computeSplit({
+      totalCents: 1200,
+      splitType: "shares",
+      memberIds: ["a", "b"],
+      shares: { a: 2, b: 1 },
+    });
+    expect(r.find((x) => x.memberId === "a")!.shareCents).toBe(800);
+    expect(r.find((x) => x.memberId === "b")!.shareCents).toBe(400);
+    expect(sum(r)).toBe(1200);
   });
 
   it("rejects non-positive share", () => {
@@ -65,22 +78,20 @@ describe("computeSplit — shares", () => {
         splitType: "shares",
         memberIds: ["a", "b"],
         shares: { a: 1, b: 0 },
-        expenseSeed: "s",
       }),
     ).toThrow();
   });
 });
 
 describe("computeSplit — exact", () => {
-  it("accepts exact amounts that sum to total", () => {
+  it("accepts exact amounts that sum to total, cents included", () => {
     const r = computeSplit({
       totalCents: 1000,
       splitType: "exact",
       memberIds: ["a", "b"],
-      exactCents: { a: 700, b: 300 },
-      expenseSeed: "s",
+      exactCents: { a: 750, b: 250 },
     });
-    expect(r.find((x) => x.memberId === "a")!.shareCents).toBe(700);
+    expect(r.find((x) => x.memberId === "a")!.shareCents).toBe(750);
   });
 
   it("rejects when exact amounts do not sum to total", () => {
@@ -90,7 +101,6 @@ describe("computeSplit — exact", () => {
         splitType: "exact",
         memberIds: ["a", "b"],
         exactCents: { a: 700, b: 200 },
-        expenseSeed: "s",
       }),
     ).toThrow(/sum to total/);
   });
@@ -103,7 +113,6 @@ describe("computeSplit — guards", () => {
         totalCents: 1000,
         splitType: "equal",
         memberIds: [],
-        expenseSeed: "s",
       }),
     ).toThrow();
   });
@@ -113,7 +122,6 @@ describe("computeSplit — guards", () => {
         totalCents: 0,
         splitType: "equal",
         memberIds: ["a"],
-        expenseSeed: "s",
       }),
     ).toThrow();
   });
