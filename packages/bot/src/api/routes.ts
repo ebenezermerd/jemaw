@@ -479,7 +479,7 @@ export async function registerApi(
       if (!parsed.success) {
         return reply.code(400).send({ error: "invalid body" });
       }
-      const result = await recordSettlementFromInput(group, member, parsed.data, "app");
+      const result = await recordSettlementFromInput(group, member, parsed.data);
       if ("error" in result) {
         return reply.code(result.status ?? 409).send({ error: result.error, ...result.extra });
       }
@@ -492,7 +492,6 @@ export async function registerApi(
     group: Group,
     member: Member,
     input: z.infer<typeof createSettlementSchema>,
-    source: "app" | "suggestion",
   ): Promise<
     | { settlement: Settlement }
     | { error: string; status?: number; extra?: Record<string, unknown> }
@@ -663,7 +662,6 @@ export async function registerApi(
           remainingCents > COVERAGE_TOLERANCE_CENTS
             ? centsToDecimal(remainingCents)
             : null,
-        source,
       });
       void deps.botApi
         .sendMessage(Number(group.telegramChatId), html, { parse_mode: "HTML" })
@@ -1310,17 +1308,12 @@ export async function registerApi(
           });
         }
         const body = (req.body ?? {}) as { amount?: string };
-        const result = await recordSettlementFromInput(
-          group,
-          member,
-          {
-            fromMemberId: s.fromMemberId,
-            toMemberId: s.toMemberId,
-            amount: body.amount ?? s.amount,
-            expenseIds: suggestionExpenseIds,
-          },
-          "suggestion",
-        );
+        const result = await recordSettlementFromInput(group, member, {
+          fromMemberId: s.fromMemberId,
+          toMemberId: s.toMemberId,
+          amount: body.amount ?? s.amount,
+          expenseIds: suggestionExpenseIds,
+        });
         if ("error" in result) {
           return reply.code(result.status ?? 409).send({ error: result.error, ...result.extra });
         }
@@ -1401,12 +1394,7 @@ export async function registerApi(
       if (s.kind === "settlement") {
         const parsed = createSettlementSchema.safeParse(req.body);
         if (!parsed.success) return reply.code(400).send({ error: "invalid body" });
-        const recorded = await recordSettlementFromInput(
-          group,
-          member,
-          parsed.data,
-          "suggestion",
-        );
+        const recorded = await recordSettlementFromInput(group, member, parsed.data);
         if ("error" in recorded) {
           return reply
             .code(recorded.status ?? 409)
