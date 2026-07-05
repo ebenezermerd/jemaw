@@ -73,9 +73,22 @@ export async function scanGroup(
   const nameByTgId = new Map(
     members.map((m) => [m.telegramUserId.toString(), m.displayName]),
   );
-  const memberByTgId = new Map(
-    members.map((m) => [Number(m.telegramUserId), m]),
-  );
+  // Ids the model references. Real Telegram ids pass through; manual members
+  // carry huge synthetic NEGATIVE ids that JSON numbers can't round-trip (and
+  // models won't reliably echo), which silently broke attributing a payer like
+  // "Pomi paid for dinner" to a manually added Pomi. Those members get small
+  // scan-scoped alias ids (-1, -2, ...) instead.
+  const memberByPromptId = new Map<number, (typeof members)[number]>();
+  const promptIdByMemberId = new Map<string, number>();
+  let nextAlias = -1;
+  for (const m of members) {
+    const tid = m.telegramUserId;
+    const usable = tid > 0n && tid <= BigInt(Number.MAX_SAFE_INTEGER);
+    const promptId = usable ? Number(tid) : nextAlias--;
+    memberByPromptId.set(promptId, m);
+    promptIdByMemberId.set(m.id, promptId);
+  }
+  const memberByTgId = memberByPromptId;
   const allMemberIds = members.map((m) => m.id);
 
   // Read the persisted group-state summary (balances, open debts, recent items)
@@ -92,7 +105,7 @@ export async function scanGroup(
   const data: ScanData = {
     currency: group.defaultCurrency,
     members: members.map((m) => ({
-      telegramUserId: Number(m.telegramUserId),
+      telegramUserId: promptIdByMemberId.get(m.id)!,
       displayName: m.displayName,
     })),
     recentExpenses: (summary?.recentExpenses ?? []).map((e) => ({
