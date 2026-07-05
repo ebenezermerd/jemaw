@@ -14,17 +14,14 @@ describe("formatSettlementAnnouncement", () => {
     method: "telebirr" as const,
     expenseDescriptions: ["Dinner", "Groceries"],
     remaining: null,
-    source: "app" as const,
   };
 
   it("announces payer, payee, amount, method, and coverage in a blockquote box", () => {
     const msg = formatSettlementAnnouncement(base);
-    expect(msg).toContain("<b>Bob</b> paid <b>Alice</b>");
-    expect(msg).toContain("<b>1,500.00 ETB</b>");
-    expect(msg).toContain("Telebirr");
-    expect(msg).toContain("<blockquote>Covers: Dinner, Groceries");
+    expect(msg).toContain("<blockquote>Bob paid Alice <b>1,500.00 ETB</b> · Telebirr");
+    expect(msg).toContain("Covers: Dinner, Groceries");
     expect(msg).toContain("square now.</blockquote>");
-    expect(msg).toContain("in the app");
+    expect(msg).not.toContain("Recorded");
   });
 
   it("shows the remaining debt in monospace when the pair is not square", () => {
@@ -35,14 +32,12 @@ describe("formatSettlementAnnouncement", () => {
     expect(msg).not.toContain("square now");
   });
 
-  it("collapses long coverage lists and credits AI suggestions", () => {
+  it("collapses long coverage lists", () => {
     const msg = formatSettlementAnnouncement({
       ...base,
       expenseDescriptions: ["A", "B", "C", "D", "E"],
-      source: "suggestion",
     });
     expect(msg).toContain("Covers: A, B, C +2 more");
-    expect(msg).toContain("from an AI suggestion");
   });
 
   it("escapes html in names and descriptions", () => {

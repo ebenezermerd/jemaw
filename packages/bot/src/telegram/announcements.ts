@@ -41,24 +41,22 @@ export interface SettlementAnnouncementInput {
   expenseDescriptions: string[];
   /** decimal string still owed from → to after this payment; null when square */
   remaining: string | null;
-  /** where the settlement was recorded */
-  source: "app" | "suggestion";
 }
 
-/** Telegram HTML message announcing a recorded settlement. */
+/**
+ * Telegram HTML message announcing a recorded settlement. Everything below
+ * the headline sits in a native blockquote, which clients render as one boxed
+ * section in a slightly smaller font.
+ */
 export function formatSettlementAnnouncement(
   i: SettlementAnnouncementInput,
 ): string {
-  const from = `<b>${escapeHtml(i.fromName)}</b>`;
-  const to = `<b>${escapeHtml(i.toName)}</b>`;
   const amount = `<b>${groupDigits(i.amount)} ${escapeHtml(i.currency)}</b>`;
 
-  const lines: string[] = [];
-  lines.push(`🤝 <b>Settled up</b>`);
-  lines.push(`${from} paid ${to} ${amount} · ${METHOD_LABEL[i.method]}`);
-
-  // Details live in a native blockquote so they read as one boxed section.
   const details: string[] = [];
+  details.push(
+    `${escapeHtml(i.fromName)} paid ${escapeHtml(i.toName)} ${amount} · ${METHOD_LABEL[i.method]}`,
+  );
   if (i.expenseDescriptions.length > 0) {
     const shown = i.expenseDescriptions.slice(0, 3).map(escapeHtml);
     const extra = i.expenseDescriptions.length - shown.length;
@@ -75,10 +73,6 @@ export function formatSettlementAnnouncement(
       `⏳ Still open: ${escapeHtml(i.fromName)} owes ${escapeHtml(i.toName)} <code>${groupDigits(i.remaining)} ${escapeHtml(i.currency)}</code>.`,
     );
   }
-  lines.push(`<blockquote>${details.join("\n")}</blockquote>`);
 
-  lines.push(
-    `<i>Recorded ${i.source === "suggestion" ? "from an AI suggestion" : "in the app"}.</i>`,
-  );
-  return lines.join("\n");
+  return `🤝 <b>Settled up</b>\n<blockquote>${details.join("\n")}</blockquote>`;
 }

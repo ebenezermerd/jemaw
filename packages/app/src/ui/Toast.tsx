@@ -71,7 +71,9 @@ export function ToastProvider({ children }: { children: ReactNode }) {
         aria-live="polite"
         style={{
           position: "fixed",
-          top: "calc(env(safe-area-inset-top, 0px) + 12px)",
+          // Pushed down by roughly a toast's height so it clears the Telegram
+          // fullscreen header instead of hugging the very top edge.
+          top: "calc(env(safe-area-inset-top, 0px) + 56px)",
           left: 12,
           right: 12,
           zIndex: 1000,

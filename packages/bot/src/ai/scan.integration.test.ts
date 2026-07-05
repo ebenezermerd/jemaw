@@ -7,6 +7,7 @@ import { createDb, type Db } from "../db.js";
 import {
   upsertGroup,
   upsertMember,
+  addManualMember,
   captureMessage,
   getGroupById,
   setMemberPrimaryById,
@@ -47,8 +48,10 @@ d("scanGroup (mocked Gemini)", () => {
   beforeAll(async () => {
     db = createDb(DATABASE_URL!);
     const base = BigInt(-4_000_000_000 - Math.floor(process.uptime() * 1000));
-    saraTg = Number(base - 1n);
-    tomTg = Number(base - 2n);
+    // Real Telegram user ids are positive; negative ids are synthetic manual
+    // members that the scan now aliases instead of passing to the model.
+    saraTg = Number(-base + 1n);
+    tomTg = Number(-base + 2n);
     const g = await upsertGroup(db, base, "ScanTrip", "EUR");
     group = g;
     saraId = (await upsertMember(db, g.id, BigInt(saraTg), "Sara", null)).id;
@@ -301,5 +304,41 @@ d("scanGroup (mocked Gemini)", () => {
     expect(res.status).toBe("no_messages");
     // Restore for any later runs in the file (none after this, but tidy).
     await captureMessage(db, group.id, 1001n, BigInt(saraTg), "I got dinner ~50", new Date());
+  });
+
+  it("attributes a payer to a manual member via its scan alias id", async () => {
+    await db.delete(suggestions).where(eq(suggestions.groupId, group.id));
+    // Pomi has a huge synthetic negative telegram id; the scan exposes her to
+    // the model as alias -1 (third member, first unusable id).
+    const pomi = await addManualMember(db, group.id, "Pomi", null);
+    const g = (await getGroupById(db, group.id))!;
+    const res = await scanGroup(
+      { db, gemini: mockGemini({
+        suggestions: [
+          {
+            confidence: 0.9,
+            description: "Dinner",
+            amount: 40,
+            currency: "EUR",
+            payer_telegram_id: -1,
+            split_type: "equal",
+            split_with: [],
+            shares: null,
+            evidence_message_ids: [1003],
+            reasoning: "Pomi paid for dinner",
+          },
+        ],
+        scan_window: { from_message_id: 1001, to_message_id: 1001 },
+      }), now },
+      g,
+      null,
+      "keyword",
+    );
+    expect(res.written).toBe(1);
+    const rows = await db
+      .select()
+      .from(suggestions)
+      .where(eq(suggestions.groupId, group.id));
+    expect(rows[0]!.payerMemberId).toBe(pomi.id);
   });
 });
