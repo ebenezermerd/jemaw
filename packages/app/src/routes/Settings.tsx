@@ -831,9 +831,32 @@ function TelegramSection({ member }: { member: MemberDto }) {
                 fontFamily: "inherit",
               }}
             >
-              <span className="t-body-strong">
-                {c.displayName ?? `User ${c.telegramUserId}`}
-                {c.username ? ` · @${c.username}` : ""}
+              <span
+                style={{
+                  display: "flex",
+                  alignItems: "baseline",
+                  gap: 8,
+                  minWidth: 0,
+                }}
+              >
+                <span
+                  className="t-body-strong"
+                  style={{
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  {c.displayName ?? `User ${c.telegramUserId}`}
+                </span>
+                {c.username && (
+                  <span
+                    className="t-caption"
+                    style={{ color: "var(--accent)", flexShrink: 0, fontSize: 11 }}
+                  >
+                    @{c.username}
+                  </span>
+                )}
               </span>
               <span className="t-caption" style={{ color: "var(--text-faint)" }}>
                 {c.memberName

@@ -1109,34 +1109,41 @@ export async function registerApi(
           memberName: m.displayName,
         });
       }
-      for (const tid of senderIds) {
-        if (tid <= 0n || linked.has(tid.toString())) continue;
-        let displayName: string | null = null;
-        let username: string | null = null;
-        if (deps.botApi) {
-          try {
-            const cm = await deps.botApi.getChatMember(
-              Number(group.telegramChatId),
-              Number(tid),
-            );
-            const full = [cm.user.first_name, cm.user.last_name]
-              .filter(Boolean)
-              .join(" ")
-              .trim();
-            displayName = full || cm.user.username || null;
-            username = cm.user.username ?? null;
-          } catch {
-            // Left the chat or bot lacks rights — keep the raw id.
+      // Resolve unattached sender names in parallel — sequential getChatMember
+      // calls made the picker feel like it never loaded.
+      const unattached = senderIds.filter(
+        (tid) => tid > 0n && !linked.has(tid.toString()),
+      );
+      const resolved = await Promise.all(
+        unattached.map(async (tid): Promise<TelegramCandidateDto> => {
+          let displayName: string | null = null;
+          let username: string | null = null;
+          if (deps.botApi) {
+            try {
+              const cm = await deps.botApi.getChatMember(
+                Number(group.telegramChatId),
+                Number(tid),
+              );
+              const full = [cm.user.first_name, cm.user.last_name]
+                .filter(Boolean)
+                .join(" ")
+                .trim();
+              displayName = full || cm.user.username || null;
+              username = cm.user.username ?? null;
+            } catch {
+              // Left the chat or bot lacks rights — keep the raw id.
+            }
           }
-        }
-        candidates.push({
-          telegramUserId: tid.toString(),
-          username,
-          displayName,
-          memberId: null,
-          memberName: null,
-        });
-      }
+          return {
+            telegramUserId: tid.toString(),
+            username,
+            displayName,
+            memberId: null,
+            memberName: null,
+          };
+        }),
+      );
+      candidates.push(...resolved);
 
       const res: TelegramCandidatesResponse = { candidates };
       return res;
