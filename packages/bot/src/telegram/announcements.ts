@@ -57,21 +57,25 @@ export function formatSettlementAnnouncement(
   lines.push(`🤝 <b>Settled up</b>`);
   lines.push(`${from} paid ${to} ${amount} · ${METHOD_LABEL[i.method]}`);
 
+  // Details live in a native blockquote so they read as one boxed section.
+  const details: string[] = [];
   if (i.expenseDescriptions.length > 0) {
     const shown = i.expenseDescriptions.slice(0, 3).map(escapeHtml);
     const extra = i.expenseDescriptions.length - shown.length;
-    lines.push(
+    details.push(
       `Covers: ${shown.join(", ")}${extra > 0 ? ` +${extra} more` : ""}`,
     );
   }
-
   if (i.remaining === null) {
-    lines.push(`✅ ${escapeHtml(i.fromName)} and ${escapeHtml(i.toName)} are square now.`);
+    details.push(
+      `✅ ${escapeHtml(i.fromName)} and ${escapeHtml(i.toName)} are square now.`,
+    );
   } else {
-    lines.push(
-      `⏳ Still open: ${escapeHtml(i.fromName)} owes ${escapeHtml(i.toName)} ${groupDigits(i.remaining)} ${escapeHtml(i.currency)}.`,
+    details.push(
+      `⏳ Still open: ${escapeHtml(i.fromName)} owes ${escapeHtml(i.toName)} <code>${groupDigits(i.remaining)} ${escapeHtml(i.currency)}</code>.`,
     );
   }
+  lines.push(`<blockquote>${details.join("\n")}</blockquote>`);
 
   lines.push(
     `<i>Recorded ${i.source === "suggestion" ? "from an AI suggestion" : "in the app"}.</i>`,

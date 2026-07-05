@@ -49,7 +49,7 @@ describe("formatWeeklyDigest", () => {
     topPayerCents: 210000,
   };
 
-  it("renders kpi, standings, debts, and narrative sections", () => {
+  it("renders kpi, standings, debts, and narrative sections with native boxes", () => {
     const msg = formatWeeklyDigest({
       groupName: "Trip",
       currency: "ETB",
@@ -65,14 +65,31 @@ describe("formatWeeklyDigest", () => {
       narrative: "Spending doubled this week. Pomi still carries most of the debt.",
     });
     expect(msg).toContain("Weekly summary");
-    expect(msg).toContain("4,200.00 ETB spent across 12 expenses");
-    expect(msg).toContain("3 settlements · 1,900.00 ETB paid back");
+    expect(msg).toContain("<blockquote>4,200.00 ETB spent · 12 expenses");
+    expect(msg).toContain("1,900.00 ETB paid back · 3 settlements");
     expect(msg).toContain("Top payer: Ebenezer");
-    expect(msg).toContain("🟢 Ebenezer  +61,199.00 ETB");
-    expect(msg).toContain("🔴 Pomi  −54,993.00 ETB");
+    // Standings render as an aligned monospace table.
+    expect(msg).toContain("<pre>🟢 Ebenezer +61,199.00\n🔴 Pomi     −54,993.00</pre>");
     expect(msg).not.toContain("Even"); // zero nets dropped
-    expect(msg).toContain("→ Pomi owes Ebenezer 54,993.00 ETB");
+    expect(msg).toContain("<blockquote>Pomi → Ebenezer · 54,993.00 ETB</blockquote>");
     expect(msg).toContain("<i>Spending doubled this week.");
+  });
+
+  it("collapses long debt lists behind an expandable blockquote", () => {
+    const msg = formatWeeklyDigest({
+      groupName: "Trip",
+      currency: "ETB",
+      kpis,
+      standings: [],
+      openDebts: [
+        { fromName: "A", toName: "B", amountCents: 100 },
+        { fromName: "C", toName: "D", amountCents: 100 },
+        { fromName: "E", toName: "F", amountCents: 100 },
+        { fromName: "G", toName: "H", amountCents: 100 },
+      ],
+      narrative: null,
+    });
+    expect(msg).toContain("<blockquote expandable>");
   });
 
   it("celebrates an all square group and omits a missing narrative", () => {

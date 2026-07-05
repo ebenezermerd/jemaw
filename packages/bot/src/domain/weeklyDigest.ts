@@ -77,50 +77,68 @@ function money(cents: number, currency: string): string {
   return `${groupDigits(centsToDecimal(cents))} ${escapeHtml(currency)}`;
 }
 
-/** Structured Telegram HTML weekly summary: KPIs, standings, open debts, blurb. */
+/** Fixed width name column for the monospace standings box. */
+function padName(name: string, width: number): string {
+  const cut = name.length > width ? `${name.slice(0, width - 1)}…` : name;
+  return cut.padEnd(width, " ");
+}
+
+const NAME_COL = 12;
+
+/**
+ * Structured Telegram HTML weekly summary using the native surfaces Telegram
+ * gives us: blockquote boxes for sections, a monospace <pre> table for the
+ * standings so amounts align, and an expandable blockquote when the open
+ * debt list gets long.
+ */
 export function formatWeeklyDigest(i: DigestInput): string {
   const { kpis } = i;
   const sections: string[] = [];
 
   sections.push(`📊 <b>Jemaw · Weekly summary</b>\n<i>${escapeHtml(i.groupName)}</i>`);
 
-  const week: string[] = [`<b>This week</b>`];
+  const week: string[] = [];
   week.push(
-    `•  ${money(kpis.spentCents, i.currency)} spent across ${kpis.expenseCount} expense${kpis.expenseCount === 1 ? "" : "s"}`,
+    `${money(kpis.spentCents, i.currency)} spent · ${kpis.expenseCount} expense${kpis.expenseCount === 1 ? "" : "s"}`,
   );
   week.push(
-    `•  ${kpis.settlementCount} settlement${kpis.settlementCount === 1 ? "" : "s"} · ${money(kpis.settledCents, i.currency)} paid back`,
+    `${money(kpis.settledCents, i.currency)} paid back · ${kpis.settlementCount} settlement${kpis.settlementCount === 1 ? "" : "s"}`,
   );
   if (kpis.topPayerName) {
     week.push(
-      `•  Top payer: ${escapeHtml(kpis.topPayerName)} · ${money(kpis.topPayerCents, i.currency)}`,
+      `Top payer: ${escapeHtml(kpis.topPayerName)} · ${money(kpis.topPayerCents, i.currency)}`,
     );
   }
-  sections.push(week.join("\n"));
+  sections.push(`<b>This week</b>\n<blockquote>${week.join("\n")}</blockquote>`);
 
   const standings = i.standings.filter((s) => s.netCents !== 0);
   if (standings.length > 0) {
+    const width = Math.min(
+      NAME_COL,
+      Math.max(...standings.map((s) => s.name.length)),
+    );
     const rows = standings
       .slice()
       .sort((a, b) => b.netCents - a.netCents)
       .map((s) => {
         const dot = s.netCents > 0 ? "🟢" : "🔴";
         const sign = s.netCents > 0 ? "+" : "−";
-        return `${dot} ${escapeHtml(s.name)}  ${sign}${money(Math.abs(s.netCents), i.currency)}`;
+        const amount = `${sign}${groupDigits(centsToDecimal(Math.abs(s.netCents)))}`;
+        return `${dot} ${escapeHtml(padName(s.name, width))} ${escapeHtml(amount)}`;
       });
-    sections.push([`<b>Standings</b>`, ...rows].join("\n"));
+    sections.push(
+      `<b>Standings</b> <i>(${escapeHtml(i.currency)})</i>\n<pre>${rows.join("\n")}</pre>`,
+    );
   }
 
   if (i.openDebts.length > 0) {
-    const rows = i.openDebts
-      .slice(0, 6)
-      .map(
-        (d) =>
-          `→ ${escapeHtml(d.fromName)} owes ${escapeHtml(d.toName)} ${money(d.amountCents, i.currency)}`,
-      );
-    const extra = i.openDebts.length - rows.length;
-    if (extra > 0) rows.push(`…and ${extra} more`);
-    sections.push([`<b>Open debts</b>`, ...rows].join("\n"));
+    const rows = i.openDebts.map(
+      (d) =>
+        `${escapeHtml(d.fromName)} → ${escapeHtml(d.toName)} · ${money(d.amountCents, i.currency)}`,
+    );
+    // Long lists collapse behind Telegram's expandable blockquote.
+    const tag = rows.length > 3 ? "<blockquote expandable>" : "<blockquote>";
+    sections.push(`<b>Open debts</b>\n${tag}${rows.join("\n")}</blockquote>`);
   } else {
     sections.push(`✅ <b>All square</b> — no open debts.`);
   }

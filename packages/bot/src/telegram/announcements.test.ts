@@ -17,19 +17,21 @@ describe("formatSettlementAnnouncement", () => {
     source: "app" as const,
   };
 
-  it("announces payer, payee, amount, method, and coverage", () => {
+  it("announces payer, payee, amount, method, and coverage in a blockquote box", () => {
     const msg = formatSettlementAnnouncement(base);
     expect(msg).toContain("<b>Bob</b> paid <b>Alice</b>");
     expect(msg).toContain("<b>1,500.00 ETB</b>");
     expect(msg).toContain("Telebirr");
-    expect(msg).toContain("Covers: Dinner, Groceries");
-    expect(msg).toContain("square now");
+    expect(msg).toContain("<blockquote>Covers: Dinner, Groceries");
+    expect(msg).toContain("square now.</blockquote>");
     expect(msg).toContain("in the app");
   });
 
-  it("shows the remaining debt when the pair is not square", () => {
+  it("shows the remaining debt in monospace when the pair is not square", () => {
     const msg = formatSettlementAnnouncement({ ...base, remaining: "120.00" });
-    expect(msg).toContain("Still open: Bob owes Alice 120.00 ETB.");
+    expect(msg).toContain(
+      "Still open: Bob owes Alice <code>120.00 ETB</code>.",
+    );
     expect(msg).not.toContain("square now");
   });
 
