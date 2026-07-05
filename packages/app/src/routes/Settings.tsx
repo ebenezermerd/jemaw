@@ -1190,11 +1190,16 @@ function Segmented<T extends string>({
           onClick={() => onChange(o.value)}
           className="t-label"
           style={{
+            flex: 1,
+            minWidth: 0,
             height: 30,
             padding: "0 12px",
             borderRadius: "var(--r-sm)",
             border: "none",
             cursor: "pointer",
+            whiteSpace: "nowrap",
+            overflow: "hidden",
+            textOverflow: "ellipsis",
             fontWeight: value === o.value ? 600 : 500,
             background: value === o.value ? "var(--accent)" : "transparent",
             color: value === o.value ? "#fff" : "var(--text-muted)",
