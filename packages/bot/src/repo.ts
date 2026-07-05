@@ -50,6 +50,11 @@ export async function upsertGroup(
   return inserted[0]!;
 }
 
+/** Every group the bot knows (weekly digest sweep). */
+export async function listAllGroups(db: Db): Promise<Group[]> {
+  return db.select().from(groups);
+}
+
 export async function getGroupById(db: Db, id: string): Promise<Group | null> {
   const rows = await db.select().from(groups).where(eq(groups.id, id)).limit(1);
   return rows[0] ?? null;
