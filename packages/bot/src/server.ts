@@ -31,7 +31,7 @@ export async function buildServer(
     );
     reply.header(
       "access-control-allow-methods",
-      "GET,POST,PATCH,OPTIONS",
+      "GET,POST,PATCH,DELETE,OPTIONS",
     );
     if (req.method === "OPTIONS") {
       await reply.code(204).send();
