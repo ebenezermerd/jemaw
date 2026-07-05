@@ -23,6 +23,7 @@ import { PageLoader } from "../motion/Loader.js";
 import { Modal } from "../motion/Modal.js";
 import { Centered } from "./Balances.js";
 import { getThemePref, setThemePref, type ThemePref } from "../lib/theme.js";
+import { useToast } from "../ui/Toast.js";
 
 const CURRENCIES = ["EUR", "USD", "GBP", "ETB", "JPY", "CHF", "CAD", "AUD"];
 
@@ -427,6 +428,7 @@ function RemoveMemberModal({
 }) {
   const summary = useMemberSummary(memberId);
   const remove = useRemoveMember();
+  const toast = useToast();
   const [tab, setTab] = useState<"expenses" | "settlements">("expenses");
   const [page, setPage] = useState(0);
   const [error, setError] = useState<string | null>(null);
@@ -436,7 +438,13 @@ function RemoveMemberModal({
   async function doRemove() {
     setError(null);
     try {
-      await remove.mutateAsync(memberId);
+      const result = await remove.mutateAsync(memberId);
+      toast.show(
+        result.removed === "deleted"
+          ? "Member deleted."
+          : "Member removed and kept in history.",
+        "success",
+      );
       onClose();
     } catch (err) {
       setError(
@@ -702,6 +710,7 @@ function TelegramSection({ member }: { member: MemberDto }) {
   const [error, setError] = useState<string | null>(null);
   const candidates = useTelegramCandidates(open);
   const assign = useAssignMemberTelegram();
+  const toast = useToast();
 
   const linked = member.telegramLinked;
   const busy = assign.isPending;
@@ -710,6 +719,12 @@ function TelegramSection({ member }: { member: MemberDto }) {
     setError(null);
     try {
       await assign.mutateAsync({ memberId: member.id, input });
+      toast.show(
+        input.telegramUserId === null
+          ? "Telegram account unlinked."
+          : "Telegram account updated.",
+        "success",
+      );
       setOpen(false);
       setQuery("");
     } catch (err) {
@@ -816,9 +831,32 @@ function TelegramSection({ member }: { member: MemberDto }) {
                 fontFamily: "inherit",
               }}
             >
-              <span className="t-body-strong">
-                {c.displayName ?? `User ${c.telegramUserId}`}
-                {c.username ? ` · @${c.username}` : ""}
+              <span
+                style={{
+                  display: "flex",
+                  alignItems: "baseline",
+                  gap: 8,
+                  minWidth: 0,
+                }}
+              >
+                <span
+                  className="t-body-strong"
+                  style={{
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  {c.displayName ?? `User ${c.telegramUserId}`}
+                </span>
+                {c.username && (
+                  <span
+                    className="t-caption"
+                    style={{ color: "var(--accent)", flexShrink: 0, fontSize: 11 }}
+                  >
+                    @{c.username}
+                  </span>
+                )}
               </span>
               <span className="t-caption" style={{ color: "var(--text-faint)" }}>
                 {c.memberName

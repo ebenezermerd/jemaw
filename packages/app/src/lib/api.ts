@@ -33,14 +33,14 @@ async function request<T>(
   path: string,
   init?: RequestInit,
 ): Promise<T> {
-  const res = await fetch(`${BASE}${path}`, {
-    ...init,
-    headers: {
-      "content-type": "application/json",
-      "x-telegram-init-data": getInitData(),
-      ...(init?.headers ?? {}),
-    },
-  });
+  // Only claim a JSON content type when a body is actually sent — Fastify
+  // rejects an empty body with an application/json content type as a 400.
+  const headers: Record<string, string> = {
+    "x-telegram-init-data": getInitData(),
+    ...((init?.headers as Record<string, string>) ?? {}),
+  };
+  if (init?.body !== undefined) headers["content-type"] = "application/json";
+  const res = await fetch(`${BASE}${path}`, { ...init, headers });
   if (!res.ok) {
     const text = await res.text();
     let body: { error?: string; maxAllocatable?: string; [k: string]: unknown };
