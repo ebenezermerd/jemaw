@@ -10,6 +10,7 @@ import {
   type ScanClient,
 } from "./ai/geminiClient.js";
 import { ScanRateLimiter } from "./ai/rateLimit.js";
+import { startWeeklyDigestScheduler } from "./telegram/weeklyJob.js";
 
 async function main(): Promise<void> {
   const env = loadEnv();
@@ -79,7 +80,12 @@ async function main(): Promise<void> {
     });
   }
 
+  // Hourly sweep that posts each group's weekly summary when it's due.
+  const stopDigest = startWeeklyDigestScheduler({ db, api: bot.api, gemini });
+  app.log.info("Weekly digest scheduler started");
+
   const shutdown = async () => {
+    stopDigest();
     await bot.stop();
     await app.close();
     process.exit(0);

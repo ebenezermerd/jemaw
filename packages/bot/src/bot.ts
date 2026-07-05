@@ -11,6 +11,7 @@ import {
 import { registerUser, seedAdmins } from "./telegram/memberSync.js";
 import { ensurePinnedMessage } from "./telegram/pinnedMessage.js";
 import { badgeEvidence } from "./telegram/reactions.js";
+import { sendDigestNow } from "./telegram/weeklyJob.js";
 import type { GeminiClient } from "./ai/geminiClient.js";
 import type { ScanRateLimiter } from "./ai/rateLimit.js";
 import { scanGroup } from "./ai/scan.js";
@@ -37,6 +38,7 @@ export function helpText(): string {
     "Jemaw — commands",
     "",
     "/jemaw — refresh and scan the recent chat",
+    "/digest — post the weekly summary now",
     "/balance — show everyone's net position",
     "/settle — open the settle-up plan",
     "/add — add an expense manually",
@@ -219,6 +221,28 @@ export function createBot(token: string, deps: BotDeps): Bot {
       "command",
     );
     await refreshPinned(ctx.api, groupId, ctx.chat.id);
+  });
+
+  // /digest — post the weekly summary on demand and restart its weekly clock.
+  bot.command("digest", async (ctx) => {
+    const groupId = await ensureGroup(ctx);
+    if (!groupId || !ctx.chat) return;
+    const group = await getGroupById(db, groupId);
+    if (!group) return;
+    try {
+      const result = await sendDigestNow(
+        { db, api: ctx.api, gemini },
+        group,
+      );
+      if (result === "quiet") {
+        await ctx.reply("Nothing recorded in the last 7 days — no summary to post.");
+      }
+    } catch (err) {
+      console.warn(
+        `[digest] /digest failed: ${err instanceof Error ? err.message : err}`,
+      );
+      await ctx.reply("Couldn't build the summary right now — try again shortly.");
+    }
   });
 
   // Capture plain group text + register the speaker; trigger a scan on "jemaw".

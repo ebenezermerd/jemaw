@@ -59,7 +59,8 @@ import {
   type ExpenseDto,
 } from "@jemaw/shared/types";
 import type { Transfer } from "../domain/settle.js";
-import type { Member, Settlement } from "@jemaw/shared/schema";
+import type { Group, Member, Settlement } from "@jemaw/shared/schema";
+import { formatSettlementAnnouncement } from "../telegram/announcements.js";
 import {
   toGroupDto,
   toExpenseDto,
@@ -478,7 +479,7 @@ export async function registerApi(
       if (!parsed.success) {
         return reply.code(400).send({ error: "invalid body" });
       }
-      const result = await recordSettlementFromInput(group, member, parsed.data);
+      const result = await recordSettlementFromInput(group, member, parsed.data, "app");
       if ("error" in result) {
         return reply.code(result.status ?? 409).send({ error: result.error, ...result.extra });
       }
@@ -488,9 +489,10 @@ export async function registerApi(
   );
 
   async function recordSettlementFromInput(
-    group: { id: string; defaultCurrency: string },
+    group: Group,
     member: Member,
     input: z.infer<typeof createSettlementSchema>,
+    source: "app" | "suggestion",
   ): Promise<
     | { settlement: Settlement }
     | { error: string; status?: number; extra?: Record<string, unknown> }
@@ -498,7 +500,7 @@ export async function registerApi(
     const fromMemberId = input.fromMemberId ?? member.id;
     const { toMemberId, expenseIds } = input;
 
-    const { expensesForDebt, allocations, transfers } = await loadLedger(db, group.id);
+    const { members, expensesForDebt, allocations, transfers } = await loadLedger(db, group.id);
 
     const hasDebt = transfers.some(
       (t) => t.fromMemberId === fromMemberId && t.toMemberId === toMemberId,
@@ -635,6 +637,43 @@ export async function registerApi(
       },
       allocationInputs,
     );
+
+    // Announce in the group chat (best effort) so settles recorded in the app
+    // are visible without opening it.
+    if (deps.botApi) {
+      const nameOf = (id: string) =>
+        members.find((m) => m.id === id)?.displayName ?? "Member";
+      const allocatedTotal = allocationInputs.reduce(
+        (sum, a) => sum + decimalToCents(a.allocatedAmount),
+        0,
+      );
+      const pairOwed =
+        transfers.find(
+          (t) => t.fromMemberId === fromMemberId && t.toMemberId === toMemberId,
+        )?.amountCents ?? 0;
+      const remainingCents = pairOwed - allocatedTotal;
+      const html = formatSettlementAnnouncement({
+        fromName: nameOf(fromMemberId),
+        toName: nameOf(toMemberId),
+        amount: centsToDecimal(paidCents),
+        currency: group.defaultCurrency,
+        method: input.method ?? "cash",
+        expenseDescriptions: sortedExpenses.map((e) => e.expense.description),
+        remaining:
+          remainingCents > COVERAGE_TOLERANCE_CENTS
+            ? centsToDecimal(remainingCents)
+            : null,
+        source,
+      });
+      void deps.botApi
+        .sendMessage(Number(group.telegramChatId), html, { parse_mode: "HTML" })
+        .catch((err: unknown) =>
+          console.warn(
+            `[announce] settlement message failed: ${err instanceof Error ? err.message : err}`,
+          ),
+        );
+    }
+
     return { settlement };
   }
 
@@ -1271,12 +1310,17 @@ export async function registerApi(
           });
         }
         const body = (req.body ?? {}) as { amount?: string };
-        const result = await recordSettlementFromInput(group, member, {
-          fromMemberId: s.fromMemberId,
-          toMemberId: s.toMemberId,
-          amount: body.amount ?? s.amount,
-          expenseIds: suggestionExpenseIds,
-        });
+        const result = await recordSettlementFromInput(
+          group,
+          member,
+          {
+            fromMemberId: s.fromMemberId,
+            toMemberId: s.toMemberId,
+            amount: body.amount ?? s.amount,
+            expenseIds: suggestionExpenseIds,
+          },
+          "suggestion",
+        );
         if ("error" in result) {
           return reply.code(result.status ?? 409).send({ error: result.error, ...result.extra });
         }
@@ -1357,7 +1401,12 @@ export async function registerApi(
       if (s.kind === "settlement") {
         const parsed = createSettlementSchema.safeParse(req.body);
         if (!parsed.success) return reply.code(400).send({ error: "invalid body" });
-        const recorded = await recordSettlementFromInput(group, member, parsed.data);
+        const recorded = await recordSettlementFromInput(
+          group,
+          member,
+          parsed.data,
+          "suggestion",
+        );
         if ("error" in recorded) {
           return reply
             .code(recorded.status ?? 409)
