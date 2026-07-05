@@ -198,6 +198,22 @@ d("Member removal API", () => {
     expect(bobRes.statusCode).toBe(403);
   });
 
+  it("accepts a bodyless delete that still carries a json content type", async () => {
+    // Browsers send content-type: application/json on bodyless DELETEs from
+    // older app shells; the default parser rejected that with FST_ERR_CTP_EMPTY_JSON_BODY.
+    const extra = await addManualMember(db, groupId, "Bodyless", null);
+    const res = await app.inject({
+      method: "DELETE",
+      url: `/api/groups/${groupId}/members/${extra.id}`,
+      headers: {
+        "x-telegram-init-data": initDataFor(adminTgId),
+        "content-type": "application/json",
+      },
+    });
+    expect(res.statusCode).toBe(200);
+    expect((res.json() as RemoveMemberResponse).removed).toBe("deleted");
+  });
+
   it("keeps the removed debtor on the balance board until square", async () => {
     const res = await app.inject({
       method: "GET",

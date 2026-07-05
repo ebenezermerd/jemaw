@@ -21,6 +21,26 @@ export async function buildServer(
     },
   });
 
+  // Tolerate an empty body with an application/json content type (older app
+  // shells send the header on bodyless DELETEs; the default parser 400s).
+  app.removeContentTypeParser("application/json");
+  app.addContentTypeParser(
+    "application/json",
+    { parseAs: "string" },
+    (_req, body, done) => {
+      if (typeof body !== "string" || body.trim() === "") {
+        done(null, {});
+        return;
+      }
+      try {
+        done(null, JSON.parse(body));
+      } catch (err) {
+        (err as { statusCode?: number }).statusCode = 400;
+        done(err as Error, undefined);
+      }
+    },
+  );
+
   // Minimal CORS — the Mini App is served from a different origin.
   const origin = deps.corsOrigin;
   app.addHook("onRequest", async (req, reply) => {
