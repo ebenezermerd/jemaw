@@ -698,7 +698,7 @@ function Kpi({
  */
 function TelegramSection({ member }: { member: MemberDto }) {
   const [open, setOpen] = useState(false);
-  const [manualId, setManualId] = useState("");
+  const [query, setQuery] = useState("");
   const [error, setError] = useState<string | null>(null);
   const candidates = useTelegramCandidates(open);
   const assign = useAssignMemberTelegram();
@@ -711,7 +711,7 @@ function TelegramSection({ member }: { member: MemberDto }) {
     try {
       await assign.mutateAsync({ memberId: member.id, input });
       setOpen(false);
-      setManualId("");
+      setQuery("");
     } catch (err) {
       setError(
         err instanceof Error ? err.message : "Could not update this account.",
@@ -719,9 +719,23 @@ function TelegramSection({ member }: { member: MemberDto }) {
     }
   }
 
-  const list = (candidates.data?.candidates ?? []).filter(
+  // Search-and-select: filter known accounts by @username or name as you type.
+  const q = query.trim().replace(/^@/, "").toLowerCase();
+  const all = (candidates.data?.candidates ?? []).filter(
     (c) => c.memberId !== member.id,
   );
+  const list = q
+    ? all.filter(
+        (c) =>
+          (c.username ?? "").toLowerCase().includes(q) ||
+          (c.displayName ?? "").toLowerCase().includes(q) ||
+          c.telegramUserId.includes(q),
+      )
+    : all;
+  // A digits only query that matches no known account can still be assigned
+  // directly as a raw Telegram user id.
+  const rawIdOption =
+    /^\d+$/.test(q) && !all.some((c) => c.telegramUserId === q) ? q : null;
 
   return (
     <div style={{ display: "grid", gap: 8 }}>
@@ -759,14 +773,23 @@ function TelegramSection({ member }: { member: MemberDto }) {
           <span className="t-mono-label" style={{ color: "var(--text-muted)" }}>
             Assign account
           </span>
+          <input
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Search by @username or name"
+            disabled={busy}
+            style={{ ...memberInput, height: 40 }}
+          />
           {candidates.isLoading && (
             <span className="t-caption" style={{ color: "var(--text-muted)" }}>
               Loading accounts...
             </span>
           )}
-          {!candidates.isLoading && list.length === 0 && (
+          {!candidates.isLoading && list.length === 0 && !rawIdOption && (
             <span className="t-caption" style={{ color: "var(--text-muted)" }}>
-              No known accounts yet. Enter a Telegram user id below.
+              {q
+                ? "No account matches this search."
+                : "No known accounts yet. Search by @username, or type a numeric Telegram user id."}
             </span>
           )}
           {list.map((c) => (
@@ -805,23 +828,30 @@ function TelegramSection({ member }: { member: MemberDto }) {
             </button>
           ))}
 
-          <div style={{ display: "flex", gap: 8 }}>
-            <input
-              value={manualId}
-              onChange={(e) => setManualId(e.target.value.trim())}
-              placeholder="Telegram user id"
-              inputMode="numeric"
+          {rawIdOption && (
+            <button
               disabled={busy}
-              style={{ ...memberInput, height: 40, flex: 1 }}
-            />
-            <Button
-              variant="ghost"
-              disabled={busy || !/^\d+$/.test(manualId)}
-              onClick={() => doAssign({ telegramUserId: manualId })}
+              onClick={() => doAssign({ telegramUserId: rawIdOption })}
+              style={{
+                display: "grid",
+                gap: 2,
+                textAlign: "left",
+                minHeight: 44,
+                padding: "6px 8px",
+                borderRadius: "var(--r-sm)",
+                border: "1px dashed var(--border-strong)",
+                background: "transparent",
+                color: "var(--text)",
+                cursor: busy ? "wait" : "pointer",
+                fontFamily: "inherit",
+              }}
             >
-              Assign
-            </Button>
-          </div>
+              <span className="t-body-strong">Assign id {rawIdOption}</span>
+              <span className="t-caption" style={{ color: "var(--text-faint)" }}>
+                Not a known account · uses the raw Telegram user id
+              </span>
+            </button>
+          )}
 
           {linked && (
             <Button
@@ -1190,11 +1220,16 @@ function Segmented<T extends string>({
           onClick={() => onChange(o.value)}
           className="t-label"
           style={{
+            flex: 1,
+            minWidth: 0,
             height: 30,
             padding: "0 12px",
             borderRadius: "var(--r-sm)",
             border: "none",
             cursor: "pointer",
+            whiteSpace: "nowrap",
+            overflow: "hidden",
+            textOverflow: "ellipsis",
             fontWeight: value === o.value ? 600 : 500,
             background: value === o.value ? "var(--accent)" : "transparent",
             color: value === o.value ? "#fff" : "var(--text-muted)",
