@@ -546,4 +546,63 @@ d("Allocation-based settlements", () => {
       .where(eq(settlements.groupId, groupId));
     expect(remaining).toHaveLength(0);
   });
+
+  it("paying the netted plan amount also retires the counter debts", async () => {
+    // Clean ledger after the reset test. Alice pays 100 (Bob owes 50); Bob
+    // pays 40 (Alice owes 20). Netted plan: Bob → Alice 30.
+    const big = await createExpense("100.00", "Groceries");
+    const smallRes = await app.inject({
+      method: "POST",
+      url: `/api/groups/${groupId}/expenses`,
+      headers: auth(bobTg),
+      payload: {
+        description: "Coffee",
+        amount: "40.00",
+        payerMemberId: bobId,
+        splitType: "equal",
+        splitWith: [aliceId, bobId],
+        occurredAt: "2026-01-16T12:00:00.000Z",
+      },
+    });
+    expect(smallRes.statusCode).toBe(201);
+
+    const planRes = await app.inject({
+      method: "GET",
+      url: `/api/groups/${groupId}/settle`,
+      headers: auth(bobTg),
+    });
+    const plan = planRes.json<SettlePlanResponse>();
+    expect(plan.transfers).toEqual([
+      { fromMemberId: bobId, toMemberId: aliceId, amount: "30.00" },
+    ]);
+
+    // Bob pays the netted 30 against his 50 share of Groceries. The 20 gap is
+    // offset by Alice's Coffee debt, so BOTH directions must close.
+    const settleRes = await app.inject({
+      method: "POST",
+      url: `/api/groups/${groupId}/settlements`,
+      headers: auth(bobTg),
+      payload: {
+        toMemberId: aliceId,
+        amount: "30.00",
+        expenseIds: [big.id],
+      },
+    });
+    expect(settleRes.statusCode).toBe(201);
+
+    const planAfter = await app.inject({
+      method: "GET",
+      url: `/api/groups/${groupId}/settle`,
+      headers: auth(bobTg),
+    });
+    expect(planAfter.json<SettlePlanResponse>().transfers).toEqual([]);
+
+    // Both expenses drop from the live (uncovered) list.
+    const live = await app.inject({
+      method: "GET",
+      url: `/api/groups/${groupId}/expenses`,
+      headers: auth(bobTg),
+    });
+    expect(live.json<ExpenseDto[]>()).toHaveLength(0);
+  });
 });
