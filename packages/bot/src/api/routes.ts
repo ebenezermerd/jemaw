@@ -574,9 +574,29 @@ export async function registerApi(
       maxAllocatableCents += Math.max(0, share.shareCents - allocated);
     }
 
+    // Reverse debts (to → from) available to net against this payment. The
+    // settle plan shows the NETTED pair amount, so paying it must also retire
+    // the counter debts — otherwise both directions dangle as uncovered
+    // leftovers the plan can never surface again.
+    const counterDebts: { expenseId: string; residual: number; occurredAt: Date }[] = [];
+    for (const e of expensesForDebt) {
+      if (e.payerMemberId !== fromMemberId) continue;
+      const share = e.shares.find((s) => s.memberId === toMemberId);
+      if (!share) continue;
+      const allocated = allocations
+        .filter((a) => a.expenseId === e.expenseId && a.memberId === toMemberId)
+        .reduce((sum, a) => sum + a.allocatedCents, 0);
+      const residual = share.shareCents - allocated;
+      if (residual > 0) {
+        counterDebts.push({ expenseId: e.expenseId, residual, occurredAt: e.occurredAt });
+      }
+    }
+    counterDebts.sort((a, b) => a.occurredAt.getTime() - b.occurredAt.getTime());
+    const counterTotalCents = counterDebts.reduce((s, d) => s + d.residual, 0);
+
     const requestedCents = input.amount
       ? decimalToCents(input.amount)
-      : maxAllocatableCents;
+      : Math.max(0, maxAllocatableCents - counterTotalCents);
 
     if (requestedCents > maxAllocatableCents + COVERAGE_TOLERANCE_CENTS) {
       return {
@@ -586,20 +606,27 @@ export async function registerApi(
       };
     }
     const paidCents = Math.min(requestedCents, maxAllocatableCents);
+    // Offset: the slice of the selected shares settled by what `to` owes
+    // `from` rather than by cash.
+    const offsetCents = Math.min(
+      counterTotalCents,
+      Math.max(0, maxAllocatableCents - paidCents),
+    );
 
-    // "Leave it": when the payment falls just short of the full owed amount by a
-    // sub-tolerance remainder (e.g. a few cents from rounding), treat the
+    // "Leave it": when cash plus offset falls just short of the full owed
+    // amount by a sub-tolerance remainder (e.g. rounding cents), treat the
     // selected expenses as fully covered and allocate each one's full residual.
-    // The recorded settlement amount still reflects what was actually paid; only
-    // the allocations complete so no ghost sub-tolerance debt lingers.
+    // The recorded settlement amount still reflects what was actually paid.
     const coversInFull =
-      maxAllocatableCents - requestedCents <= COVERAGE_TOLERANCE_CENTS;
+      maxAllocatableCents - (requestedCents + offsetCents) <=
+      COVERAGE_TOLERANCE_CENTS;
 
     const sortedExpenses = [...selectedExpenses].sort(
       (a, b) => a.expense.occurredAt.getTime() - b.expense.occurredAt.getTime(),
     );
     const allocationInputs: AllocationInput[] = [];
-    let remaining = paidCents;
+    let remaining = paidCents + offsetCents;
+    let allocatedOnSelected = 0;
     for (const e of sortedExpenses) {
       if (!coversInFull && remaining <= 0) break;
       const efd = expensesForDebtMap.get(e.expense.id);
@@ -617,7 +644,28 @@ export async function registerApi(
           allocatedAmount: centsToDecimal(give),
         });
         remaining -= give;
+        allocatedOnSelected += give;
       }
+    }
+
+    // Retire the counter debts consumed by the offset (the netted slice), so
+    // both directions close together. Sub-tolerance leftovers complete fully.
+    let offsetToConsume = Math.max(0, allocatedOnSelected - paidCents);
+    if (
+      offsetToConsume > 0 &&
+      counterTotalCents - offsetToConsume <= COVERAGE_TOLERANCE_CENTS
+    ) {
+      offsetToConsume = counterTotalCents;
+    }
+    for (const d of counterDebts) {
+      if (offsetToConsume <= 0) break;
+      const give = Math.min(offsetToConsume, d.residual);
+      allocationInputs.push({
+        expenseId: d.expenseId,
+        memberId: toMemberId,
+        allocatedAmount: centsToDecimal(give),
+      });
+      offsetToConsume -= give;
     }
 
     const { settlement } = await createSettlementWithAllocations(
@@ -642,15 +690,13 @@ export async function registerApi(
     if (deps.botApi) {
       const nameOf = (id: string) =>
         members.find((m) => m.id === id)?.displayName ?? "Member";
-      const allocatedTotal = allocationInputs.reduce(
-        (sum, a) => sum + decimalToCents(a.allocatedAmount),
-        0,
-      );
+      // The plan's pair amount is already netted, so cash paid is what moves
+      // it; offset allocations retire equal debt on both sides and cancel out.
       const pairOwed =
         transfers.find(
           (t) => t.fromMemberId === fromMemberId && t.toMemberId === toMemberId,
         )?.amountCents ?? 0;
-      const remainingCents = pairOwed - allocatedTotal;
+      const remainingCents = pairOwed - paidCents;
       const html = formatSettlementAnnouncement({
         fromName: nameOf(fromMemberId),
         toName: nameOf(toMemberId),

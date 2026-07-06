@@ -41,6 +41,9 @@ export function SettleForm() {
   // it's a reliable hint; the client-side remaining filter below covers the
   // rest once the resolved `from` state is known.
   const expensesQ = useExpenses(params.get("from") ?? undefined);
+  // Counter direction: entries the payee still owes the payer, netted against
+  // this payment so the amount matches the settle plan's netted figure.
+  const counterQ = useExpenses(params.get("to") ?? undefined);
   const suggestionsQ = useSuggestions();
   const create = useCreateSettlement();
   const editSuggestion = useEditSettlementSuggestion();
@@ -111,6 +114,20 @@ export function SettleForm() {
     [expenses, from, to],
   );
 
+  // Entries where `to` owes `from` (the reverse direction). Their total is the
+  // credit netted off what `from` pays.
+  const counter = useMemo(
+    () =>
+      (counterQ.data ?? []).filter(
+        (e) => isOwedBetween(e, to, from) && owedShareCents(e, to) > 0,
+      ),
+    [counterQ.data, from, to],
+  );
+  const counterTotalCents = counter.reduce(
+    (sum, e) => sum + owedShareCents(e, to),
+    0,
+  );
+
   // Reset selection when the from→to pair changes (unless the link named specific ones).
   const [selectedPair, setSelectedPair] = useState("");
   useEffect(() => {
@@ -124,13 +141,21 @@ export function SettleForm() {
   }, [from, to, expenses]);
 
   const toName = members.find((m) => m.id === to)?.displayName ?? "them";
-  // Gross of the selected owed shares — shown against the net so the gap is clear
-  // when expenses in the other direction reduce what you actually pay.
+  // Gross of the selected owed shares; the credit is what nets off it so the
+  // payable amount matches the settle plan's netted figure.
   const selectedGrossCents = relevant
     .filter((e) => selected.has(e.id))
     .reduce((sum, e) => sum + owedShareCents(e, from), 0);
-  const amountCents = /^\d+(\.\d{1,2})?$/.test(amount) ? decimalToCents(amount) : 0;
-  const hasOffset = selectedGrossCents > 0 && amountCents > 0 && selectedGrossCents !== amountCents;
+  const creditAppliedCents = Math.min(counterTotalCents, selectedGrossCents);
+  const computedPayCents = selectedGrossCents - creditAppliedCents;
+
+  // Keep the amount in step with the calculation until the user edits it.
+  const [amountEdited, setAmountEdited] = useState(false);
+  useEffect(() => {
+    if (amountEdited || selected.size === 0) return;
+    setAmount(centsToDecimal(computedPayCents));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selected, computedPayCents, amountEdited]);
 
   if (group.isLoading || expensesQ.isLoading || (suggestionId && suggestionsQ.isLoading)) {
     return <PageLoader />;
@@ -228,7 +253,7 @@ export function SettleForm() {
           <span className="t-mono-label" style={{ color: "var(--text-muted)" }}>Amount</span>
           <input
             value={amount}
-            onChange={(e) => { setAmount(e.target.value.replace(/[^\d.]/g, "")); setFormError(null); }}
+            onChange={(e) => { setAmount(e.target.value.replace(/[^\d.]/g, "")); setAmountEdited(true); setFormError(null); }}
             inputMode="decimal"
             placeholder="0.00"
             className="tnum"
@@ -295,13 +320,6 @@ export function SettleForm() {
           </div>
           <p className="t-caption" style={{ color: "var(--text-faint)", margin: 0 }}>
             Entries {toName} paid or lent where you owe a share.
-            {hasOffset && (
-              <>
-                {" "}
-                Listed shares total {formatMoney(centsToDecimal(selectedGrossCents), currency)}; you
-                pay {formatMoney(centsToDecimal(amountCents), currency)} after what {toName} owes you.
-              </>
-            )}
           </p>
           <input
             value={query}
@@ -369,6 +387,49 @@ export function SettleForm() {
                   </button>
                 );
               })}
+            </div>
+          )}
+
+          {/* The calculation: how the selected shares net down to the amount. */}
+          {selected.size > 0 && (
+            <div
+              style={{
+                border: "1px solid var(--border)",
+                borderRadius: 13,
+                padding: "12px 13px",
+                display: "grid",
+                gap: 7,
+                background: "var(--surface)",
+              }}
+            >
+              <span className="t-mono-label" style={{ color: "var(--text-muted)" }}>
+                The calculation
+              </span>
+              {relevant
+                .filter((e) => selected.has(e.id))
+                .map((e) => (
+                  <CalcRow
+                    key={e.id}
+                    label={e.description}
+                    amount={formatMoney(centsToDecimal(owedShareCents(e, from)), currency)}
+                  />
+                ))}
+              {creditAppliedCents > 0 &&
+                apportionCredit(counter, to, creditAppliedCents).map((c) => (
+                  <CalcRow
+                    key={c.id}
+                    label={`${toName} owes you · ${c.description}`}
+                    amount={`−${formatMoney(centsToDecimal(c.cents), currency)}`}
+                    muted
+                  />
+                ))}
+              <div style={{ borderTop: "1px solid var(--border)", paddingTop: 7 }}>
+                <CalcRow
+                  label="You pay"
+                  amount={formatMoney(centsToDecimal(computedPayCents), currency)}
+                  strong
+                />
+              </div>
             </div>
           )}
         </div>
@@ -471,6 +532,71 @@ function DuoHeader({
 
 function firstName(name: string): string {
   return name.trim().split(/\s+/)[0] ?? name;
+}
+
+function CalcRow({
+  label,
+  amount,
+  muted,
+  strong,
+}: {
+  label: string;
+  amount: string;
+  muted?: boolean;
+  strong?: boolean;
+}) {
+  return (
+    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 10 }}>
+      <span
+        className={strong ? "t-body-strong" : "t-caption"}
+        style={{
+          color: strong ? "var(--text)" : muted ? "var(--positive)" : "var(--text-muted)",
+          overflow: "hidden",
+          textOverflow: "ellipsis",
+          whiteSpace: "nowrap",
+          minWidth: 0,
+        }}
+      >
+        {label}
+      </span>
+      <span
+        className="tnum"
+        style={{
+          flexShrink: 0,
+          fontSize: strong ? 15 : 12,
+          fontWeight: strong ? 700 : 600,
+          color: strong ? "var(--text)" : muted ? "var(--positive)" : "var(--text)",
+        }}
+      >
+        {amount}
+      </span>
+    </div>
+  );
+}
+
+/**
+ * Apportion the applied credit across the counter entries oldest first, so
+ * each credit line in the calculation shows the slice actually netted.
+ */
+function apportionCredit(
+  counter: ExpenseDto[],
+  to: string,
+  creditCents: number,
+): { id: string; description: string; cents: number }[] {
+  const sorted = [...counter].sort(
+    (a, b) => new Date(a.occurredAt).getTime() - new Date(b.occurredAt).getTime(),
+  );
+  const rows: { id: string; description: string; cents: number }[] = [];
+  let remaining = creditCents;
+  for (const e of sorted) {
+    if (remaining <= 0) break;
+    const give = Math.min(remaining, owedShareCents(e, to));
+    if (give > 0) {
+      rows.push({ id: e.id, description: e.description, cents: give });
+      remaining -= give;
+    }
+  }
+  return rows;
 }
 
 // ── helpers: how much `from` owes for an entry `to` paid ──
