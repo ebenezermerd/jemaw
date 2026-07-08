@@ -48,17 +48,6 @@ resource "aws_subnet" "public" {
   })
 }
 
-resource "aws_subnet" "private" {
-  count             = 2
-  vpc_id            = aws_vpc.main.id
-  cidr_block        = cidrsubnet(var.vpc_cidr, 8, count.index + 10)
-  availability_zone = data.aws_availability_zones.available.names[count.index]
-
-  tags = merge(local.common_tags, {
-    Name = "${local.name_prefix}-private-${count.index + 1}"
-  })
-}
-
 resource "aws_route_table" "public" {
   vpc_id = aws_vpc.main.id
 
@@ -76,79 +65,6 @@ resource "aws_route_table_association" "public" {
   count          = length(aws_subnet.public)
   subnet_id      = aws_subnet.public[count.index].id
   route_table_id = aws_route_table.public.id
-}
-
-resource "aws_eip" "nat" {
-  domain = "vpc"
-
-  tags = merge(local.common_tags, {
-    Name = "${local.name_prefix}-nat"
-  })
-}
-
-resource "aws_nat_gateway" "main" {
-  allocation_id = aws_eip.nat.id
-  subnet_id     = aws_subnet.public[0].id
-
-  tags = merge(local.common_tags, {
-    Name = "${local.name_prefix}-nat"
-  })
-
-  depends_on = [aws_internet_gateway.main]
-}
-
-resource "aws_route_table" "private" {
-  vpc_id = aws_vpc.main.id
-
-  route {
-    cidr_block     = "0.0.0.0/0"
-    nat_gateway_id = aws_nat_gateway.main.id
-  }
-
-  tags = merge(local.common_tags, {
-    Name = "${local.name_prefix}-private"
-  })
-}
-
-resource "aws_route_table_association" "private" {
-  count          = length(aws_subnet.private)
-  subnet_id      = aws_subnet.private[count.index].id
-  route_table_id = aws_route_table.private.id
-}
-
-resource "aws_vpc_endpoint" "secretsmanager" {
-  vpc_id              = aws_vpc.main.id
-  service_name        = "com.amazonaws.${var.aws_region}.secretsmanager"
-  vpc_endpoint_type   = "Interface"
-  subnet_ids          = aws_subnet.private[*].id
-  security_group_ids  = [aws_security_group.vpc_endpoint.id]
-  private_dns_enabled = true
-
-  tags = merge(local.common_tags, {
-    Name = "${local.name_prefix}-secretsmanager"
-  })
-}
-
-resource "aws_security_group" "vpc_endpoint" {
-  name        = "${local.name_prefix}-vpc-endpoint"
-  description = "PrivateLink endpoint access from App Runner"
-  vpc_id      = aws_vpc.main.id
-
-  ingress {
-    from_port       = 443
-    to_port         = 443
-    protocol        = "tcp"
-    security_groups = [aws_security_group.app_runner.id]
-  }
-
-  egress {
-    from_port   = 0
-    to_port     = 0
-    protocol    = "-1"
-    cidr_blocks = ["0.0.0.0/0"]
-  }
-
-  tags = local.common_tags
 }
 
 resource "random_password" "db" {
@@ -189,10 +105,39 @@ resource "aws_ecr_lifecycle_policy" "bot" {
   })
 }
 
-resource "aws_security_group" "app_runner" {
-  name        = "${local.name_prefix}-apprunner"
-  description = "App Runner VPC connector egress"
+resource "aws_security_group" "alb" {
+  name        = "${local.name_prefix}-alb"
+  description = "Public HTTP access for Jemaw bot ALB"
   vpc_id      = aws_vpc.main.id
+
+  ingress {
+    from_port   = 80
+    to_port     = 80
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  egress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  tags = local.common_tags
+}
+
+resource "aws_security_group" "ecs" {
+  name        = "${local.name_prefix}-ecs"
+  description = "Jemaw bot ECS service"
+  vpc_id      = aws_vpc.main.id
+
+  ingress {
+    from_port       = local.bot_port
+    to_port         = local.bot_port
+    protocol        = "tcp"
+    security_groups = [aws_security_group.alb.id]
+  }
 
   egress {
     from_port   = 0
@@ -210,11 +155,11 @@ resource "aws_security_group" "db" {
   vpc_id      = aws_vpc.main.id
 
   ingress {
-    description     = "App Runner to Postgres"
+    description     = "ECS to Postgres"
     from_port       = 5432
     to_port         = 5432
     protocol        = "tcp"
-    security_groups = [aws_security_group.app_runner.id]
+    security_groups = [aws_security_group.ecs.id]
   }
 
   ingress {
@@ -255,7 +200,7 @@ resource "aws_db_instance" "postgres" {
   db_subnet_group_name         = aws_db_subnet_group.postgres.name
   vpc_security_group_ids       = [aws_security_group.db.id]
   publicly_accessible          = true
-  backup_retention_period      = 7
+  backup_retention_period      = 0
   deletion_protection          = true
   skip_final_snapshot          = false
   final_snapshot_identifier    = "${local.name_prefix}-postgres-final"
@@ -310,8 +255,8 @@ resource "aws_secretsmanager_secret_version" "groq_api_key" {
   secret_string = var.groq_api_key
 }
 
-resource "aws_iam_role" "apprunner_ecr_access" {
-  name = "${local.name_prefix}-apprunner-ecr-access"
+resource "aws_iam_role" "ecs_task_execution" {
+  name = "${local.name_prefix}-ecs-task-execution"
 
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
@@ -319,7 +264,7 @@ resource "aws_iam_role" "apprunner_ecr_access" {
       {
         Effect = "Allow"
         Principal = {
-          Service = "build.apprunner.amazonaws.com"
+          Service = "ecs-tasks.amazonaws.com"
         }
         Action = "sts:AssumeRole"
       }
@@ -329,33 +274,14 @@ resource "aws_iam_role" "apprunner_ecr_access" {
   tags = local.common_tags
 }
 
-resource "aws_iam_role_policy_attachment" "apprunner_ecr_access" {
-  role       = aws_iam_role.apprunner_ecr_access.name
-  policy_arn = "arn:aws:iam::aws:policy/service-role/AWSAppRunnerServicePolicyForECRAccess"
+resource "aws_iam_role_policy_attachment" "ecs_task_execution" {
+  role       = aws_iam_role.ecs_task_execution.name
+  policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy"
 }
 
-resource "aws_iam_role" "apprunner_instance" {
-  name = "${local.name_prefix}-apprunner-instance"
-
-  assume_role_policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [
-      {
-        Effect = "Allow"
-        Principal = {
-          Service = "tasks.apprunner.amazonaws.com"
-        }
-        Action = "sts:AssumeRole"
-      }
-    ]
-  })
-
-  tags = local.common_tags
-}
-
-resource "aws_iam_role_policy" "apprunner_secrets" {
+resource "aws_iam_role_policy" "ecs_task_secrets" {
   name = "${local.name_prefix}-secrets"
-  role = aws_iam_role.apprunner_instance.id
+  role = aws_iam_role.ecs_task_execution.id
 
   policy = jsonencode({
     Version = "2012-10-17"
@@ -376,71 +302,131 @@ resource "aws_iam_role_policy" "apprunner_secrets" {
   })
 }
 
-resource "aws_apprunner_vpc_connector" "bot" {
-  vpc_connector_name = "${local.name_prefix}-bot"
-  subnets            = aws_subnet.private[*].id
-  security_groups    = [aws_security_group.app_runner.id]
+resource "aws_cloudwatch_log_group" "bot" {
+  name              = "/ecs/${local.name_prefix}-bot"
+  retention_in_days = 7
 
   tags = local.common_tags
 }
 
-resource "aws_apprunner_service" "bot" {
-  service_name = "${local.name_prefix}-bot"
+resource "aws_lb" "bot" {
+  name               = "${local.name_prefix}-bot"
+  internal           = false
+  load_balancer_type = "application"
+  security_groups    = [aws_security_group.alb.id]
+  subnets            = aws_subnet.public[*].id
 
-  source_configuration {
-    auto_deployments_enabled = true
+  tags = local.common_tags
+}
 
-    authentication_configuration {
-      access_role_arn = aws_iam_role.apprunner_ecr_access.arn
-    }
+resource "aws_lb_target_group" "bot" {
+  name        = "${local.name_prefix}-bot"
+  port        = local.bot_port
+  protocol    = "HTTP"
+  target_type = "ip"
+  vpc_id      = aws_vpc.main.id
 
-    image_repository {
-      image_identifier      = local.bot_image
-      image_repository_type = "ECR"
-
-      image_configuration {
-        port = tostring(local.bot_port)
-
-        runtime_environment_variables = merge({
-          NODE_ENV                  = "production"
-          BOT_MODE                  = "webhook"
-          REGISTER_TELEGRAM_WEBHOOK = "false"
-          MINI_APP_URL              = local.cloudfront_url
-          BOT_USERNAME              = var.bot_username
-          MINI_APP_SHORT_NAME       = var.mini_app_short_name
-        }, var.groq_model == "" ? {} : { GROQ_MODEL = var.groq_model })
-
-        runtime_environment_secrets = merge({
-          DATABASE_URL       = aws_secretsmanager_secret.database_url.arn
-          TELEGRAM_BOT_TOKEN = aws_secretsmanager_secret.telegram_bot_token.arn
-          },
-          var.gemini_api_key == "" ? {} : { GEMINI_API_KEY = aws_secretsmanager_secret.gemini_api_key[0].arn },
-        var.groq_api_key == "" ? {} : { GROQ_API_KEY = aws_secretsmanager_secret.groq_api_key[0].arn })
-      }
-    }
-  }
-
-  instance_configuration {
-    cpu               = "0.25 vCPU"
-    memory            = "0.5 GB"
-    instance_role_arn = aws_iam_role.apprunner_instance.arn
-  }
-
-  network_configuration {
-    egress_configuration {
-      egress_type       = "VPC"
-      vpc_connector_arn = aws_apprunner_vpc_connector.bot.arn
-    }
-  }
-
-  health_check_configuration {
-    protocol            = "HTTP"
+  health_check {
+    enabled             = true
     path                = "/health"
-    interval            = 10
+    matcher             = "200"
+    interval            = 30
     timeout             = 5
-    healthy_threshold   = 1
+    healthy_threshold   = 2
     unhealthy_threshold = 5
   }
+
+  tags = local.common_tags
+}
+
+resource "aws_lb_listener" "bot" {
+  load_balancer_arn = aws_lb.bot.arn
+  port              = 80
+  protocol          = "HTTP"
+
+  default_action {
+    type             = "forward"
+    target_group_arn = aws_lb_target_group.bot.arn
+  }
+}
+
+resource "aws_ecs_cluster" "bot" {
+  name = "${local.name_prefix}-bot"
+
+  tags = local.common_tags
+}
+
+resource "aws_ecs_task_definition" "bot" {
+  family                   = "${local.name_prefix}-bot"
+  requires_compatibilities = ["FARGATE"]
+  network_mode             = "awsvpc"
+  cpu                      = 256
+  memory                   = 512
+  execution_role_arn       = aws_iam_role.ecs_task_execution.arn
+
+  container_definitions = jsonencode([
+    {
+      name      = "bot"
+      image     = local.bot_image
+      essential = true
+
+      portMappings = [
+        {
+          containerPort = local.bot_port
+          protocol      = "tcp"
+        }
+      ]
+
+      environment = concat([
+        { name = "NODE_ENV", value = "production" },
+        { name = "BOT_MODE", value = "webhook" },
+        { name = "REGISTER_TELEGRAM_WEBHOOK", value = "false" },
+        { name = "MINI_APP_URL", value = local.cloudfront_url },
+        { name = "BOT_USERNAME", value = var.bot_username },
+        { name = "MINI_APP_SHORT_NAME", value = var.mini_app_short_name }
+      ], var.groq_model == "" ? [] : [{ name = "GROQ_MODEL", value = var.groq_model }])
+
+      secrets = concat([
+        { name = "DATABASE_URL", valueFrom = aws_secretsmanager_secret.database_url.arn },
+        { name = "TELEGRAM_BOT_TOKEN", valueFrom = aws_secretsmanager_secret.telegram_bot_token.arn }
+        ],
+        var.gemini_api_key == "" ? [] : [{ name = "GEMINI_API_KEY", valueFrom = aws_secretsmanager_secret.gemini_api_key[0].arn }],
+      var.groq_api_key == "" ? [] : [{ name = "GROQ_API_KEY", valueFrom = aws_secretsmanager_secret.groq_api_key[0].arn }])
+
+      logConfiguration = {
+        logDriver = "awslogs"
+        options = {
+          awslogs-group         = aws_cloudwatch_log_group.bot.name
+          awslogs-region        = var.aws_region
+          awslogs-stream-prefix = "bot"
+        }
+      }
+    }
+  ])
+
+  tags = local.common_tags
+}
+
+resource "aws_ecs_service" "bot" {
+  name            = "${local.name_prefix}-bot"
+  cluster         = aws_ecs_cluster.bot.id
+  task_definition = aws_ecs_task_definition.bot.arn
+  desired_count   = 1
+  launch_type     = "FARGATE"
+
+  network_configuration {
+    subnets          = aws_subnet.public[*].id
+    security_groups  = [aws_security_group.ecs.id]
+    assign_public_ip = true
+  }
+
+  load_balancer {
+    target_group_arn = aws_lb_target_group.bot.arn
+    container_name   = "bot"
+    container_port   = local.bot_port
+  }
+
+  depends_on = [aws_lb_listener.bot]
 
   tags = local.common_tags
 }
@@ -533,6 +519,57 @@ resource "aws_cloudfront_distribution" "app" {
     error_code         = 404
     response_code      = 200
     response_page_path = "/index.html"
+  }
+
+  restrictions {
+    geo_restriction {
+      restriction_type = "none"
+    }
+  }
+
+  viewer_certificate {
+    cloudfront_default_certificate = true
+  }
+
+  tags = local.common_tags
+}
+
+resource "aws_cloudfront_distribution" "bot_api" {
+  enabled         = true
+  is_ipv6_enabled = true
+  comment         = "${local.name_prefix} bot API"
+  price_class     = "PriceClass_100"
+
+  origin {
+    domain_name = aws_lb.bot.dns_name
+    origin_id   = "alb-bot-api"
+
+    custom_origin_config {
+      http_port              = 80
+      https_port             = 443
+      origin_protocol_policy = "http-only"
+      origin_ssl_protocols   = ["TLSv1.2"]
+    }
+  }
+
+  default_cache_behavior {
+    target_origin_id       = "alb-bot-api"
+    viewer_protocol_policy = "redirect-to-https"
+    allowed_methods        = ["GET", "HEAD", "OPTIONS", "PUT", "POST", "PATCH", "DELETE"]
+    cached_methods         = ["GET", "HEAD", "OPTIONS"]
+    compress               = true
+    min_ttl                = 0
+    default_ttl            = 0
+    max_ttl                = 0
+
+    forwarded_values {
+      query_string = true
+      headers      = ["Authorization", "Content-Type", "X-Telegram-Init-Data"]
+
+      cookies {
+        forward = "all"
+      }
+    }
   }
 
   restrictions {

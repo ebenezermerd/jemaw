@@ -2,7 +2,7 @@
 
 AWS replacement for the old GCP/Firebase setup:
 
-- Bot/API: App Runner from an ECR image
+- Bot/API: ECS Fargate from an ECR image, behind an ALB and CloudFront HTTPS endpoint
 - Postgres: RDS PostgreSQL 16
 - Secrets: AWS Secrets Manager
 - Mini App: S3 private bucket served by CloudFront
@@ -76,7 +76,7 @@ Use the `mini_app_url` Terraform output in BotFather as the Telegram Mini App UR
 curl "$(cd infra/aws && tofu output -raw bot_service_url)/health"
 ```
 
-Telegram should report the AWS App Runner webhook URL.
+Telegram should report the AWS CloudFront bot API webhook URL.
 
 ## 7. Redeploys
 
@@ -95,5 +95,5 @@ Mini App:
 ## Notes
 
 - RDS deletion protection is enabled.
-- RDS is publicly reachable only from `allowed_admin_cidr` and the App Runner VPC connector security group.
+- RDS is publicly reachable only from `allowed_admin_cidr` and the ECS service security group.
 - After migration, consider removing the direct admin CIDR from the DB security group or replacing it with a short-lived VPN/bastion workflow.

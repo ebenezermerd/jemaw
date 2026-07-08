@@ -27,7 +27,7 @@ fi
 cd "$AWS_DIR"
 "$TF_BIN" init
 
-# First pass creates ECR so the Docker image can be pushed before App Runner is created.
+# First pass creates ECR so the Docker image can be pushed before ECS starts.
 "$TF_BIN" apply -target=aws_ecr_repository.bot -target=aws_ecr_lifecycle_policy.bot
 
 ECR_URL="$("$TF_BIN" output -raw ecr_repository_url)"

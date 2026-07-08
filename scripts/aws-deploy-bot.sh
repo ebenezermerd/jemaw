@@ -26,4 +26,10 @@ aws ecr get-login-password --region "$REGION" \
 docker build -f "$ROOT_DIR/packages/bot/Dockerfile" -t "$ECR_URL:latest" "$ROOT_DIR"
 docker push "$ECR_URL:latest"
 
-echo "Pushed $ECR_URL:latest. App Runner auto-deploys from ECR."
+aws ecs update-service \
+  --region "$REGION" \
+  --cluster jemaw-prod-bot \
+  --service jemaw-prod-bot \
+  --force-new-deployment >/dev/null
+
+echo "Pushed $ECR_URL:latest and requested a fresh ECS deployment."
