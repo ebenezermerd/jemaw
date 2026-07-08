@@ -4,7 +4,7 @@ locals {
   app_bucket_name = "${local.name_prefix}-app-${data.aws_caller_identity.current.account_id}"
   bot_image       = "${aws_ecr_repository.bot.repository_url}:${var.image_tag}"
   cloudfront_url  = "https://${aws_cloudfront_distribution.app.domain_name}"
-  database_url    = "postgres://${var.db_username}:${random_password.db.result}@${aws_db_instance.postgres.address}:${aws_db_instance.postgres.port}/${var.db_name}?sslmode=require"
+  database_url    = "postgres://${var.db_username}:${urlencode(random_password.db.result)}@${aws_db_instance.postgres.address}:${aws_db_instance.postgres.port}/${var.db_name}?sslmode=require"
   common_tags = {
     Project     = var.project_name
     Environment = var.environment
