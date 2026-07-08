@@ -14,6 +14,10 @@ const schema = z
     TELEGRAM_BOT_TOKEN: z.string().min(1, "TELEGRAM_BOT_TOKEN is required"),
     BOT_MODE: z.enum(["polling", "webhook"]).default("polling"),
     WEBHOOK_URL: z.string().url().optional(),
+    REGISTER_TELEGRAM_WEBHOOK: z
+      .enum(["true", "false"])
+      .default("true")
+      .transform((v) => v === "true"),
     PORT: z.coerce.number().int().positive().default(8080),
     NODE_ENV: z
       .enum(["development", "production", "test"])
@@ -34,10 +38,16 @@ const schema = z
     GROQ_API_KEY: z.string().optional(),
     GROQ_MODEL: z.string().optional(),
   })
-  .refine((e) => e.BOT_MODE !== "webhook" || !!e.WEBHOOK_URL, {
-    message: "WEBHOOK_URL is required when BOT_MODE=webhook",
-    path: ["WEBHOOK_URL"],
-  });
+  .refine(
+    (e) =>
+      e.BOT_MODE !== "webhook" ||
+      !e.REGISTER_TELEGRAM_WEBHOOK ||
+      !!e.WEBHOOK_URL,
+    {
+      message: "WEBHOOK_URL is required when BOT_MODE=webhook",
+      path: ["WEBHOOK_URL"],
+    },
+  );
 
 export type Env = z.infer<typeof schema>;
 

@@ -68,10 +68,14 @@ async function main(): Promise<void> {
     mountWebhookRoute(app, bot);
     await app.listen({ port: env.PORT, host: "0.0.0.0" });
     app.log.info(`Bot in webhook mode, listening on :${env.PORT}`);
-    const url = await registerWebhook(bot, env.WEBHOOK_URL, (m) =>
-      app.log.warn(m),
-    );
-    if (url) app.log.info(`Webhook registered at ${url}`);
+    if (env.REGISTER_TELEGRAM_WEBHOOK) {
+      const url = await registerWebhook(bot, env.WEBHOOK_URL, (m) =>
+        app.log.warn(m),
+      );
+      if (url) app.log.info(`Webhook registered at ${url}`);
+    } else {
+      app.log.info("Telegram webhook registration skipped by configuration");
+    }
   } else {
     await app.listen({ port: env.PORT, host: "0.0.0.0" });
     app.log.info(`Bot in polling mode, /health on :${env.PORT}`);
