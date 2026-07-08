@@ -30,4 +30,14 @@ describe("loadEnv", () => {
       loadEnv({ ...base, BOT_MODE: "webhook" } as NodeJS.ProcessEnv),
     ).toThrow(/WEBHOOK_URL/);
   });
+
+  it("allows webhook mode without WEBHOOK_URL when registration is disabled", () => {
+    const env = loadEnv({
+      ...base,
+      BOT_MODE: "webhook",
+      REGISTER_TELEGRAM_WEBHOOK: "false",
+    } as NodeJS.ProcessEnv);
+
+    expect(env.REGISTER_TELEGRAM_WEBHOOK).toBe(false);
+  });
 });
