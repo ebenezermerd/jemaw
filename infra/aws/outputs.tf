@@ -7,7 +7,7 @@ output "ecr_repository_url" {
 }
 
 output "bot_service_url" {
-  value = "https://${aws_apprunner_service.bot.service_url}"
+  value = "https://${aws_cloudfront_distribution.bot_api.domain_name}"
 }
 
 output "mini_app_url" {
@@ -20,6 +20,14 @@ output "app_bucket" {
 
 output "cloudfront_distribution_id" {
   value = aws_cloudfront_distribution.app.id
+}
+
+output "bot_cloudfront_distribution_id" {
+  value = aws_cloudfront_distribution.bot_api.id
+}
+
+output "bot_load_balancer_dns" {
+  value = aws_lb.bot.dns_name
 }
 
 output "database_endpoint" {
