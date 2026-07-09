@@ -384,6 +384,7 @@ resource "aws_ecs_task_definition" "bot" {
         { name = "WEBHOOK_URL", value = "${local.bot_api_url}/telegram/webhook" },
         { name = "REGISTER_TELEGRAM_WEBHOOK", value = "false" },
         { name = "MINI_APP_URL", value = local.cloudfront_url },
+        { name = "CORS_EXTRA_ORIGINS", value = "https://jemaw-498106.web.app" },
         { name = "BOT_USERNAME", value = var.bot_username },
         { name = "MINI_APP_SHORT_NAME", value = var.mini_app_short_name }
       ], var.groq_model == "" ? [] : [{ name = "GROQ_MODEL", value = var.groq_model }])

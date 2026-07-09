@@ -58,7 +58,10 @@ async function main(): Promise<void> {
       scanLimiter,
       botApi: bot.api,
     },
-    corsOrigin: env.MINI_APP_URL,
+    corsOrigin: [
+      ...(env.MINI_APP_URL ? [env.MINI_APP_URL] : []),
+      ...env.CORS_EXTRA_ORIGINS,
+    ],
   });
 
   if (env.BOT_MODE === "webhook") {

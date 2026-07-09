@@ -23,6 +23,18 @@ const schema = z
       .enum(["development", "production", "test"])
       .default("development"),
     MINI_APP_URL: z.string().url().optional(),
+    // Extra origins allowed to call the API, comma-separated. Lets a legacy
+    // app host (e.g. Firebase Hosting during the AWS migration) keep working
+    // alongside MINI_APP_URL.
+    CORS_EXTRA_ORIGINS: z
+      .string()
+      .optional()
+      .transform((v) =>
+        (v ?? "")
+          .split(",")
+          .map((s) => s.trim())
+          .filter((s) => s.length > 0),
+      ),
     // Bot username + Mini App short name (BotFather /newapp) used to build the
     // t.me deep link that opens the Mini App IN Telegram from a group with the
     // group id as start_param. Without these the group button falls back to a
