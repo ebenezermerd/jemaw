@@ -3,6 +3,7 @@ locals {
   bot_port        = 8080
   app_bucket_name = "${local.name_prefix}-app-${data.aws_caller_identity.current.account_id}"
   bot_image       = "${aws_ecr_repository.bot.repository_url}:${var.image_tag}"
+  bot_api_url     = "https://${aws_cloudfront_distribution.bot_api.domain_name}"
   cloudfront_url  = "https://${aws_cloudfront_distribution.app.domain_name}"
   database_url    = "postgres://${var.db_username}:${urlencode(random_password.db.result)}@${aws_db_instance.postgres.address}:${aws_db_instance.postgres.port}/${var.db_name}?sslmode=require"
   common_tags = {
@@ -380,6 +381,7 @@ resource "aws_ecs_task_definition" "bot" {
       environment = concat([
         { name = "NODE_ENV", value = "production" },
         { name = "BOT_MODE", value = "webhook" },
+        { name = "WEBHOOK_URL", value = "${local.bot_api_url}/telegram/webhook" },
         { name = "REGISTER_TELEGRAM_WEBHOOK", value = "false" },
         { name = "MINI_APP_URL", value = local.cloudfront_url },
         { name = "BOT_USERNAME", value = var.bot_username },
