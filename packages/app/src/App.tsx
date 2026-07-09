@@ -5,9 +5,11 @@ import {
   Navigate,
   useLocation,
 } from "react-router-dom";
-import { useEffect, useRef } from "react";
-import { getGroupId } from "./lib/api.js";
-import { hideTelegramBack } from "./telegram.js";
+import { useEffect, useRef, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
+import type { BootstrapResponse } from "@jemaw/shared/types";
+import { api, getGroupId } from "./lib/api.js";
+import { getInitData, hideTelegramBack } from "./telegram.js";
 import { useRefresh, useGroup, useTriggerScan } from "./lib/hooks.js";
 import { TabBar } from "./ui/TabBar.js";
 import { PullToRefresh } from "./ui/PullToRefresh.js";
@@ -112,12 +114,7 @@ function RefreshableMain() {
 export function App() {
   // Without a group context, the Mini App can't scope any data.
   if (!getGroupId()) {
-    return (
-      <Splash
-        subtitle="open from your group"
-        hint="Tap the pinned “Open Jemaw” button in your group chat to get started."
-      />
-    );
+    return <BootstrapGate />;
   }
   return (
     <ErrorBoundary>
@@ -127,6 +124,46 @@ export function App() {
         </Booting>
       </BrowserRouter>
     </ErrorBoundary>
+  );
+}
+
+function BootstrapGate() {
+  const [, rerender] = useState(0);
+  const hasInitData = Boolean(getInitData());
+  const bootstrap = useQuery({
+    queryKey: ["bootstrap"],
+    queryFn: () => api.get<BootstrapResponse>("/api/bootstrap"),
+    enabled: hasInitData,
+    retry: false,
+  });
+
+  useEffect(() => {
+    const group = bootstrap.data?.groups[0];
+    if (!group) return;
+
+    const url = new URL(window.location.href);
+    url.searchParams.set("group", group.id);
+    window.history.replaceState(null, "", `${url.pathname}${url.search}${url.hash}`);
+    rerender((n) => n + 1);
+  }, [bootstrap.data]);
+
+  if (getGroupId()) {
+    return (
+      <ErrorBoundary>
+        <BrowserRouter>
+          <Booting>
+            <Shell />
+          </Booting>
+        </BrowserRouter>
+      </ErrorBoundary>
+    );
+  }
+
+  return (
+    <Splash
+      subtitle={bootstrap.isLoading ? "opening your group" : "open from your group"}
+      hint="Tap the pinned “Open Jemaw” button in your group chat to get started."
+    />
   );
 }
 

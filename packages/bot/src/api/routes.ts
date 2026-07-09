@@ -6,7 +6,9 @@ import type { FastifyInstance, FastifyRequest, FastifyReply } from "fastify";
 import { z } from "zod";
 import type { Db } from "../db.js";
 import { makeAuthHook, type AuthDeps } from "../auth/authHook.js";
+import { verifyInitData } from "../auth/initData.js";
 import {
+  listGroupsForTelegramUser,
   listMembers,
   listLiveExpenses,
   createExpenseWithShares,
@@ -53,6 +55,7 @@ import { refreshGroupSummarySafe } from "../ai/summary.js";
 import {
   decimalToCents,
   centsToDecimal,
+  type BootstrapResponse,
   type HistoryResponse,
   type HistoryItem,
   type SettlePlanResponse,
@@ -292,6 +295,28 @@ export async function registerApi(
     now: deps.now,
   };
   const auth = makeAuthHook(authDeps);
+
+  app.get("/api/bootstrap", async (req, reply): Promise<BootstrapResponse | void> => {
+    const initData = req.headers["x-telegram-init-data"];
+    if (typeof initData !== "string" || initData.length === 0) {
+      await reply.code(401).send({ error: "missing initData" });
+      return;
+    }
+
+    const verified = verifyInitData(initData, deps.botToken, deps.now());
+    if (!verified.ok || !verified.data) {
+      await reply.code(401).send({ error: `auth: ${verified.reason}` });
+      return;
+    }
+
+    const userGroups = await listGroupsForTelegramUser(
+      db,
+      verified.data.user.id,
+    );
+    return {
+      groups: userGroups.map((group) => ({ id: group.id, name: group.name })),
+    };
+  });
 
   // Admin guard: returns true if the caller is a group admin, else sends 403.
   // Relies on req.jemaw.member.role, which the auth hook resolves from verified
