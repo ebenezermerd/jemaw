@@ -14,6 +14,8 @@ import {
   messages,
   aiRuns,
   suggestions,
+  botReplies,
+  botReplyFeedback,
   type Group,
   type Member,
   type Settlement,
@@ -21,6 +23,8 @@ import {
   type Message,
   type AiRun,
   type Suggestion,
+  type NewBotReply,
+  type BotReply,
 } from "@jemaw/shared/schema";
 import { centsToDecimal, decimalToCents } from "@jemaw/shared/types";
 
@@ -976,5 +980,91 @@ export async function resetGroupData(db: Db, groupId: string): Promise<void> {
       .update(groups)
       .set({ lastScanMessageId: null })
       .where(eq(groups.id, groupId));
+  });
+}
+
+// ─── Bot replies (humor audit) ────────────────────────────────────────
+export async function insertBotReply(
+  db: Db,
+  row: Omit<NewBotReply, "id" | "createdAt">,
+): Promise<BotReply> {
+  const inserted = await db.insert(botReplies).values(row).returning();
+  return inserted[0]!;
+}
+
+export async function countBotRepliesSince(
+  db: Db,
+  groupId: string,
+  since: Date,
+): Promise<number> {
+  const rows = await db
+    .select({ id: botReplies.id })
+    .from(botReplies)
+    .where(
+      and(
+        eq(botReplies.groupId, groupId),
+        eq(botReplies.decision, "sent"),
+        gt(botReplies.createdAt, since),
+      ),
+    );
+  return rows.length;
+}
+
+export async function lastBotReplyAt(
+  db: Db,
+  groupId: string,
+): Promise<Date | null> {
+  const rows = await db
+    .select({ createdAt: botReplies.createdAt })
+    .from(botReplies)
+    .where(
+      and(eq(botReplies.groupId, groupId), eq(botReplies.decision, "sent")),
+    )
+    .orderBy(desc(botReplies.createdAt))
+    .limit(1);
+  return rows[0]?.createdAt ?? null;
+}
+
+export async function listRecentBotReplyTexts(
+  db: Db,
+  groupId: string,
+  limit: number,
+): Promise<string[]> {
+  const rows = await db
+    .select({ selectedText: botReplies.selectedText })
+    .from(botReplies)
+    .where(
+      and(eq(botReplies.groupId, groupId), eq(botReplies.decision, "sent")),
+    )
+    .orderBy(desc(botReplies.createdAt))
+    .limit(limit);
+  return rows
+    .map((r) => r.selectedText)
+    .filter((t): t is string => typeof t === "string" && t.length > 0);
+}
+
+export async function getBotReply(
+  db: Db,
+  groupId: string,
+  replyId: string,
+): Promise<BotReply | null> {
+  const rows = await db
+    .select()
+    .from(botReplies)
+    .where(and(eq(botReplies.id, replyId), eq(botReplies.groupId, groupId)))
+    .limit(1);
+  return rows[0] ?? null;
+}
+
+export async function insertBotReplyFeedback(
+  db: Db,
+  botReplyId: string,
+  memberId: string,
+  feedbackType: string,
+): Promise<void> {
+  await db.insert(botReplyFeedback).values({
+    botReplyId,
+    memberId,
+    feedbackType,
   });
 }
