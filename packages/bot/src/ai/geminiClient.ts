@@ -25,20 +25,29 @@ export interface ScanClient {
 /** @deprecated use ScanClient — kept so existing imports keep working. */
 export type GeminiClient = ScanClient;
 
-/** Gemini backend (gemini-2.0-flash — fast extraction, JSON mode). */
-export function createGeminiClient(apiKey: string): ScanClient {
+/**
+ * Defaults track provider deprecations (see docs/Jemaw_Interactive_Humor_Final.md).
+ * Override with GEMINI_MODEL / GROQ_MODEL so production can migrate without a code push.
+ */
+export const DEFAULT_GEMINI_MODEL = "gemini-2.5-flash-lite";
+/** Groq replacement for llama-3.3-70b-versatile (shutdown 2026-08-16 on free/dev tiers). */
+export const DEFAULT_GROQ_MODEL = "openai/gpt-oss-120b";
+
+/** Gemini backend (JSON mode, temperature 0). Model id is configurable. */
+export function createGeminiClient(apiKey: string, model?: string): ScanClient {
   const genAI = new GoogleGenerativeAI(apiKey);
+  const modelName = model?.trim() || DEFAULT_GEMINI_MODEL;
   return {
     async suggest({ systemPrompt, userPrompt }) {
-      const model = genAI.getGenerativeModel({
-        model: "gemini-2.0-flash",
+      const generativeModel = genAI.getGenerativeModel({
+        model: modelName,
         systemInstruction: systemPrompt,
         generationConfig: {
           responseMimeType: "application/json",
           temperature: 0,
         },
       });
-      const result = await model.generateContent(userPrompt);
+      const result = await generativeModel.generateContent(userPrompt);
       const usage = result.response.usageMetadata;
       return {
         json: JSON.parse(result.response.text()),
@@ -50,16 +59,15 @@ export function createGeminiClient(apiKey: string): ScanClient {
 }
 
 /**
- * Groq backend via its OpenAI-compatible API. Much higher tokens/sec and a
- * generous free tier; the model runs JSON mode at temperature 0 for stable
- * extraction. Default model is overridable with GROQ_MODEL.
+ * Groq backend via its OpenAI-compatible API. JSON mode at temperature 0 for
+ * stable extraction. Default model is overridable with GROQ_MODEL.
  */
 export function createGroqClient(apiKey: string, model?: string): ScanClient {
   const client = new OpenAI({
     apiKey,
     baseURL: "https://api.groq.com/openai/v1",
   });
-  const modelName = model ?? "llama-3.3-70b-versatile";
+  const modelName = model?.trim() || DEFAULT_GROQ_MODEL;
   return {
     async suggest({ systemPrompt, userPrompt }) {
       const res = await client.chat.completions.create({
