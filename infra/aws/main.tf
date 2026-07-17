@@ -387,7 +387,10 @@ resource "aws_ecs_task_definition" "bot" {
         { name = "CORS_EXTRA_ORIGINS", value = "https://jemaw-498106.web.app" },
         { name = "BOT_USERNAME", value = var.bot_username },
         { name = "MINI_APP_SHORT_NAME", value = var.mini_app_short_name }
-      ], var.groq_model == "" ? [] : [{ name = "GROQ_MODEL", value = var.groq_model }])
+      ],
+      var.groq_model == "" ? [] : [{ name = "GROQ_MODEL", value = var.groq_model }],
+      var.gemini_model == "" ? [] : [{ name = "GEMINI_MODEL", value = var.gemini_model }],
+      )
 
       secrets = concat([
         { name = "DATABASE_URL", valueFrom = aws_secretsmanager_secret.database_url.arn },
