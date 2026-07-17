@@ -52,6 +52,8 @@ const schema = z
     GEMINI_MODEL: z.string().min(1).optional(),
     GROQ_API_KEY: z.string().optional(),
     GROQ_MODEL: z.string().min(1).optional(),
+    // Phase 2 humor generation model (defaults to GROQ_MODEL / scan client).
+    HUMOR_MODEL: z.string().min(1).optional(),
   })
   .refine(
     (e) =>

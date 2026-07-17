@@ -18,6 +18,7 @@ import type {
   SuggestionDto,
 } from "@jemaw/shared/types";
 import { centsToDecimal, telegramIdToString } from "@jemaw/shared/types";
+import { parseHumorSettings, toHumorSettingsDto } from "@jemaw/shared/humor";
 import type { ExpenseWithShares } from "../repo.js";
 import type { MemberNet } from "../domain/balances.js";
 import type { Transfer } from "../domain/settle.js";
@@ -43,6 +44,7 @@ export function toGroupDto(
   /** the calling member, to expose their own admin flag */
   caller: Member,
 ): GroupDto {
+  const humorRaw = (g.settings as Record<string, unknown> | null)?.humor;
   return {
     id: g.id,
     name: g.name,
@@ -51,6 +53,7 @@ export function toGroupDto(
     hasExpenses,
     canScan,
     isAdmin: caller.role === "admin",
+    humor: toHumorSettingsDto(parseHumorSettings(humorRaw)),
   };
 }
 

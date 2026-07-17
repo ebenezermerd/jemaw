@@ -73,6 +73,19 @@ export interface GroupDto {
   canScan: boolean;
   /** Whether the calling member is an admin of this group. */
   isAdmin: boolean;
+  /** Interactive humor settings (from groups.settings.humor). */
+  humor?: HumorSettingsDto;
+}
+
+/** Wire format for groups.settings.humor. */
+export interface HumorSettingsDto {
+  mode: "off" | "jemaw_dry" | "roast" | "chaos";
+  publicRepliesEnabled: boolean;
+  maxPublicRepliesPerDay: number;
+  cooldownMinutes: number;
+  languageMode: "auto" | "en" | "am" | "code_mix";
+  useModelComposer: boolean;
+  mutedUntil: string | null;
 }
 
 export interface BootstrapGroupDto {
