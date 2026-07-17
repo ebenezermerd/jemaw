@@ -26,12 +26,13 @@ export interface ScanClient {
 export type GeminiClient = ScanClient;
 
 /**
- * Defaults track provider deprecations (see docs/Jemaw_Interactive_Humor_Final.md).
- * Override with GEMINI_MODEL / GROQ_MODEL so production can migrate without a code push.
+ * Defaults are models verified working with the current production keys.
+ * Override with GEMINI_MODEL / GROQ_MODEL so production can change without a code push.
+ * Note: openai/gpt-oss-* is blocked on the Jemaw Groq org; gemini-2.0-flash is
+ * quota-exhausted and gemini-2.5-flash-lite is unavailable for this API key.
  */
-export const DEFAULT_GEMINI_MODEL = "gemini-2.5-flash-lite";
-/** Groq replacement for llama-3.3-70b-versatile (shutdown 2026-08-16 on free/dev tiers). */
-export const DEFAULT_GROQ_MODEL = "openai/gpt-oss-120b";
+export const DEFAULT_GEMINI_MODEL = "gemini-2.5-flash";
+export const DEFAULT_GROQ_MODEL = "llama-3.3-70b-versatile";
 
 /** Gemini backend (JSON mode, temperature 0). Model id is configurable. */
 export function createGeminiClient(apiKey: string, model?: string): ScanClient {

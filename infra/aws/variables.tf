@@ -48,15 +48,15 @@ variable "groq_api_key" {
 }
 
 variable "groq_model" {
-  description = "Optional Groq model override (e.g. openai/gpt-oss-120b)."
+  description = "Optional Groq model override (e.g. llama-3.3-70b-versatile)."
   type        = string
-  default     = "openai/gpt-oss-120b"
+  default     = "llama-3.3-70b-versatile"
 }
 
 variable "gemini_model" {
-  description = "Optional Gemini model override (e.g. gemini-2.5-flash-lite)."
+  description = "Optional Gemini model override (e.g. gemini-2.5-flash)."
   type        = string
-  default     = "gemini-2.5-flash-lite"
+  default     = "gemini-2.5-flash"
 }
 
 variable "bot_username" {
