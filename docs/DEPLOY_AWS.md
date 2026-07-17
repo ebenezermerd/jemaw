@@ -27,7 +27,20 @@ Fill `infra/aws/terraform.tfvars` with:
 
 - `allowed_admin_cidr`: your current public IP as `/32`
 - `telegram_bot_token`
-- `gemini_api_key` and/or `groq_api_key` if AI scanning should run
+
+**Do not put AI API keys in tfvars or any tracked file.** Store them only in AWS Secrets Manager:
+
+```bash
+# Interactive (prompts, no echo) — preferred
+./scripts/aws-set-ai-keys.sh --prompt
+
+# Or from env vars in your shell only (never commit):
+export GEMINI_API_KEY='...'
+export GROQ_API_KEY='...'
+./scripts/aws-set-ai-keys.sh
+```
+
+That script writes `jemaw-prod/gemini-api-key` and `jemaw-prod/groq-api-key`, grants the ECS task execution role access, and redeploys the bot. Success log line: `[scan] using Groq (Gemini fallback)`.
 
 ## 3. Provision AWS and deploy the bot image
 
