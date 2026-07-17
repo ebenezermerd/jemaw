@@ -1,16 +1,16 @@
 import { describe, it, expect } from "vitest";
 import { verifyCandidate, isTooSimilar } from "./verifier.js";
-import { buildScanHitPacket } from "./factPacket.js";
+import { buildScanOutcomePacket } from "./factPacket.js";
 
 describe("verifyCandidate", () => {
-  const packet = buildScanHitPacket({ suggestionCount: 3 });
+  const packet = buildScanOutcomePacket({ written: 2, pendingCount: 3 });
 
-  it("accepts a dry line with the allowed count", () => {
-    const r = verifyCandidate("3 expenses found. Quiet win.", packet);
+  it("accepts allowed counts", () => {
+    const r = verifyCandidate("2 new drafts. 3 still waiting.", packet);
     expect(r.ok).toBe(true);
   });
 
-  it("rejects an invented amount", () => {
+  it("rejects invented amounts", () => {
     const r = verifyCandidate("You owe 999 already.", packet);
     expect(r.ok).toBe(false);
   });

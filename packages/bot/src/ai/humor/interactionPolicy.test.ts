@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { evaluateHumorPolicy } from "./interactionPolicy.js";
 import { DEFAULT_HUMOR_SETTINGS } from "@jemaw/shared/humor";
-import { buildScanHitPacket, buildScanMissPacket } from "./factPacket.js";
+import { buildScanOutcomePacket, buildScanMissPacket } from "./factPacket.js";
 
 const base = {
   nowMs: 1_000_000,
@@ -15,7 +15,7 @@ describe("evaluateHumorPolicy", () => {
     const d = evaluateHumorPolicy({
       ...base,
       settings: { ...DEFAULT_HUMOR_SETTINGS, mode: "off" },
-      factPacket: buildScanHitPacket({ suggestionCount: 2 }),
+      factPacket: buildScanOutcomePacket({ written: 2, pendingCount: 2 }),
     });
     expect(d).toEqual({ decision: "do_not_reply", reason: "mode_off" });
   });
@@ -24,7 +24,7 @@ describe("evaluateHumorPolicy", () => {
     const d = evaluateHumorPolicy({
       ...base,
       settings: { ...DEFAULT_HUMOR_SETTINGS, mode: "jemaw_dry" },
-      factPacket: buildScanHitPacket({ suggestionCount: 3 }),
+      factPacket: buildScanOutcomePacket({ written: 3, pendingCount: 3 }),
     });
     expect(d.decision).toBe("reply");
   });
@@ -40,7 +40,7 @@ describe("evaluateHumorPolicy", () => {
       },
       lastPublicReplyAtMs: base.nowMs - 5 * 60_000,
       publicRepliesToday: 99,
-      factPacket: buildScanHitPacket({ suggestionCount: 1 }),
+      factPacket: buildScanOutcomePacket({ written: 1, pendingCount: 1 }),
     });
     expect(d.decision).toBe("reply");
   });
@@ -55,7 +55,7 @@ describe("evaluateHumorPolicy", () => {
         cooldownMinutes: 30,
       },
       lastPublicReplyAtMs: base.nowMs - 5 * 60_000,
-      factPacket: buildScanHitPacket({ suggestionCount: 1 }),
+      factPacket: buildScanOutcomePacket({ written: 1, pendingCount: 1 }),
     });
     expect(d).toEqual({ decision: "do_not_reply", reason: "cooldown" });
   });

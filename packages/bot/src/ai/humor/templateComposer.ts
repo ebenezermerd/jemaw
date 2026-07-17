@@ -1,6 +1,5 @@
 /**
- * Template composer for Phase 1 + fallback for Phase 2.
- * Placeholders like {{suggestion_count}} are filled from the fact packet only.
+ * Template composer — outcome-aware Phase 1–3 fallback.
  */
 import type {
   HumorMode,
@@ -24,66 +23,81 @@ type Template = {
 };
 
 const TEMPLATES: Template[] = [
-  // scan_hit
+  // fresh finds
   {
-    id: "dry_scan_hit_1",
+    id: "fresh_1",
     event: "scan_hit",
     modes: ["jemaw_dry", "roast", "chaos"],
-    body: "{{suggestion_count}} expenses found. The spreadsheet may stand down.",
+    body: "{{new_written}} new draft{{new_written_s}} ready. Open Jemaw to review.",
     style: "dry_observation",
   },
   {
-    id: "dry_scan_hit_2",
+    id: "fresh_2",
     event: "scan_hit",
     modes: ["jemaw_dry", "roast", "chaos"],
-    body: "{{suggestion_count}} drafts ready. Open Jemaw when you are.",
+    body: "Caught {{new_written}} new item{{new_written_s}}. {{pending_count}} total waiting.",
     style: "dry_observation",
   },
   {
-    id: "dry_scan_hit_3",
+    id: "fresh_3",
     event: "scan_hit",
     modes: ["jemaw_dry", "roast", "chaos"],
-    body: "Caught {{suggestion_count}} possible expenses. The receipts have formed a small committee.",
+    body: "{{new_written}} new expense draft{{new_written_s}} spotted. The ledger is listening.",
     style: "dry_observation",
   },
   {
-    id: "dry_scan_hit_4",
-    event: "scan_hit",
-    modes: ["jemaw_dry", "roast", "chaos"],
-    body: "{{suggestion_count}} items noticed. Confirm when the chaos settles.",
-    style: "dry_observation",
-  },
-  {
-    id: "roast_scan_hit_1",
+    id: "fresh_roast",
     event: "scan_hit",
     modes: ["roast", "chaos"],
-    body: "{{suggestion_count}} expenses spotted. Someone has been productive with money.",
+    body: "{{new_written}} new draft{{new_written_s}}. Someone has been busy with money.",
     style: "roast",
   },
+  // still pending (deduped scan)
   {
-    id: "chaos_scan_hit_1",
-    event: "scan_hit",
-    modes: ["chaos"],
-    body: "{{suggestion_count}} expenses materialised. The ledger is having a day.",
-    style: "chaos",
+    id: "pending_1",
+    event: "scan_still_pending",
+    modes: ["jemaw_dry", "roast", "chaos"],
+    body: "Still {{pending_count}} draft{{pending_s}} waiting. Nothing new this pass.",
+    style: "dry_observation",
   },
-  // scan_miss
   {
-    id: "dry_scan_miss_1",
+    id: "pending_2",
+    event: "scan_still_pending",
+    modes: ["jemaw_dry", "roast", "chaos"],
+    body: "Same {{pending_count}} open draft{{pending_s}}. Open Jemaw when you are ready.",
+    style: "dry_observation",
+  },
+  {
+    id: "pending_3",
+    event: "scan_still_pending",
+    modes: ["jemaw_dry", "roast", "chaos"],
+    body: "No new finds. {{pending_count}} earlier draft{{pending_s}} still need a decision.",
+    style: "dry_observation",
+  },
+  {
+    id: "pending_roast",
+    event: "scan_still_pending",
+    modes: ["roast", "chaos"],
+    body: "{{pending_count}} draft{{pending_s}} still hanging. The Mini App is patient. Are you?",
+    style: "roast",
+  },
+  // miss
+  {
+    id: "miss_1",
     event: "scan_miss",
     modes: ["jemaw_dry", "roast", "chaos"],
     body: "Nothing clear enough to record. A rare victory for ambiguity.",
     style: "dry_observation",
   },
   {
-    id: "dry_scan_miss_2",
+    id: "miss_2",
     event: "scan_miss",
     modes: ["jemaw_dry", "roast", "chaos"],
     body: "No clean expenses in the window. The books stay quiet.",
     style: "dry_observation",
   },
   {
-    id: "roast_scan_miss_1",
+    id: "miss_roast",
     event: "scan_miss",
     modes: ["roast", "chaos"],
     body: "Scan complete. Either you are thrifty or very subtle.",
@@ -91,25 +105,18 @@ const TEMPLATES: Template[] = [
   },
   // settlement
   {
-    id: "dry_settlement_1",
+    id: "settle_1",
     event: "settlement_completed",
     modes: ["jemaw_dry", "roast", "chaos"],
     body: "Settled. The ledger has stopped holding a grudge.",
     style: "dry_observation",
   },
   {
-    id: "dry_settlement_2",
+    id: "settle_2",
     event: "settlement_completed",
     modes: ["jemaw_dry", "roast", "chaos"],
     body: "Payment recorded. Diplomatic relations restored.",
     style: "dry_observation",
-  },
-  {
-    id: "roast_settlement_1",
-    event: "settlement_completed",
-    modes: ["roast", "chaos"],
-    body: "Settled. One less plot line in the group chat.",
-    style: "roast",
   },
 ];
 
@@ -133,18 +140,18 @@ export function renderPlaceholders(
   body: string,
   packet: PublicSafeFactPacket,
 ): string {
-  const values: Record<string, string> = {};
-  if (
-    packet.public_facts.suggestion_count != null &&
-    packet.allowed_placeholders.includes("suggestion_count")
-  ) {
-    values.suggestion_count = String(packet.public_facts.suggestion_count);
-  }
-  if (
-    packet.public_facts.currency &&
-    packet.allowed_placeholders.includes("currency")
-  ) {
-    values.currency = packet.public_facts.currency;
+  const pf = packet.public_facts;
+  const newW = pf.new_written ?? 0;
+  const pending = pf.pending_count ?? pf.suggestion_count ?? 0;
+  const values: Record<string, string> = {
+    new_written: String(newW),
+    pending_count: String(pending),
+    suggestion_count: String(pending),
+    new_written_s: newW === 1 ? "" : "s",
+    pending_s: pending === 1 ? "" : "s",
+  };
+  if (pf.currency && packet.allowed_placeholders.includes("currency")) {
+    values.currency = pf.currency;
   }
   return body.replace(/\{\{(\w+)\}\}/g, (_, key: string) => {
     if (key in values) return values[key]!;
