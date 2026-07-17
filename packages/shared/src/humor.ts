@@ -86,8 +86,9 @@ export const DEFAULT_HUMOR_SETTINGS: HumorSettingsV1 = {
   version: 1,
   mode: "off",
   publicRepliesEnabled: true,
-  maxPublicRepliesPerDay: 3,
-  cooldownMinutes: 30,
+  // Caps only apply to passive events; direct "jemaw" is unlimited.
+  maxPublicRepliesPerDay: 50,
+  cooldownMinutes: 0,
   languageMode: "auto",
   callbacks: "off",
   publicFinancialRoasting: false,
@@ -127,9 +128,10 @@ export const HUMOR_MODE_LIMITS: Record<
   Exclude<HumorMode, "off">,
   { maxPublicRepliesPerDay: number; cooldownMinutes: number }
 > = {
-  jemaw_dry: { maxPublicRepliesPerDay: 3, cooldownMinutes: 30 },
-  roast: { maxPublicRepliesPerDay: 6, cooldownMinutes: 15 },
-  chaos: { maxPublicRepliesPerDay: 12, cooldownMinutes: 5 },
+  // Passive-event fallbacks only. Direct jemaw mentions ignore these.
+  jemaw_dry: { maxPublicRepliesPerDay: 50, cooldownMinutes: 0 },
+  roast: { maxPublicRepliesPerDay: 50, cooldownMinutes: 0 },
+  chaos: { maxPublicRepliesPerDay: 100, cooldownMinutes: 0 },
 };
 
 export function parseHumorSettings(raw: unknown): HumorSettingsV1 {
