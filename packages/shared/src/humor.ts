@@ -30,6 +30,8 @@ export type HumorSettingsV1 = {
   memberTargeting: HumorMemberTargeting;
   /** 0–1; higher allows less predictable templates/candidates in later phases. */
   unpredictability: number;
+  /** Phase 2: try model candidates before templates when true. */
+  useModelComposer: boolean;
   enabledByMemberId?: string;
   enabledAt?: string;
   mutedUntil?: string;
@@ -97,7 +99,28 @@ export const DEFAULT_HUMOR_SETTINGS: HumorSettingsV1 = {
   profanity: "off",
   memberTargeting: "group_only",
   unpredictability: 0,
+  useModelComposer: true,
 };
+
+export function toHumorSettingsDto(s: HumorSettingsV1): {
+  mode: HumorMode;
+  publicRepliesEnabled: boolean;
+  maxPublicRepliesPerDay: number;
+  cooldownMinutes: number;
+  languageMode: HumorLanguageMode;
+  useModelComposer: boolean;
+  mutedUntil: string | null;
+} {
+  return {
+    mode: s.mode,
+    publicRepliesEnabled: s.publicRepliesEnabled,
+    maxPublicRepliesPerDay: s.maxPublicRepliesPerDay,
+    cooldownMinutes: s.cooldownMinutes,
+    languageMode: s.languageMode,
+    useModelComposer: s.useModelComposer,
+    mutedUntil: s.mutedUntil ?? null,
+  };
+}
 
 /** Cooldown / daily caps by mode (product defaults). */
 export const HUMOR_MODE_LIMITS: Record<

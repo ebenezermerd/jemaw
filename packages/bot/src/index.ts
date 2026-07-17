@@ -51,6 +51,27 @@ async function main(): Promise<void> {
   }
   const scanLimiter = new ScanRateLimiter();
 
+  // Humor Phase 2: reuse scan providers; optional HUMOR_MODEL overrides generation model.
+  const humorModel = env.HUMOR_MODEL ?? env.GROQ_MODEL;
+  const humorClient: ScanClient | undefined = env.GROQ_API_KEY
+    ? createGroqClient(env.GROQ_API_KEY, humorModel)
+    : geminiOnly
+      ? createGeminiClient(env.GEMINI_API_KEY!, env.GEMINI_MODEL)
+      : undefined;
+  const humor =
+    humorClient
+      ? {
+          client: humorClient,
+          provider: env.GROQ_API_KEY ? "groq" : "gemini",
+          model: humorModel ?? env.GEMINI_MODEL ?? "default",
+        }
+      : undefined;
+  if (humor) {
+    console.log(
+      `[humor] composer ready provider=${humor.provider} model=${humor.model}`,
+    );
+  }
+
   const bot = createBot(env.TELEGRAM_BOT_TOKEN, {
     db,
     defaultCurrency,
@@ -59,6 +80,7 @@ async function main(): Promise<void> {
     miniAppShortName: env.MINI_APP_SHORT_NAME,
     gemini,
     scanLimiter,
+    humor,
   });
 
   const app = await buildServer({
@@ -69,6 +91,7 @@ async function main(): Promise<void> {
       gemini,
       scanLimiter,
       botApi: bot.api,
+      humor,
     },
     corsOrigin: [
       ...(env.MINI_APP_URL ? [env.MINI_APP_URL] : []),

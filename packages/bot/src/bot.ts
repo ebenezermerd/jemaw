@@ -15,6 +15,7 @@ import { sendDigestNow } from "./telegram/weeklyJob.js";
 import type { GeminiClient } from "./ai/geminiClient.js";
 import type { ScanRateLimiter } from "./ai/rateLimit.js";
 import { scanGroup } from "./ai/scan.js";
+import { maybeDeliverScanHumor, type HumorRuntime } from "./ai/humor/deliver.js";
 
 /** Word-boundary, case-insensitive "jemaw" trigger (plan §10). */
 const JEMAW_RE = /(?<![a-z0-9])jemaw(?![a-z0-9])/i;
@@ -56,6 +57,8 @@ export interface BotDeps {
   /** Present only when GEMINI_API_KEY is set; absent → scans don't run. */
   gemini?: GeminiClient;
   scanLimiter: ScanRateLimiter;
+  /** Optional Phase 1–2 humor composer client (usually same keys as scan). */
+  humor?: HumorRuntime;
 }
 
 const GROUP_TYPES = new Set(["group", "supergroup"]);
@@ -63,8 +66,16 @@ const GROUP_TYPES = new Set(["group", "supergroup"]);
 /** Create the grammY bot with all handlers (Phases 1-3) registered. */
 export function createBot(token: string, deps: BotDeps): Bot {
   const bot = new Bot(token);
-  const { db, defaultCurrency, miniAppUrl, botUsername, miniAppShortName, gemini, scanLimiter } =
-    deps;
+  const {
+    db,
+    defaultCurrency,
+    miniAppUrl,
+    botUsername,
+    miniAppShortName,
+    gemini,
+    scanLimiter,
+    humor,
+  } = deps;
 
   /** Refresh the pinned button so it reflects the current suggestion count. */
   async function refreshPinned(
@@ -132,6 +143,21 @@ export function createBot(token: string, deps: BotDeps): Bot {
         res.evidenceMessageIds,
       );
       await refreshPinned(api, group.id, Number(group.telegramChatId));
+      // Phase 1–2 interactive humor (no-op when mode is off).
+      await maybeDeliverScanHumor({
+        db,
+        api,
+        group: g,
+        written: res.written,
+        pendingCount: res.pendingCount,
+        scanStatus: res.status,
+        directInvocation:
+          triggerType === "keyword" || triggerType === "command",
+        currency: g.defaultCurrency,
+        humor: humor ?? {},
+      }).catch((err) =>
+        console.warn(`[humor] after scan failed:`, err?.message ?? err),
+      );
     })().catch((err) =>
       console.error(`[scan] failed:`, err?.message ?? err),
     );

@@ -13,6 +13,8 @@ import {
   useMemberSummary,
   useRemoveMember,
   useMeSummary,
+  useHumorSettings,
+  useUpdateHumorSettings,
 } from "../lib/hooks.js";
 import type { AssignTelegramInput, MemberDto } from "@jemaw/shared/types";
 import { formatMoney } from "../lib/money.js";
@@ -42,11 +44,14 @@ export function Settings() {
   const [editMemberId, setEditMemberId] = useState<string | null>(null);
   const [removeMemberId, setRemoveMemberId] = useState<string | null>(null);
   const me = useMeSummary();
+  const humorQ = useHumorSettings();
+  const updateHumor = useUpdateHumorSettings();
 
   if (group.isLoading) return <PageLoader />;
   const g = group.data;
   if (!g) return <Centered>Couldn't load settings.</Centered>;
   const isAdmin = g.isAdmin;
+  const humor = humorQ.data ?? g.humor;
   const activeMembers = g.members.filter((m) => m.isActive);
   const editMember = editMemberId
     ? g.members.find((m) => m.id === editMemberId) ?? null
@@ -80,6 +85,74 @@ export function Settings() {
             ]}
           />
         </Row>
+      </Section>
+
+      {/* Interactive humor (Phase 1–2) */}
+      <Section title="Jemaw voice">
+        <p className="t-caption" style={{ color: "var(--text-faint)", margin: "0 0 8px" }}>
+          Short lines in the group after scans. Money facts stay exact; humor never changes the ledger.
+          Default is off.
+        </p>
+        <Row label="Mode">
+          {isAdmin ? (
+            <Segmented
+              value={humor?.mode ?? "off"}
+              onChange={async (mode) => {
+                await updateHumor.mutateAsync({
+                  mode: mode as "off" | "jemaw_dry" | "roast" | "chaos",
+                });
+                await humorQ.refetch();
+                await group.refetch();
+              }}
+              options={[
+                { value: "off", label: "Off" },
+                { value: "jemaw_dry", label: "Dry" },
+                { value: "roast", label: "Roast" },
+                { value: "chaos", label: "Chaos" },
+              ]}
+            />
+          ) : (
+            <span className="t-body" style={{ color: "var(--text-muted)" }}>
+              {humor?.mode ?? "off"}
+            </span>
+          )}
+        </Row>
+        {isAdmin && humor && humor.mode !== "off" && (
+          <>
+            <Row label="Model lines">
+              <Segmented
+                value={humor.useModelComposer ? "on" : "off"}
+                onChange={async (v) => {
+                  await updateHumor.mutateAsync({
+                    useModelComposer: v === "on",
+                  });
+                  await humorQ.refetch();
+                }}
+                options={[
+                  { value: "on", label: "On" },
+                  { value: "off", label: "Templates" },
+                ]}
+              />
+            </Row>
+            <Row label="Mute 7 days">
+              <Button
+                variant="ghost"
+                disabled={updateHumor.isPending}
+                onClick={async () => {
+                  await updateHumor.mutateAsync({ muteDays: 7 });
+                  await humorQ.refetch();
+                }}
+              >
+                Mute
+              </Button>
+            </Row>
+            {humor.mutedUntil && (
+              <p className="t-caption" style={{ color: "var(--text-faint)", margin: 0 }}>
+                Muted until {new Date(humor.mutedUntil).toLocaleString()}
+              </p>
+            )}
+          </>
+        )}
       </Section>
 
       {/* Group */}
