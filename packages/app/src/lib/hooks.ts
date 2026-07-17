@@ -20,6 +20,7 @@ import type {
   AssignTelegramInput,
   MemberDataSummaryDto,
   RemoveMemberResponse,
+  HumorSettingsDto,
 } from "@jemaw/shared/types";
 import { api, getGroupId } from "./api.js";
 
@@ -58,6 +59,25 @@ export function useUpdateGroup() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["group"] });
       qc.invalidateQueries({ queryKey: ["me-summary"] });
+    },
+  });
+}
+
+export function useHumorSettings() {
+  return useQuery({
+    queryKey: ["humor"],
+    queryFn: () => api.get<HumorSettingsDto>(`/api/groups/${gid()}/humor`),
+  });
+}
+
+export function useUpdateHumorSettings() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (input: Partial<HumorSettingsDto> & { muteDays?: number }) =>
+      api.patch<HumorSettingsDto>(`/api/groups/${gid()}/humor`, input),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["humor"] });
+      qc.invalidateQueries({ queryKey: ["group"] });
     },
   });
 }
