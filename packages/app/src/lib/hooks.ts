@@ -21,6 +21,8 @@ import type {
   MemberDataSummaryDto,
   RemoveMemberResponse,
   HumorSettingsDto,
+  GroupVibeDto,
+  HumorMemberPrefsDto,
 } from "@jemaw/shared/types";
 import { api, getGroupId } from "./api.js";
 
@@ -63,10 +65,16 @@ export function useUpdateGroup() {
   });
 }
 
+export type HumorBundle = {
+  humor: HumorSettingsDto;
+  vibe: GroupVibeDto;
+  myPrefs: HumorMemberPrefsDto;
+};
+
 export function useHumorSettings() {
   return useQuery({
     queryKey: ["humor"],
-    queryFn: () => api.get<HumorSettingsDto>(`/api/groups/${gid()}/humor`),
+    queryFn: () => api.get<HumorBundle>(`/api/groups/${gid()}/humor`),
   });
 }
 
@@ -79,6 +87,44 @@ export function useUpdateHumorSettings() {
       qc.invalidateQueries({ queryKey: ["humor"] });
       qc.invalidateQueries({ queryKey: ["group"] });
     },
+  });
+}
+
+export function useUpdateMyHumorPrefs() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (input: Partial<HumorMemberPrefsDto>) =>
+      api.patch<HumorMemberPrefsDto>(`/api/groups/${gid()}/humor/me`, input),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["humor"] }),
+  });
+}
+
+export function useResetHumorVibe() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () =>
+      api.post<GroupVibeDto>(`/api/groups/${gid()}/humor/vibe/reset`, {}),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["humor"] }),
+  });
+}
+
+export function useAddHumorCallback() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (text: string) =>
+      api.post<GroupVibeDto>(`/api/groups/${gid()}/humor/callbacks`, { text }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["humor"] }),
+  });
+}
+
+export function useRemoveHumorCallback() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (text: string) =>
+      api.post<GroupVibeDto>(`/api/groups/${gid()}/humor/callbacks/remove`, {
+        text,
+      }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["humor"] }),
   });
 }
 
