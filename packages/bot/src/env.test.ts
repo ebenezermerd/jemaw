@@ -44,10 +44,10 @@ describe("loadEnv", () => {
   it("accepts optional scan model overrides", () => {
     const env = loadEnv({
       ...base,
-      GROQ_MODEL: "openai/gpt-oss-120b",
-      GEMINI_MODEL: "gemini-2.5-flash-lite",
+      GROQ_MODEL: "llama-3.3-70b-versatile",
+      GEMINI_MODEL: "gemini-2.5-flash",
     } as NodeJS.ProcessEnv);
-    expect(env.GROQ_MODEL).toBe("openai/gpt-oss-120b");
-    expect(env.GEMINI_MODEL).toBe("gemini-2.5-flash-lite");
+    expect(env.GROQ_MODEL).toBe("llama-3.3-70b-versatile");
+    expect(env.GEMINI_MODEL).toBe("gemini-2.5-flash");
   });
 });
