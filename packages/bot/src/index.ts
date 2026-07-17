@@ -24,19 +24,31 @@ async function main(): Promise<void> {
   const defaultCurrency = "EUR";
 
   // Scan client: Groq preferred (fast), Gemini fallback. Either alone works.
+  // Model ids come from env (with safe defaults) so provider deprecations do not
+  // require a code change — only an env / Secrets Manager update + redeploy.
   const groq = env.GROQ_API_KEY
     ? createGroqClient(env.GROQ_API_KEY, env.GROQ_MODEL)
     : undefined;
   const geminiOnly = env.GEMINI_API_KEY
-    ? createGeminiClient(env.GEMINI_API_KEY)
+    ? createGeminiClient(env.GEMINI_API_KEY, env.GEMINI_MODEL)
     : undefined;
   const gemini: ScanClient | undefined =
     groq && geminiOnly
       ? withFallback(groq, geminiOnly)
       : (groq ?? geminiOnly);
-  if (groq) console.log(`[scan] using Groq${geminiOnly ? " (Gemini fallback)" : ""}`);
-  else if (geminiOnly) console.log(`[scan] using Gemini`);
-  else console.log(`[scan] no AI key configured — scans disabled`);
+  if (groq) {
+    console.log(
+      `[scan] using Groq model=${env.GROQ_MODEL ?? "default"}${
+        geminiOnly
+          ? ` (Gemini fallback model=${env.GEMINI_MODEL ?? "default"})`
+          : ""
+      }`,
+    );
+  } else if (geminiOnly) {
+    console.log(`[scan] using Gemini model=${env.GEMINI_MODEL ?? "default"}`);
+  } else {
+    console.log(`[scan] no AI key configured — scans disabled`);
+  }
   const scanLimiter = new ScanRateLimiter();
 
   const bot = createBot(env.TELEGRAM_BOT_TOKEN, {

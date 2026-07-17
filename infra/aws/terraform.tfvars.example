@@ -9,6 +9,8 @@ telegram_bot_token  = "123456:replace-me"
 #   ./scripts/aws-set-ai-keys.sh --prompt
 gemini_api_key      = ""
 groq_api_key        = ""
-groq_model          = "llama-3.3-70b-versatile"
+# Model ids (non-secret). Match packages/bot DEFAULT_* when empty in the app.
+groq_model          = "openai/gpt-oss-120b"
+gemini_model        = "gemini-2.5-flash-lite"
 bot_username        = "jemawsbot"
 mini_app_short_name = "app"
