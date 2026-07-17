@@ -16,6 +16,7 @@ import {
   suggestions,
   botReplies,
   botReplyFeedback,
+  humorMemberPreferences,
   type Group,
   type Member,
   type Settlement,
@@ -25,6 +26,7 @@ import {
   type Suggestion,
   type NewBotReply,
   type BotReply,
+  type HumorMemberPreference,
 } from "@jemaw/shared/schema";
 import { centsToDecimal, decimalToCents } from "@jemaw/shared/types";
 
@@ -1067,4 +1069,68 @@ export async function insertBotReplyFeedback(
     memberId,
     feedbackType,
   });
+}
+
+// ─── Humor member preferences (Phase 3) ───────────────────────────────
+export async function getHumorMemberPrefs(
+  db: Db,
+  groupId: string,
+): Promise<HumorMemberPreference[]> {
+  return db
+    .select()
+    .from(humorMemberPreferences)
+    .where(eq(humorMemberPreferences.groupId, groupId));
+}
+
+export async function getHumorMemberPref(
+  db: Db,
+  groupId: string,
+  memberId: string,
+): Promise<HumorMemberPreference | null> {
+  const rows = await db
+    .select()
+    .from(humorMemberPreferences)
+    .where(
+      and(
+        eq(humorMemberPreferences.groupId, groupId),
+        eq(humorMemberPreferences.memberId, memberId),
+      ),
+    )
+    .limit(1);
+  return rows[0] ?? null;
+}
+
+export async function upsertHumorMemberPrefs(
+  db: Db,
+  groupId: string,
+  memberId: string,
+  patch: Partial<{
+    contributeToStyleProfile: boolean;
+    allowCallbackFromMessages: boolean;
+    allowDirectReference: boolean;
+    allowPublicFinancialRoasting: boolean;
+    allowHardshipHumor: boolean;
+    allowRelationshipHumor: boolean;
+    allowSecurityIncidentHumor: boolean;
+    allowProfanityTargeting: boolean;
+  }>,
+): Promise<HumorMemberPreference> {
+  const existing = await getHumorMemberPref(db, groupId, memberId);
+  if (existing) {
+    const updated = await db
+      .update(humorMemberPreferences)
+      .set({ ...patch, updatedAt: new Date() })
+      .where(eq(humorMemberPreferences.id, existing.id))
+      .returning();
+    return updated[0]!;
+  }
+  const inserted = await db
+    .insert(humorMemberPreferences)
+    .values({
+      groupId,
+      memberId,
+      ...patch,
+    })
+    .returning();
+  return inserted[0]!;
 }

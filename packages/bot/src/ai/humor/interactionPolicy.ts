@@ -67,11 +67,15 @@ export function evaluateHumorPolicy(ctx: PolicyContext): HumorPolicyDecision {
 
   if (
     SCAN_MISS_NEEDS_INVOCATION &&
-    factPacket.event === "scan_miss" &&
+    (factPacket.event === "scan_miss" ||
+      factPacket.event === "scan_still_pending") &&
     settings.mode === "jemaw_dry" &&
     !ctx.directInvocation
   ) {
-    return { decision: "do_not_reply", reason: "scan_miss_requires_invocation" };
+    // still_pending is useful on jemaw calls; skip only when passive
+    if (factPacket.event === "scan_miss") {
+      return { decision: "do_not_reply", reason: "scan_miss_requires_invocation" };
+    }
   }
 
   // Confirm-style micro events stay quiet in dry by default (matrix: Mini App only).

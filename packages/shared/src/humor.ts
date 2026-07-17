@@ -1,5 +1,6 @@
 /**
- * Interactive humor types (Phase 1). Settings live in groups.settings.humor.
+ * Interactive humor types (Phases 1–4).
+ * Settings + vibe live under groups.settings; prefs/feedback in dedicated tables.
  * See docs/Jemaw_Interactive_Humor_Final.md.
  */
 
@@ -28,18 +29,73 @@ export type HumorSettingsV1 = {
   resolvedSecurityIncidentHumor: boolean;
   profanity: HumorProfanity;
   memberTargeting: HumorMemberTargeting;
-  /** 0–1; higher allows less predictable templates/candidates in later phases. */
+  /** 0–1; higher allows less predictable candidates. */
   unpredictability: number;
-  /** Phase 2: try model candidates before templates when true. */
+  /** Try model candidates before templates when true. */
   useModelComposer: boolean;
+  /** Use group vibe profile for tone matching (Phase 3). */
+  useGroupVibe: boolean;
+  /** Apply feedback-learned style weights (Phase 4). */
+  usePreferenceLearning: boolean;
   enabledByMemberId?: string;
   enabledAt?: string;
   mutedUntil?: string;
 };
 
+/** Structured group vibe (Phase 3) — stored under groups.settings.vibe */
+export type GroupVibeV1 = {
+  version: 1;
+  status: "insufficient_data" | "active" | "paused";
+  sampleMessageCount: number;
+  activeDayCount: number;
+  languages: Array<{ code: string; weight: number }>;
+  codeMixRate: number;
+  medianMessageChars: number;
+  emojiRate: number;
+  formality: "low" | "medium" | "high";
+  styleWeights: {
+    dryObservation: number;
+    gentleExaggeration: number;
+    wordplay: number;
+    selfAwareBot: number;
+    aggressiveRoast: number;
+    darkHumor: number;
+    absurdity: number;
+    classAndDebtHumor: number;
+  };
+  /** Phase 4: exponential moving average of feedback signals */
+  feedbackWeights: {
+    funny: number;
+    not_for_us: number;
+    too_much: number;
+    wrong_tone: number;
+    wrong_fact: number;
+  };
+  approvedCallbacks: Array<{
+    text: string;
+    approvedByMemberId: string;
+    approvedAt: string;
+  }>;
+  preferredStyles: string[];
+  updatedAt: string;
+  expiresAt: string;
+};
+
+export type HumorMemberPrefsV1 = {
+  contributeToStyleProfile: boolean;
+  allowCallbackFromMessages: boolean;
+  allowDirectReference: boolean;
+  allowPublicFinancialRoasting: boolean;
+  allowHardshipHumor: boolean;
+  allowRelationshipHumor: boolean;
+  allowSecurityIncidentHumor: boolean;
+  allowProfanityTargeting: boolean;
+};
+
 export type HumorTriggerEvent =
   | "scan_hit"
   | "scan_miss"
+  | "scan_still_pending"
   | "settlement_completed"
   | "batch_confirmed"
   | "correction"
@@ -56,18 +112,31 @@ export type HumorDecision = "reply" | "do_not_reply";
 export type PublicSafeFactPacket = {
   event: HumorTriggerEvent;
   risk: HumorRiskClass;
+  outcome:
+    | "fresh_finds"
+    | "still_pending"
+    | "nothing_new"
+    | "scan_miss"
+    | "other";
   public_facts: {
     suggestion_count?: number;
+    new_written?: number;
+    pending_count?: number;
     categories?: string[];
+    /** Short safe description snippets (no amounts unless already public counts). */
+    draft_labels?: string[];
     currency?: string;
     settlement_count?: number;
   };
   allowed_claims: string[];
   forbidden_claims: string[];
-  /** Empty unless member targeting is allowed and consented. */
+  /** Display names only for members who opted into direct reference. */
+  allowed_target_names: string[];
   allowed_target_member_ids: string[];
-  /** Placeholder keys the composer may use (e.g. suggestion_count). */
   allowed_placeholders: string[];
+  /** Compact vibe summary for the model (no raw chat). */
+  vibe_summary?: string;
+  language_hint?: string;
 };
 
 export type HumorPolicyDecision =
@@ -86,11 +155,10 @@ export const DEFAULT_HUMOR_SETTINGS: HumorSettingsV1 = {
   version: 1,
   mode: "off",
   publicRepliesEnabled: true,
-  // Caps only apply to passive events; direct "jemaw" is unlimited.
   maxPublicRepliesPerDay: 50,
   cooldownMinutes: 0,
   languageMode: "auto",
-  callbacks: "off",
+  callbacks: "approved_only",
   publicFinancialRoasting: false,
   hardshipHumor: false,
   wealthAndClassHumor: false,
@@ -98,20 +166,58 @@ export const DEFAULT_HUMOR_SETTINGS: HumorSettingsV1 = {
   relationshipConflictHumor: false,
   resolvedSecurityIncidentHumor: false,
   profanity: "off",
-  memberTargeting: "group_only",
-  unpredictability: 0,
+  memberTargeting: "consenting_members",
+  unpredictability: 0.3,
   useModelComposer: true,
+  useGroupVibe: true,
+  usePreferenceLearning: true,
 };
 
-export function toHumorSettingsDto(s: HumorSettingsV1): {
-  mode: HumorMode;
-  publicRepliesEnabled: boolean;
-  maxPublicRepliesPerDay: number;
-  cooldownMinutes: number;
-  languageMode: HumorLanguageMode;
-  useModelComposer: boolean;
-  mutedUntil: string | null;
-} {
+export const DEFAULT_MEMBER_HUMOR_PREFS: HumorMemberPrefsV1 = {
+  contributeToStyleProfile: true,
+  allowCallbackFromMessages: false,
+  allowDirectReference: false,
+  allowPublicFinancialRoasting: false,
+  allowHardshipHumor: false,
+  allowRelationshipHumor: false,
+  allowSecurityIncidentHumor: false,
+  allowProfanityTargeting: false,
+};
+
+export const DEFAULT_GROUP_VIBE: GroupVibeV1 = {
+  version: 1,
+  status: "insufficient_data",
+  sampleMessageCount: 0,
+  activeDayCount: 0,
+  languages: [{ code: "en", weight: 1 }],
+  codeMixRate: 0,
+  medianMessageChars: 40,
+  emojiRate: 0,
+  formality: "medium",
+  styleWeights: {
+    dryObservation: 0.5,
+    gentleExaggeration: 0.2,
+    wordplay: 0.15,
+    selfAwareBot: 0.15,
+    aggressiveRoast: 0.05,
+    darkHumor: 0.05,
+    absurdity: 0.1,
+    classAndDebtHumor: 0.02,
+  },
+  feedbackWeights: {
+    funny: 0,
+    not_for_us: 0,
+    too_much: 0,
+    wrong_tone: 0,
+    wrong_fact: 0,
+  },
+  approvedCallbacks: [],
+  preferredStyles: ["dry_observation", "self_aware_bot"],
+  updatedAt: new Date(0).toISOString(),
+  expiresAt: new Date(0).toISOString(),
+};
+
+export function toHumorSettingsDto(s: HumorSettingsV1) {
   return {
     mode: s.mode,
     publicRepliesEnabled: s.publicRepliesEnabled,
@@ -119,20 +225,53 @@ export function toHumorSettingsDto(s: HumorSettingsV1): {
     cooldownMinutes: s.cooldownMinutes,
     languageMode: s.languageMode,
     useModelComposer: s.useModelComposer,
+    useGroupVibe: s.useGroupVibe,
+    usePreferenceLearning: s.usePreferenceLearning,
+    callbacks: s.callbacks,
+    publicFinancialRoasting: s.publicFinancialRoasting,
+    hardshipHumor: s.hardshipHumor,
+    latePaymentHumor: s.latePaymentHumor,
+    relationshipConflictHumor: s.relationshipConflictHumor,
+    profanity: s.profanity,
+    memberTargeting: s.memberTargeting,
     mutedUntil: s.mutedUntil ?? null,
   };
 }
 
-/** Cooldown / daily caps by mode (product defaults). */
+export function toGroupVibeDto(v: GroupVibeV1) {
+  return {
+    status: v.status,
+    sampleMessageCount: v.sampleMessageCount,
+    activeDayCount: v.activeDayCount,
+    languages: v.languages,
+    codeMixRate: v.codeMixRate,
+    medianMessageChars: v.medianMessageChars,
+    emojiRate: v.emojiRate,
+    formality: v.formality,
+    preferredStyles: v.preferredStyles,
+    approvedCallbacks: v.approvedCallbacks.map((c) => ({
+      text: c.text,
+      approvedAt: c.approvedAt,
+    })),
+    feedbackWeights: v.feedbackWeights,
+    updatedAt: v.updatedAt,
+    expiresAt: v.expiresAt,
+  };
+}
+
+/** Cooldown / daily caps by mode (passive events only). */
 export const HUMOR_MODE_LIMITS: Record<
   Exclude<HumorMode, "off">,
   { maxPublicRepliesPerDay: number; cooldownMinutes: number }
 > = {
-  // Passive-event fallbacks only. Direct jemaw mentions ignore these.
   jemaw_dry: { maxPublicRepliesPerDay: 50, cooldownMinutes: 0 },
   roast: { maxPublicRepliesPerDay: 50, cooldownMinutes: 0 },
   chaos: { maxPublicRepliesPerDay: 100, cooldownMinutes: 0 },
 };
+
+/** Min messages / active days before vibe is "active". */
+export const VIBE_MIN_MESSAGES = 20;
+export const VIBE_MIN_ACTIVE_DAYS = 2;
 
 export function parseHumorSettings(raw: unknown): HumorSettingsV1 {
   if (!raw || typeof raw !== "object") return { ...DEFAULT_HUMOR_SETTINGS };
@@ -147,4 +286,34 @@ export function parseHumorSettings(raw: unknown): HumorSettingsV1 {
     version: 1,
     mode,
   } as HumorSettingsV1;
+}
+
+export function parseGroupVibe(raw: unknown): GroupVibeV1 {
+  if (!raw || typeof raw !== "object") {
+    return { ...DEFAULT_GROUP_VIBE, styleWeights: { ...DEFAULT_GROUP_VIBE.styleWeights }, feedbackWeights: { ...DEFAULT_GROUP_VIBE.feedbackWeights }, languages: [...DEFAULT_GROUP_VIBE.languages], preferredStyles: [...DEFAULT_GROUP_VIBE.preferredStyles], approvedCallbacks: [] };
+  }
+  const o = raw as Partial<GroupVibeV1>;
+  return {
+    ...DEFAULT_GROUP_VIBE,
+    ...o,
+    version: 1,
+    styleWeights: {
+      ...DEFAULT_GROUP_VIBE.styleWeights,
+      ...(o.styleWeights ?? {}),
+    },
+    feedbackWeights: {
+      ...DEFAULT_GROUP_VIBE.feedbackWeights,
+      ...(o.feedbackWeights ?? {}),
+    },
+    languages: o.languages?.length ? o.languages : DEFAULT_GROUP_VIBE.languages,
+    preferredStyles: o.preferredStyles?.length
+      ? o.preferredStyles
+      : DEFAULT_GROUP_VIBE.preferredStyles,
+    approvedCallbacks: o.approvedCallbacks ?? [],
+  };
+}
+
+export function parseMemberHumorPrefs(raw: unknown): HumorMemberPrefsV1 {
+  if (!raw || typeof raw !== "object") return { ...DEFAULT_MEMBER_HUMOR_PREFS };
+  return { ...DEFAULT_MEMBER_HUMOR_PREFS, ...(raw as object) } as HumorMemberPrefsV1;
 }
