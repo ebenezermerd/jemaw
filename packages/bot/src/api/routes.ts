@@ -1370,17 +1370,38 @@ export async function registerApi(
     },
   );
 
-  // GET humor settings
+  // GET humor settings + vibe summary
   app.get(
     "/api/groups/:groupId/humor",
     { preHandler: auth },
     async (req) => {
-      const { group } = req.jemaw!;
-      const { parseHumorSettings, toHumorSettingsDto } = await import(
-        "@jemaw/shared/humor"
-      );
-      const raw = (group.settings as Record<string, unknown> | null)?.humor;
-      return toHumorSettingsDto(parseHumorSettings(raw));
+      const { group, member } = req.jemaw!;
+      const {
+        parseHumorSettings,
+        toHumorSettingsDto,
+        parseGroupVibe,
+        toGroupVibeDto,
+        parseMemberHumorPrefs,
+        DEFAULT_MEMBER_HUMOR_PREFS,
+      } = await import("@jemaw/shared/humor");
+      const settingsRaw = group.settings as Record<string, unknown> | null;
+      const humor = toHumorSettingsDto(parseHumorSettings(settingsRaw?.humor));
+      const vibe = toGroupVibeDto(parseGroupVibe(settingsRaw?.vibe));
+      const { getHumorMemberPref } = await import("../repo.js");
+      const prefRow = await getHumorMemberPref(db, group.id, member.id);
+      const myPrefs = prefRow
+        ? parseMemberHumorPrefs({
+            contributeToStyleProfile: prefRow.contributeToStyleProfile,
+            allowCallbackFromMessages: prefRow.allowCallbackFromMessages,
+            allowDirectReference: prefRow.allowDirectReference,
+            allowPublicFinancialRoasting: prefRow.allowPublicFinancialRoasting,
+            allowHardshipHumor: prefRow.allowHardshipHumor,
+            allowRelationshipHumor: prefRow.allowRelationshipHumor,
+            allowSecurityIncidentHumor: prefRow.allowSecurityIncidentHumor,
+            allowProfanityTargeting: prefRow.allowProfanityTargeting,
+          })
+        : DEFAULT_MEMBER_HUMOR_PREFS;
+      return { humor, vibe, myPrefs };
     },
   );
 
@@ -1403,16 +1424,24 @@ export async function registerApi(
       }
       const next = { ...current };
       if (body.mode != null) next.mode = body.mode as typeof next.mode;
-      if (typeof body.publicRepliesEnabled === "boolean") {
-        next.publicRepliesEnabled = body.publicRepliesEnabled;
-      }
-      if (typeof body.useModelComposer === "boolean") {
-        next.useModelComposer = body.useModelComposer;
+      for (const key of [
+        "publicRepliesEnabled",
+        "useModelComposer",
+        "useGroupVibe",
+        "usePreferenceLearning",
+        "publicFinancialRoasting",
+        "hardshipHumor",
+        "latePaymentHumor",
+        "relationshipConflictHumor",
+      ] as const) {
+        if (typeof body[key] === "boolean") {
+          (next as Record<string, unknown>)[key] = body[key];
+        }
       }
       if (typeof body.maxPublicRepliesPerDay === "number") {
         next.maxPublicRepliesPerDay = Math.max(
           0,
-          Math.min(24, Math.floor(body.maxPublicRepliesPerDay)),
+          Math.min(100, Math.floor(body.maxPublicRepliesPerDay)),
         );
       }
       if (typeof body.cooldownMinutes === "number") {
@@ -1421,8 +1450,29 @@ export async function registerApi(
           Math.min(24 * 60, Math.floor(body.cooldownMinutes)),
         );
       }
-      if (body.languageMode === "auto" || body.languageMode === "en" || body.languageMode === "am" || body.languageMode === "code_mix") {
+      if (
+        body.languageMode === "auto" ||
+        body.languageMode === "en" ||
+        body.languageMode === "am" ||
+        body.languageMode === "code_mix"
+      ) {
         next.languageMode = body.languageMode;
+      }
+      if (body.callbacks === "off" || body.callbacks === "approved_only") {
+        next.callbacks = body.callbacks;
+      }
+      if (
+        body.profanity === "off" ||
+        body.profanity === "moderate" ||
+        body.profanity === "match_group"
+      ) {
+        next.profanity = body.profanity;
+      }
+      if (
+        body.memberTargeting === "group_only" ||
+        body.memberTargeting === "consenting_members"
+      ) {
+        next.memberTargeting = body.memberTargeting;
       }
       if (body.muteDays != null) {
         const days = Number(body.muteDays);
@@ -1454,7 +1504,118 @@ export async function registerApi(
     },
   );
 
-  // POST feedback on a bot reply
+  // POST reset group vibe — admin only
+  app.post(
+    "/api/groups/:groupId/humor/vibe/reset",
+    { preHandler: auth },
+    async (req, reply) => {
+      if (!requireAdmin(req, reply)) return;
+      const { group } = req.jemaw!;
+      const { DEFAULT_GROUP_VIBE, toGroupVibeDto } = await import(
+        "@jemaw/shared/humor"
+      );
+      const blank = {
+        ...DEFAULT_GROUP_VIBE,
+        styleWeights: { ...DEFAULT_GROUP_VIBE.styleWeights },
+        feedbackWeights: { ...DEFAULT_GROUP_VIBE.feedbackWeights },
+        languages: [...DEFAULT_GROUP_VIBE.languages],
+        preferredStyles: [...DEFAULT_GROUP_VIBE.preferredStyles],
+        approvedCallbacks: [],
+        updatedAt: new Date().toISOString(),
+        expiresAt: new Date().toISOString(),
+      };
+      await mergeGroupSettings(db, group.id, { vibe: blank });
+      return toGroupVibeDto(blank);
+    },
+  );
+
+  // POST approve callback phrase — admin only
+  app.post(
+    "/api/groups/:groupId/humor/callbacks",
+    { preHandler: auth },
+    async (req, reply) => {
+      if (!requireAdmin(req, reply)) return;
+      const { group, member } = req.jemaw!;
+      const body = (req.body ?? {}) as { text?: string };
+      const text = (body.text ?? "").trim().slice(0, 80);
+      if (text.length < 2) return reply.code(400).send({ error: "text required" });
+      const { parseGroupVibe, toGroupVibeDto } = await import("@jemaw/shared/humor");
+      const vibe = parseGroupVibe(
+        (group.settings as Record<string, unknown> | null)?.vibe,
+      );
+      if (vibe.approvedCallbacks.some((c) => c.text === text)) {
+        return toGroupVibeDto(vibe);
+      }
+      vibe.approvedCallbacks = [
+        ...vibe.approvedCallbacks,
+        {
+          text,
+          approvedByMemberId: member.id,
+          approvedAt: new Date().toISOString(),
+        },
+      ].slice(-30);
+      vibe.updatedAt = new Date().toISOString();
+      await mergeGroupSettings(db, group.id, { vibe });
+      return toGroupVibeDto(vibe);
+    },
+  );
+
+  // DELETE callback by text — admin only
+  app.post(
+    "/api/groups/:groupId/humor/callbacks/remove",
+    { preHandler: auth },
+    async (req, reply) => {
+      if (!requireAdmin(req, reply)) return;
+      const { group } = req.jemaw!;
+      const body = (req.body ?? {}) as { text?: string };
+      const text = (body.text ?? "").trim();
+      const { parseGroupVibe, toGroupVibeDto } = await import("@jemaw/shared/humor");
+      const vibe = parseGroupVibe(
+        (group.settings as Record<string, unknown> | null)?.vibe,
+      );
+      vibe.approvedCallbacks = vibe.approvedCallbacks.filter((c) => c.text !== text);
+      await mergeGroupSettings(db, group.id, { vibe });
+      return toGroupVibeDto(vibe);
+    },
+  );
+
+  // PATCH my humor consent prefs (any member)
+  app.patch(
+    "/api/groups/:groupId/humor/me",
+    { preHandler: auth },
+    async (req) => {
+      const { group, member } = req.jemaw!;
+      const body = (req.body ?? {}) as Record<string, unknown>;
+      const boolKeys = [
+        "contributeToStyleProfile",
+        "allowCallbackFromMessages",
+        "allowDirectReference",
+        "allowPublicFinancialRoasting",
+        "allowHardshipHumor",
+        "allowRelationshipHumor",
+        "allowSecurityIncidentHumor",
+        "allowProfanityTargeting",
+      ] as const;
+      const patch: Record<string, boolean> = {};
+      for (const k of boolKeys) {
+        if (typeof body[k] === "boolean") patch[k] = body[k] as boolean;
+      }
+      const { upsertHumorMemberPrefs } = await import("../repo.js");
+      const row = await upsertHumorMemberPrefs(db, group.id, member.id, patch);
+      return {
+        contributeToStyleProfile: row.contributeToStyleProfile,
+        allowCallbackFromMessages: row.allowCallbackFromMessages,
+        allowDirectReference: row.allowDirectReference,
+        allowPublicFinancialRoasting: row.allowPublicFinancialRoasting,
+        allowHardshipHumor: row.allowHardshipHumor,
+        allowRelationshipHumor: row.allowRelationshipHumor,
+        allowSecurityIncidentHumor: row.allowSecurityIncidentHumor,
+        allowProfanityTargeting: row.allowProfanityTargeting,
+      };
+    },
+  );
+
+  // POST feedback on a bot reply (+ Phase 4 preference learning)
   app.post(
     "/api/groups/:groupId/humor/feedback",
     { preHandler: auth },
@@ -1471,6 +1632,7 @@ export async function registerApi(
         "wrong_tone",
         "wrong_fact",
         "mute",
+        "ban_phrase",
       ];
       if (!body.botReplyId || !body.feedbackType || !allowed.includes(body.feedbackType)) {
         return reply.code(400).send({ error: "invalid body" });
@@ -1478,7 +1640,6 @@ export async function registerApi(
       const {
         getBotReply,
         insertBotReplyFeedback,
-        mergeGroupSettings,
       } = await import("../repo.js");
       const row = await getBotReply(db, group.id, body.botReplyId);
       if (!row) return reply.code(404).send({ error: "reply not found" });
@@ -1488,17 +1649,30 @@ export async function registerApi(
         member.id,
         body.feedbackType,
       );
-      if (body.feedbackType === "mute") {
-        const { parseHumorSettings } = await import("@jemaw/shared/humor");
-        const current = parseHumorSettings(
-          (group.settings as Record<string, unknown> | null)?.humor,
+
+      const { parseHumorSettings } = await import("@jemaw/shared/humor");
+      const settings = parseHumorSettings(
+        (group.settings as Record<string, unknown> | null)?.humor,
+      );
+      const patch: Record<string, unknown> = {};
+      if (settings.usePreferenceLearning) {
+        const { applyFeedbackToVibe } = await import(
+          "../ai/humor/preferenceLearning.js"
         );
-        await mergeGroupSettings(db, group.id, {
-          humor: {
-            ...current,
-            mutedUntil: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
-          },
-        });
+        const vibe = applyFeedbackToVibe(
+          (group.settings as Record<string, unknown> | null)?.vibe,
+          body.feedbackType as import("../ai/humor/preferenceLearning.js").FeedbackType,
+        );
+        patch.vibe = vibe;
+      }
+      if (body.feedbackType === "mute") {
+        patch.humor = {
+          ...settings,
+          mutedUntil: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
+        };
+      }
+      if (Object.keys(patch).length) {
+        await mergeGroupSettings(db, group.id, patch);
       }
       if (body.feedbackType === "wrong_fact") {
         console.warn(

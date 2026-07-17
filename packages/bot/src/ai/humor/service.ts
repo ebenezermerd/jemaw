@@ -1,7 +1,11 @@
 /**
- * Humor orchestration: policy → model candidates (Phase 2) → templates → verify.
+ * Humor orchestration: policy → model → templates → verify.
  */
-import type { HumorSettingsV1, PublicSafeFactPacket } from "@jemaw/shared/humor";
+import type {
+  HumorSettingsV1,
+  PublicSafeFactPacket,
+  GroupVibeV1,
+} from "@jemaw/shared/humor";
 import type { ScanClient } from "../geminiClient.js";
 import { evaluateHumorPolicy, type PolicyContext } from "./interactionPolicy.js";
 import { composeFromTemplates } from "./templateComposer.js";
@@ -38,10 +42,11 @@ export async function composeHumorReply(input: {
   lastPublicReplyAtMs: number | null;
   directInvocation: boolean;
   recentReplyTexts: string[];
-  /** When set and settings.useModelComposer, try Phase 2 generation first. */
   humorClient?: ScanClient;
   humorProvider?: string;
   humorModel?: string;
+  vibe?: GroupVibeV1 | null;
+  styleSamples?: string[];
   rng?: () => number;
 }): Promise<HumorComposeResult> {
   const policyCtx: PolicyContext = {
@@ -60,15 +65,23 @@ export async function composeHumorReply(input: {
   const candidates: string[] = [];
   let inputTokens: number | undefined;
   let outputTokens: number | undefined;
-
-  // Prefer variety, but never silence a direct "jemaw" call for repetition.
   const allowRepeat = input.directInvocation;
 
-  if (input.settings.useModelComposer && input.humorClient) {
+  const useModel =
+    input.settings.useModelComposer &&
+    input.humorClient &&
+    (input.settings.useGroupVibe || true);
+
+  if (useModel && input.humorClient) {
     const modelOut = await composeModelCandidates({
       client: input.humorClient,
       mode: policy.mode,
       packet: policy.factPacket,
+      vibe: input.settings.useGroupVibe ? input.vibe : null,
+      styleSamples:
+        input.settings.useGroupVibe && input.vibe?.status === "active"
+          ? input.styleSamples
+          : undefined,
     });
     inputTokens = modelOut.inputTokens;
     outputTokens = modelOut.outputTokens;
@@ -101,7 +114,6 @@ export async function composeHumorReply(input: {
     return { decision: "do_not_reply", reason: "no_template" };
   }
   if (!allowRepeat && isTooSimilar(tpl.text, input.recentReplyTexts)) {
-    // try one more random template by re-rolling
     const tpl2 = composeFromTemplates(policy.mode, policy.factPacket, () =>
       Math.random(),
     );

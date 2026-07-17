@@ -77,7 +77,7 @@ export interface GroupDto {
   humor?: HumorSettingsDto;
 }
 
-/** Wire format for groups.settings.humor. */
+/** Wire format for groups.settings.humor (Phases 1–4). */
 export interface HumorSettingsDto {
   mode: "off" | "jemaw_dry" | "roast" | "chaos";
   publicRepliesEnabled: boolean;
@@ -85,7 +85,49 @@ export interface HumorSettingsDto {
   cooldownMinutes: number;
   languageMode: "auto" | "en" | "am" | "code_mix";
   useModelComposer: boolean;
+  useGroupVibe: boolean;
+  usePreferenceLearning: boolean;
+  callbacks: "off" | "approved_only";
+  publicFinancialRoasting: boolean;
+  hardshipHumor: boolean;
+  latePaymentHumor: boolean;
+  relationshipConflictHumor: boolean;
+  profanity: "off" | "moderate" | "match_group";
+  memberTargeting: "group_only" | "consenting_members";
   mutedUntil: string | null;
+}
+
+export interface GroupVibeDto {
+  status: "insufficient_data" | "active" | "paused";
+  sampleMessageCount: number;
+  activeDayCount: number;
+  languages: Array<{ code: string; weight: number }>;
+  codeMixRate: number;
+  medianMessageChars: number;
+  emojiRate: number;
+  formality: "low" | "medium" | "high";
+  preferredStyles: string[];
+  approvedCallbacks: Array<{ text: string; approvedAt: string }>;
+  feedbackWeights: {
+    funny: number;
+    not_for_us: number;
+    too_much: number;
+    wrong_tone: number;
+    wrong_fact: number;
+  };
+  updatedAt: string;
+  expiresAt: string;
+}
+
+export interface HumorMemberPrefsDto {
+  contributeToStyleProfile: boolean;
+  allowCallbackFromMessages: boolean;
+  allowDirectReference: boolean;
+  allowPublicFinancialRoasting: boolean;
+  allowHardshipHumor: boolean;
+  allowRelationshipHumor: boolean;
+  allowSecurityIncidentHumor: boolean;
+  allowProfanityTargeting: boolean;
 }
 
 export interface BootstrapGroupDto {
