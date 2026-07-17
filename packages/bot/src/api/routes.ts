@@ -35,6 +35,8 @@ import {
   countAdmins,
   updateGroupCurrency,
   resetGroupData,
+  getGroupById,
+  mergeGroupSettings,
   type AllocationInput,
 } from "../repo.js";
 import { computeSplit } from "../domain/splits.js";
@@ -282,6 +284,8 @@ export interface ApiDeps {
   scanLimiter: ScanRateLimiter;
   /** The bot Api, so app-triggered scans can badge the source messages. */
   botApi?: import("grammy").Api;
+  /** Phase 1–2 humor runtime (optional). */
+  humor?: import("../ai/humor/deliver.js").HumorRuntime;
 }
 
 export async function registerApi(
@@ -1342,8 +1346,166 @@ export async function registerApi(
         ).catch((err) =>
           console.warn(`[scan] badge evidence failed: ${err?.message ?? err}`),
         );
+        const fresh = await getGroupById(db, group.id);
+        if (fresh) {
+          const { maybeDeliverScanHumor } = await import(
+            "../ai/humor/deliver.js"
+          );
+          await maybeDeliverScanHumor({
+            db,
+            api: deps.botApi,
+            group: fresh,
+            written: result.written,
+            pendingCount: result.pendingCount,
+            scanStatus: result.status,
+            directInvocation: true,
+            currency: fresh.defaultCurrency,
+            humor: deps.humor ?? {},
+          }).catch((err) =>
+            console.warn(`[humor] manual scan deliver failed:`, err?.message ?? err),
+          );
+        }
       }
       return reply.send(result);
+    },
+  );
+
+  // GET humor settings
+  app.get(
+    "/api/groups/:groupId/humor",
+    { preHandler: auth },
+    async (req) => {
+      const { group } = req.jemaw!;
+      const { parseHumorSettings, toHumorSettingsDto } = await import(
+        "@jemaw/shared/humor"
+      );
+      const raw = (group.settings as Record<string, unknown> | null)?.humor;
+      return toHumorSettingsDto(parseHumorSettings(raw));
+    },
+  );
+
+  // PATCH humor settings — admin only
+  app.patch(
+    "/api/groups/:groupId/humor",
+    { preHandler: auth },
+    async (req, reply) => {
+      if (!requireAdmin(req, reply)) return;
+      const { group, member } = req.jemaw!;
+      const body = (req.body ?? {}) as Record<string, unknown>;
+      const { parseHumorSettings, toHumorSettingsDto, HUMOR_MODE_LIMITS } =
+        await import("@jemaw/shared/humor");
+      const current = parseHumorSettings(
+        (group.settings as Record<string, unknown> | null)?.humor,
+      );
+      const modes = ["off", "jemaw_dry", "roast", "chaos"] as const;
+      if (body.mode != null && !modes.includes(body.mode as (typeof modes)[number])) {
+        return reply.code(400).send({ error: "invalid mode" });
+      }
+      const next = { ...current };
+      if (body.mode != null) next.mode = body.mode as typeof next.mode;
+      if (typeof body.publicRepliesEnabled === "boolean") {
+        next.publicRepliesEnabled = body.publicRepliesEnabled;
+      }
+      if (typeof body.useModelComposer === "boolean") {
+        next.useModelComposer = body.useModelComposer;
+      }
+      if (typeof body.maxPublicRepliesPerDay === "number") {
+        next.maxPublicRepliesPerDay = Math.max(
+          0,
+          Math.min(24, Math.floor(body.maxPublicRepliesPerDay)),
+        );
+      }
+      if (typeof body.cooldownMinutes === "number") {
+        next.cooldownMinutes = Math.max(
+          0,
+          Math.min(24 * 60, Math.floor(body.cooldownMinutes)),
+        );
+      }
+      if (body.languageMode === "auto" || body.languageMode === "en" || body.languageMode === "am" || body.languageMode === "code_mix") {
+        next.languageMode = body.languageMode;
+      }
+      if (body.muteDays != null) {
+        const days = Number(body.muteDays);
+        if (days > 0) {
+          next.mutedUntil = new Date(
+            Date.now() + days * 24 * 60 * 60 * 1000,
+          ).toISOString();
+        } else {
+          next.mutedUntil = undefined;
+        }
+      }
+      if (body.mode && body.mode !== "off" && body.mode !== current.mode) {
+        next.enabledByMemberId = member.id;
+        next.enabledAt = new Date().toISOString();
+        const lim = HUMOR_MODE_LIMITS[body.mode as keyof typeof HUMOR_MODE_LIMITS];
+        if (lim && body.maxPublicRepliesPerDay == null) {
+          next.maxPublicRepliesPerDay = lim.maxPublicRepliesPerDay;
+        }
+        if (lim && body.cooldownMinutes == null) {
+          next.cooldownMinutes = lim.cooldownMinutes;
+        }
+      }
+      await mergeGroupSettings(db, group.id, { humor: next });
+      const updated = await getGroupById(db, group.id);
+      const humor = parseHumorSettings(
+        (updated?.settings as Record<string, unknown> | null)?.humor,
+      );
+      return toHumorSettingsDto(humor);
+    },
+  );
+
+  // POST feedback on a bot reply
+  app.post(
+    "/api/groups/:groupId/humor/feedback",
+    { preHandler: auth },
+    async (req, reply) => {
+      const { group, member } = req.jemaw!;
+      const body = (req.body ?? {}) as {
+        botReplyId?: string;
+        feedbackType?: string;
+      };
+      const allowed = [
+        "funny",
+        "not_for_us",
+        "too_much",
+        "wrong_tone",
+        "wrong_fact",
+        "mute",
+      ];
+      if (!body.botReplyId || !body.feedbackType || !allowed.includes(body.feedbackType)) {
+        return reply.code(400).send({ error: "invalid body" });
+      }
+      const {
+        getBotReply,
+        insertBotReplyFeedback,
+        mergeGroupSettings,
+      } = await import("../repo.js");
+      const row = await getBotReply(db, group.id, body.botReplyId);
+      if (!row) return reply.code(404).send({ error: "reply not found" });
+      await insertBotReplyFeedback(
+        db,
+        body.botReplyId,
+        member.id,
+        body.feedbackType,
+      );
+      if (body.feedbackType === "mute") {
+        const { parseHumorSettings } = await import("@jemaw/shared/humor");
+        const current = parseHumorSettings(
+          (group.settings as Record<string, unknown> | null)?.humor,
+        );
+        await mergeGroupSettings(db, group.id, {
+          humor: {
+            ...current,
+            mutedUntil: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
+          },
+        });
+      }
+      if (body.feedbackType === "wrong_fact") {
+        console.warn(
+          `[humor] wrong_fact feedback group=${group.id} reply=${body.botReplyId}`,
+        );
+      }
+      return { ok: true };
     },
   );
 
