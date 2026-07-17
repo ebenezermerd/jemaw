@@ -5,8 +5,8 @@
 # Usage:
 #   export GEMINI_API_KEY='...'   # optional if already set in SM and you only rotate Groq
 #   export GROQ_API_KEY='...'     # optional same
-#   export GROQ_MODEL='openai/gpt-oss-120b'  # optional
-#   export GEMINI_MODEL='gemini-2.5-flash-lite'  # optional
+#   export GROQ_MODEL='llama-3.3-70b-versatile'  # optional
+#   export GEMINI_MODEL='gemini-2.5-flash'  # optional
 #   ./scripts/aws-set-ai-keys.sh
 #
 # Or interactive (prompt, no echo):
@@ -39,16 +39,16 @@ if [[ "${1:-}" == "--prompt" ]]; then
   echo
   read -r -s -p "GROQ_API_KEY (leave blank to skip): " GROQ_API_KEY
   echo
-  read -r -p "GROQ_MODEL [${GROQ_MODEL:-openai/gpt-oss-120b}]: " _model
-  GROQ_MODEL="${_model:-${GROQ_MODEL:-openai/gpt-oss-120b}}"
-  read -r -p "GEMINI_MODEL [${GEMINI_MODEL:-gemini-2.5-flash-lite}]: " _gmodel
-  GEMINI_MODEL="${_gmodel:-${GEMINI_MODEL:-gemini-2.5-flash-lite}}"
+  read -r -p "GROQ_MODEL [${GROQ_MODEL:-llama-3.3-70b-versatile}]: " _model
+  GROQ_MODEL="${_model:-${GROQ_MODEL:-llama-3.3-70b-versatile}}"
+  read -r -p "GEMINI_MODEL [${GEMINI_MODEL:-gemini-2.5-flash}]: " _gmodel
+  GEMINI_MODEL="${_gmodel:-${GEMINI_MODEL:-gemini-2.5-flash}}"
 fi
 
 GEMINI_API_KEY="${GEMINI_API_KEY:-}"
 GROQ_API_KEY="${GROQ_API_KEY:-}"
-GROQ_MODEL="${GROQ_MODEL:-openai/gpt-oss-120b}"
-GEMINI_MODEL="${GEMINI_MODEL:-gemini-2.5-flash-lite}"
+GROQ_MODEL="${GROQ_MODEL:-llama-3.3-70b-versatile}"
+GEMINI_MODEL="${GEMINI_MODEL:-gemini-2.5-flash}"
 
 if [[ -z "$GEMINI_API_KEY" && -z "$GROQ_API_KEY" ]]; then
   echo "Provide GEMINI_API_KEY and/or GROQ_API_KEY via env, or use --prompt." >&2
