@@ -9,6 +9,7 @@ describe("templateComposer", () => {
     expect(reply).not.toBeNull();
     expect(reply!.text).toContain("3");
     expect(reply!.text).not.toContain("{{");
+    expect(reply!.source).toBe("template");
   });
 
   it("returns null when mode is off", () => {
