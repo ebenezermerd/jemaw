@@ -90,8 +90,8 @@ export function Settings() {
       {/* Interactive humor (Phase 1–2) */}
       <Section title="Jemaw voice">
         <p className="t-caption" style={{ color: "var(--text-faint)", margin: "0 0 8px" }}>
-          Short lines in the group after scans. Money facts stay exact; humor never changes the ledger.
-          Default is off.
+          Every message that includes jemaw (or /jemaw) is noticed: scan plus a short reply when mode is on.
+          No cooldown on those. Money facts stay exact; humor never changes the ledger. Default is off.
         </p>
         <Row label="Mode">
           {isAdmin ? (
