@@ -5,12 +5,12 @@ import {
 } from "./geminiClient.js";
 
 describe("scan model defaults", () => {
-  it("uses a non-deprecated Gemini default", () => {
+  it("uses a working Gemini default for the current API key", () => {
+    expect(DEFAULT_GEMINI_MODEL).toBe("gemini-2.5-flash");
     expect(DEFAULT_GEMINI_MODEL).not.toBe("gemini-2.0-flash");
-    expect(DEFAULT_GEMINI_MODEL.length).toBeGreaterThan(0);
   });
 
-  it("uses the Groq GPT OSS default instead of llama-3.3-70b-versatile", () => {
-    expect(DEFAULT_GROQ_MODEL).toBe("openai/gpt-oss-120b");
+  it("uses Groq Llama as primary until the org allows gpt-oss models", () => {
+    expect(DEFAULT_GROQ_MODEL).toBe("llama-3.3-70b-versatile");
   });
 });
