@@ -15,6 +15,10 @@ import {
   useMeSummary,
   useHumorSettings,
   useUpdateHumorSettings,
+  useUpdateMyHumorPrefs,
+  useResetHumorVibe,
+  useAddHumorCallback,
+  useRemoveHumorCallback,
 } from "../lib/hooks.js";
 import type { AssignTelegramInput, MemberDto } from "@jemaw/shared/types";
 import { formatMoney } from "../lib/money.js";
@@ -46,12 +50,19 @@ export function Settings() {
   const me = useMeSummary();
   const humorQ = useHumorSettings();
   const updateHumor = useUpdateHumorSettings();
+  const updateMyPrefs = useUpdateMyHumorPrefs();
+  const resetVibe = useResetHumorVibe();
+  const addCallback = useAddHumorCallback();
+  const removeCallback = useRemoveHumorCallback();
+  const [callbackText, setCallbackText] = useState("");
 
   if (group.isLoading) return <PageLoader />;
   const g = group.data;
   if (!g) return <Centered>Couldn't load settings.</Centered>;
   const isAdmin = g.isAdmin;
-  const humor = humorQ.data ?? g.humor;
+  const humor = humorQ.data?.humor ?? g.humor;
+  const vibe = humorQ.data?.vibe;
+  const myPrefs = humorQ.data?.myPrefs;
   const activeMembers = g.members.filter((m) => m.isActive);
   const editMember = editMemberId
     ? g.members.find((m) => m.id === editMemberId) ?? null
@@ -87,11 +98,12 @@ export function Settings() {
         </Row>
       </Section>
 
-      {/* Interactive humor (Phase 1–2) */}
+      {/* Interactive humor Phases 1–4 */}
       <Section title="Jemaw voice">
         <p className="t-caption" style={{ color: "var(--text-faint)", margin: "0 0 8px" }}>
-          Every message that includes jemaw (or /jemaw) is noticed: scan plus a short reply when mode is on.
-          No cooldown on those. Money facts stay exact; humor never changes the ledger. Default is off.
+          Every jemaw mention runs a scan and a short reply when mode is on. Replies use draft
+          outcomes (new vs still pending), group vibe when ready, and your consent prefs.
+          Money facts stay exact. Default is off.
         </p>
         <Row label="Mode">
           {isAdmin ? (
@@ -123,14 +135,57 @@ export function Settings() {
               <Segmented
                 value={humor.useModelComposer ? "on" : "off"}
                 onChange={async (v) => {
-                  await updateHumor.mutateAsync({
-                    useModelComposer: v === "on",
-                  });
+                  await updateHumor.mutateAsync({ useModelComposer: v === "on" });
                   await humorQ.refetch();
                 }}
                 options={[
                   { value: "on", label: "On" },
                   { value: "off", label: "Templates" },
+                ]}
+              />
+            </Row>
+            <Row label="Group vibe">
+              <Segmented
+                value={humor.useGroupVibe !== false ? "on" : "off"}
+                onChange={async (v) => {
+                  await updateHumor.mutateAsync({ useGroupVibe: v === "on" });
+                  await humorQ.refetch();
+                }}
+                options={[
+                  { value: "on", label: "On" },
+                  { value: "off", label: "Off" },
+                ]}
+              />
+            </Row>
+            <Row label="Learn feedback">
+              <Segmented
+                value={humor.usePreferenceLearning !== false ? "on" : "off"}
+                onChange={async (v) => {
+                  await updateHumor.mutateAsync({
+                    usePreferenceLearning: v === "on",
+                  });
+                  await humorQ.refetch();
+                }}
+                options={[
+                  { value: "on", label: "On" },
+                  { value: "off", label: "Off" },
+                ]}
+              />
+            </Row>
+            <Row label="Language">
+              <Segmented
+                value={humor.languageMode ?? "auto"}
+                onChange={async (v) => {
+                  await updateHumor.mutateAsync({
+                    languageMode: v as "auto" | "en" | "am" | "code_mix",
+                  });
+                  await humorQ.refetch();
+                }}
+                options={[
+                  { value: "auto", label: "Auto" },
+                  { value: "en", label: "EN" },
+                  { value: "am", label: "AM" },
+                  { value: "code_mix", label: "Mix" },
                 ]}
               />
             </Row>
@@ -151,8 +206,118 @@ export function Settings() {
                 Muted until {new Date(humor.mutedUntil).toLocaleString()}
               </p>
             )}
+            {vibe && (
+              <p className="t-caption" style={{ color: "var(--text-faint)", margin: 0 }}>
+                Vibe: {vibe.status}
+                {vibe.sampleMessageCount
+                  ? ` · ${vibe.sampleMessageCount} msgs · ${vibe.formality} formality`
+                  : ""}
+                {vibe.preferredStyles?.length
+                  ? ` · prefers ${vibe.preferredStyles.slice(0, 2).join(", ")}`
+                  : ""}
+              </p>
+            )}
+            {isAdmin && (
+              <Row label="Reset vibe">
+                <Button
+                  variant="ghost"
+                  disabled={resetVibe.isPending}
+                  onClick={async () => {
+                    await resetVibe.mutateAsync();
+                    await humorQ.refetch();
+                  }}
+                >
+                  Reset
+                </Button>
+              </Row>
+            )}
+            {isAdmin && (
+              <div style={{ display: "grid", gap: 8 }}>
+                <span className="t-caption" style={{ color: "var(--text-muted)" }}>
+                  Approved catchphrases (optional callbacks)
+                </span>
+                <div style={{ display: "flex", gap: 8 }}>
+                  <input
+                    className="t-body"
+                    value={callbackText}
+                    onChange={(e) => setCallbackText(e.target.value)}
+                    placeholder="Short phrase"
+                    style={{
+                      flex: 1,
+                      padding: "8px 10px",
+                      borderRadius: 8,
+                      border: "1px solid var(--border)",
+                      background: "var(--surface)",
+                      color: "var(--text)",
+                    }}
+                  />
+                  <Button
+                    disabled={!callbackText.trim() || addCallback.isPending}
+                    onClick={async () => {
+                      await addCallback.mutateAsync(callbackText.trim());
+                      setCallbackText("");
+                      await humorQ.refetch();
+                    }}
+                  >
+                    Add
+                  </Button>
+                </div>
+                {(vibe?.approvedCallbacks ?? []).map((c) => (
+                  <div
+                    key={c.text}
+                    style={{
+                      display: "flex",
+                      justifyContent: "space-between",
+                      gap: 8,
+                      alignItems: "center",
+                    }}
+                  >
+                    <span className="t-caption">{c.text}</span>
+                    <Button
+                      variant="ghost"
+                      onClick={async () => {
+                        await removeCallback.mutateAsync(c.text);
+                        await humorQ.refetch();
+                      }}
+                    >
+                      Remove
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            )}
           </>
         )}
+      </Section>
+
+      <Section title="My humor consent">
+        <p className="t-caption" style={{ color: "var(--text-faint)", margin: "0 0 8px" }}>
+          Controls whether Jemaw learns from your messages and may name you in roast/chaos.
+        </p>
+        {(
+          [
+            ["contributeToStyleProfile", "Use my messages for group vibe"],
+            ["allowDirectReference", "Allow naming me in jokes"],
+            ["allowPublicFinancialRoasting", "Allow money roasting about me"],
+            ["allowHardshipHumor", "Allow hardship humor about me"],
+            ["allowRelationshipHumor", "Allow relationship humor about me"],
+            ["allowCallbackFromMessages", "Allow catchphrases from my messages"],
+          ] as const
+        ).map(([key, label]) => (
+          <Row key={key} label={label}>
+            <Segmented
+              value={myPrefs?.[key] ? "on" : "off"}
+              onChange={async (v) => {
+                await updateMyPrefs.mutateAsync({ [key]: v === "on" });
+                await humorQ.refetch();
+              }}
+              options={[
+                { value: "on", label: "On" },
+                { value: "off", label: "Off" },
+              ]}
+            />
+          </Row>
+        ))}
       </Section>
 
       {/* Group */}
