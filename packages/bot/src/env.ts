@@ -47,8 +47,11 @@ const schema = z
     // Gemini is the fallback. Either alone works; with both, Groq is primary and
     // Gemini covers its failures. Without either, scans don't run.
     GEMINI_API_KEY: z.string().optional(),
+    // Model ids are env-driven so deprecations can be fixed without a code change.
+    // Defaults live in ai/geminiClient.ts (DEFAULT_GEMINI_MODEL / DEFAULT_GROQ_MODEL).
+    GEMINI_MODEL: z.string().min(1).optional(),
     GROQ_API_KEY: z.string().optional(),
-    GROQ_MODEL: z.string().optional(),
+    GROQ_MODEL: z.string().min(1).optional(),
   })
   .refine(
     (e) =>

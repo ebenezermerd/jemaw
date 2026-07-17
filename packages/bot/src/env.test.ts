@@ -40,4 +40,14 @@ describe("loadEnv", () => {
 
     expect(env.REGISTER_TELEGRAM_WEBHOOK).toBe(false);
   });
+
+  it("accepts optional scan model overrides", () => {
+    const env = loadEnv({
+      ...base,
+      GROQ_MODEL: "openai/gpt-oss-120b",
+      GEMINI_MODEL: "gemini-2.5-flash-lite",
+    } as NodeJS.ProcessEnv);
+    expect(env.GROQ_MODEL).toBe("openai/gpt-oss-120b");
+    expect(env.GEMINI_MODEL).toBe("gemini-2.5-flash-lite");
+  });
 });
