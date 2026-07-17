@@ -286,6 +286,96 @@ export const messages = pgTable(
   (t) => [unique().on(t.groupId, t.telegramMessageId)],
 );
 
+// ─── bot_replies (interactive humor audit) ────────────────────────────
+export const botReplyDecision = pgEnum("bot_reply_decision", [
+  "sent",
+  "suppressed",
+  "failed",
+]);
+
+export const botReplies = pgTable("bot_replies", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  groupId: uuid("group_id")
+    .notNull()
+    .references(() => groups.id),
+  triggerEvent: text("trigger_event").notNull(),
+  channel: text("channel").notNull(),
+  decision: botReplyDecision("decision").notNull(),
+  suppressionReason: text("suppression_reason"),
+  templateId: text("template_id"),
+  provider: text("provider"),
+  model: text("model"),
+  promptVersion: text("prompt_version"),
+  factPacketRedacted: jsonb("fact_packet_redacted"),
+  factHash: text("fact_hash"),
+  candidateTexts: jsonb("candidate_texts"),
+  selectedText: text("selected_text"),
+  selectedStyle: text("selected_style"),
+  riskClass: text("risk_class"),
+  telegramMessageId: bigint("telegram_message_id", { mode: "bigint" }),
+  latencyMs: integer("latency_ms"),
+  inputTokens: integer("input_tokens"),
+  outputTokens: integer("output_tokens"),
+  createdAt: timestamp("created_at", { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+});
+
+export const botReplyFeedback = pgTable("bot_reply_feedback", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  botReplyId: uuid("bot_reply_id")
+    .notNull()
+    .references(() => botReplies.id),
+  memberId: uuid("member_id")
+    .notNull()
+    .references(() => members.id),
+  feedbackType: text("feedback_type").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+});
+
+export const humorMemberPreferences = pgTable(
+  "humor_member_preferences",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    groupId: uuid("group_id")
+      .notNull()
+      .references(() => groups.id),
+    memberId: uuid("member_id")
+      .notNull()
+      .references(() => members.id),
+    contributeToStyleProfile: boolean("contribute_to_style_profile")
+      .notNull()
+      .default(true),
+    allowCallbackFromMessages: boolean("allow_callback_from_messages")
+      .notNull()
+      .default(false),
+    allowDirectReference: boolean("allow_direct_reference")
+      .notNull()
+      .default(false),
+    allowPublicFinancialRoasting: boolean("allow_public_financial_roasting")
+      .notNull()
+      .default(false),
+    allowHardshipHumor: boolean("allow_hardship_humor")
+      .notNull()
+      .default(false),
+    allowRelationshipHumor: boolean("allow_relationship_humor")
+      .notNull()
+      .default(false),
+    allowSecurityIncidentHumor: boolean("allow_security_incident_humor")
+      .notNull()
+      .default(false),
+    allowProfanityTargeting: boolean("allow_profanity_targeting")
+      .notNull()
+      .default(false),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [unique().on(t.groupId, t.memberId)],
+);
+
 // ─── Inferred row types ───────────────────────────────────────────────
 export type Group = typeof groups.$inferSelect;
 export type NewGroup = typeof groups.$inferInsert;
@@ -305,3 +395,7 @@ export type AiRun = typeof aiRuns.$inferSelect;
 export type NewAiRun = typeof aiRuns.$inferInsert;
 export type Message = typeof messages.$inferSelect;
 export type NewMessage = typeof messages.$inferInsert;
+export type BotReply = typeof botReplies.$inferSelect;
+export type NewBotReply = typeof botReplies.$inferInsert;
+export type BotReplyFeedback = typeof botReplyFeedback.$inferSelect;
+export type HumorMemberPreference = typeof humorMemberPreferences.$inferSelect;
