@@ -44,18 +44,25 @@ export function evaluateHumorPolicy(ctx: PolicyContext): HumorPolicyDecision {
     return { decision: "do_not_reply", reason: "risk_red" };
   }
 
-  const limits = HUMOR_MODE_LIMITS[settings.mode];
-  const maxDay = settings.maxPublicRepliesPerDay || limits.maxPublicRepliesPerDay;
-  if (ctx.publicRepliesToday >= maxDay) {
-    return { decision: "do_not_reply", reason: "daily_quota" };
-  }
+  // Direct "jemaw" / /jemaw / Mini App scan: always respond (no cooldown or
+  // daily quota). Limits only apply to passive event-driven humor later.
+  if (!ctx.directInvocation) {
+    const limits = HUMOR_MODE_LIMITS[settings.mode];
+    const maxDay =
+      settings.maxPublicRepliesPerDay || limits.maxPublicRepliesPerDay;
+    if (maxDay > 0 && ctx.publicRepliesToday >= maxDay) {
+      return { decision: "do_not_reply", reason: "daily_quota" };
+    }
 
-  const cooldownMin = settings.cooldownMinutes || limits.cooldownMinutes;
-  if (
-    ctx.lastPublicReplyAtMs != null &&
-    ctx.nowMs - ctx.lastPublicReplyAtMs < cooldownMin * 60_000
-  ) {
-    return { decision: "do_not_reply", reason: "cooldown" };
+    const cooldownMin =
+      settings.cooldownMinutes ?? limits.cooldownMinutes;
+    if (
+      cooldownMin > 0 &&
+      ctx.lastPublicReplyAtMs != null &&
+      ctx.nowMs - ctx.lastPublicReplyAtMs < cooldownMin * 60_000
+    ) {
+      return { decision: "do_not_reply", reason: "cooldown" };
+    }
   }
 
   if (

@@ -29,12 +29,29 @@ describe("evaluateHumorPolicy", () => {
     expect(d.decision).toBe("reply");
   });
 
-  it("enforces cooldown", () => {
+  it("skips cooldown on direct jemaw invocation", () => {
     const d = evaluateHumorPolicy({
       ...base,
+      directInvocation: true,
       settings: {
         ...DEFAULT_HUMOR_SETTINGS,
         mode: "jemaw_dry",
+        cooldownMinutes: 30,
+      },
+      lastPublicReplyAtMs: base.nowMs - 5 * 60_000,
+      publicRepliesToday: 99,
+      factPacket: buildScanHitPacket({ suggestionCount: 1 }),
+    });
+    expect(d.decision).toBe("reply");
+  });
+
+  it("enforces cooldown for passive (non jemaw) events", () => {
+    const d = evaluateHumorPolicy({
+      ...base,
+      directInvocation: false,
+      settings: {
+        ...DEFAULT_HUMOR_SETTINGS,
+        mode: "roast",
         cooldownMinutes: 30,
       },
       lastPublicReplyAtMs: base.nowMs - 5 * 60_000,

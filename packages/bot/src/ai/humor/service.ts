@@ -61,6 +61,9 @@ export async function composeHumorReply(input: {
   let inputTokens: number | undefined;
   let outputTokens: number | undefined;
 
+  // Prefer variety, but never silence a direct "jemaw" call for repetition.
+  const allowRepeat = input.directInvocation;
+
   if (input.settings.useModelComposer && input.humorClient) {
     const modelOut = await composeModelCandidates({
       client: input.humorClient,
@@ -71,7 +74,7 @@ export async function composeHumorReply(input: {
     outputTokens = modelOut.outputTokens;
     for (const c of modelOut.candidates) {
       candidates.push(c.text);
-      if (isTooSimilar(c.text, input.recentReplyTexts)) continue;
+      if (!allowRepeat && isTooSimilar(c.text, input.recentReplyTexts)) continue;
       const v = verifyCandidate(c.text, policy.factPacket);
       if (!v.ok) continue;
       return {
@@ -97,7 +100,7 @@ export async function composeHumorReply(input: {
   if (!tpl) {
     return { decision: "do_not_reply", reason: "no_template" };
   }
-  if (isTooSimilar(tpl.text, input.recentReplyTexts)) {
+  if (!allowRepeat && isTooSimilar(tpl.text, input.recentReplyTexts)) {
     // try one more random template by re-rolling
     const tpl2 = composeFromTemplates(policy.mode, policy.factPacket, () =>
       Math.random(),
