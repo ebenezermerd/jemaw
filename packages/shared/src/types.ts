@@ -75,6 +75,15 @@ export interface GroupDto {
   isAdmin: boolean;
 }
 
+export interface BootstrapGroupDto {
+  id: string;
+  name: string;
+}
+
+export interface BootstrapResponse {
+  groups: BootstrapGroupDto[];
+}
+
 export interface ExpenseShareDto {
   memberId: string;
   /** decimal string */

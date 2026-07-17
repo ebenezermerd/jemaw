@@ -25,6 +25,12 @@ export class ApiError extends Error {
 export function getGroupId(): string | null {
   const fromQuery = new URLSearchParams(window.location.search).get("group");
   if (fromQuery) return fromQuery;
+  const fromStartApp = new URLSearchParams(window.location.search).get("startapp");
+  if (fromStartApp) return fromStartApp;
+  const fromHash = new URLSearchParams(window.location.hash.replace(/^#/, "")).get(
+    "tgWebAppStartParam",
+  );
+  if (fromHash) return fromHash;
   const wa = window.Telegram?.WebApp as { initDataUnsafe?: { start_param?: string } } | undefined;
   return wa?.initDataUnsafe?.start_param ?? null;
 }

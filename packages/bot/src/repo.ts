@@ -60,6 +60,32 @@ export async function getGroupById(db: Db, id: string): Promise<Group | null> {
   return rows[0] ?? null;
 }
 
+export async function listGroupsForTelegramUser(
+  db: Db,
+  telegramUserId: bigint,
+): Promise<Group[]> {
+  return db
+    .select({
+      id: groups.id,
+      telegramChatId: groups.telegramChatId,
+      name: groups.name,
+      defaultCurrency: groups.defaultCurrency,
+      createdAt: groups.createdAt,
+      lastScanMessageId: groups.lastScanMessageId,
+      pinnedMessageId: groups.pinnedMessageId,
+      settings: groups.settings,
+    })
+    .from(groups)
+    .innerJoin(members, eq(members.groupId, groups.id))
+    .where(
+      and(
+        eq(members.telegramUserId, telegramUserId),
+        eq(members.isActive, true),
+      ),
+    )
+    .orderBy(desc(groups.createdAt));
+}
+
 /** Shallow-merge keys into groups.settings without clobbering other keys. */
 export async function mergeGroupSettings(
   db: Db,

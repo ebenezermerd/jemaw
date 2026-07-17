@@ -10,3 +10,11 @@ packages/*/dist-types/
 .gcp-secrets.env
 .firebase/
 backups/
+work/
+
+# Terraform / AWS deployment state
+*.tfstate
+*.tfstate.*
+.terraform/
+tfplan
+infra/aws/terraform.tfvars
