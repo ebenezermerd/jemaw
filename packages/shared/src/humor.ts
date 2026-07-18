@@ -108,7 +108,17 @@ export type HumorRiskClass = "green" | "yellow" | "red";
 
 export type HumorDecision = "reply" | "do_not_reply";
 
-/** Facts the model may claim; numbers rendered via placeholders by the backend. */
+/** One pending/new draft the model may joke about (group-visible review items). */
+export type PublicSafeDraftFact = {
+  label: string;
+  /** Numeric string from DB if present; model may only repeat approved amounts. */
+  amount?: string;
+  currency?: string;
+  /** Payer display name only when that member opted into direct reference. */
+  payer_name?: string;
+};
+
+/** Facts the model may claim; grounded from authorized group DB rows. */
 export type PublicSafeFactPacket = {
   event: HumorTriggerEvent;
   risk: HumorRiskClass;
@@ -123,10 +133,14 @@ export type PublicSafeFactPacket = {
     new_written?: number;
     pending_count?: number;
     categories?: string[];
-    /** Short safe description snippets (no amounts unless already public counts). */
+    /** Short safe description snippets. */
     draft_labels?: string[];
+    /** Concrete drafts with optional amounts (pending suggestions the group can already review). */
+    drafts?: PublicSafeDraftFact[];
     currency?: string;
     settlement_count?: number;
+    /** Active members in this group (count only; no private balances). */
+    active_member_count?: number;
   };
   allowed_claims: string[];
   forbidden_claims: string[];
@@ -134,9 +148,18 @@ export type PublicSafeFactPacket = {
   allowed_target_names: string[];
   allowed_target_member_ids: string[];
   allowed_placeholders: string[];
+  /**
+   * All number tokens the model may emit (counts + draft amounts).
+   * Verifier uses this as the allowlist.
+   */
+  allowed_number_tokens?: string[];
   /** Compact vibe summary for the model (no raw chat). */
   vibe_summary?: string;
   language_hint?: string;
+  /**
+   * Role for the model: short grounded group reply, not freeform invent-the-ledger chat.
+   */
+  reply_style_hint?: "scan_quip" | "grounded_companion";
 };
 
 export type HumorPolicyDecision =

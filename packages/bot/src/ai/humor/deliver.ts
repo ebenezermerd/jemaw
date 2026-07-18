@@ -116,7 +116,33 @@ export async function maybeDeliverScanHumor(input: {
     .map((s) => s.description)
     .filter(Boolean);
 
+  const memberById = new Map(members.map((m) => [m.id, m]));
+  const allowedNameSet = new Set(
+    allowedTargetNames.map((n) => n.toLowerCase()),
+  );
+
+  // Ground jokes in real pending rows (group-visible review drafts).
+  const drafts = pending.slice(0, 6).map((s) => {
+    let payer_name: string | undefined;
+    if (s.payerMemberId) {
+      const payer = memberById.get(s.payerMemberId);
+      if (
+        payer &&
+        allowedNameSet.has(payer.displayName.toLowerCase())
+      ) {
+        payer_name = payer.displayName;
+      }
+    }
+    return {
+      label: s.description,
+      amount: s.amount != null ? String(s.amount) : undefined,
+      currency: input.currency,
+      payer_name,
+    };
+  });
+
   const categories = uniqueCategories(draftLabels);
+  const activeMemberCount = members.filter((m) => m.isActive).length;
 
   const languageHint =
     settings.languageMode === "auto"
@@ -130,9 +156,11 @@ export async function maybeDeliverScanHumor(input: {
     pendingCount: input.pendingCount || pending.length,
     currency: input.currency,
     draftLabels,
+    drafts,
     categories,
     allowedTargetNames,
     allowedTargetMemberIds,
+    activeMemberCount,
     vibe: settings.useGroupVibe ? vibe : null,
     languageHint,
   });
@@ -145,8 +173,9 @@ export async function maybeDeliverScanHumor(input: {
     listRecentBotReplyTexts(input.db, input.group.id, 20),
   ]);
 
+  // Few short samples — enough for tone, cheap on tokens.
   const styleSamples = settings.useGroupVibe
-    ? pickStyleSamples(styleMsgs, 6)
+    ? pickStyleSamples(styleMsgs, 3)
     : [];
 
   const composed = await composeHumorReply({
