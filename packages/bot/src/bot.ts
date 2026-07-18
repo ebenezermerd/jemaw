@@ -15,7 +15,12 @@ import { sendDigestNow } from "./telegram/weeklyJob.js";
 import type { GeminiClient } from "./ai/geminiClient.js";
 import type { ScanRateLimiter } from "./ai/rateLimit.js";
 import { scanGroup } from "./ai/scan.js";
-import { maybeDeliverScanHumor, type HumorRuntime } from "./ai/humor/deliver.js";
+import {
+  maybeDeliverDirectChat,
+  maybeDeliverScanHumor,
+  type HumorRuntime,
+} from "./ai/humor/deliver.js";
+import { classifyJemawIntent } from "./ai/humor/intent.js";
 
 /** Word-boundary, case-insensitive "jemaw" trigger (plan §10). */
 const JEMAW_RE = /(?<![a-z0-9])jemaw(?![a-z0-9])/i;
@@ -290,6 +295,28 @@ export function createBot(token: string, deps: BotDeps): Bot {
     ).catch(() => {});
 
     if (JEMAW_RE.test(text)) {
+      const intent = classifyJemawIntent(text);
+      if (intent === "chat") {
+        // Social banter: skip expense extract; reply from live DB context.
+        void (async () => {
+          const g = await getGroupById(db, groupId);
+          if (!g) return;
+          await maybeDeliverDirectChat({
+            db,
+            api: ctx.api,
+            group: g,
+            userText: text,
+            currency: g.defaultCurrency,
+            humor: humor ?? {},
+          });
+        })().catch((err) =>
+          console.warn(
+            `[humor] direct chat failed:`,
+            err instanceof Error ? err.message : err,
+          ),
+        );
+        return;
+      }
       const member = ctx.from
         ? await findScanMember(db, groupId, ctx.from.id)
         : null;

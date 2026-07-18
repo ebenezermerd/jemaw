@@ -159,7 +159,12 @@ export type PublicSafeFactPacket = {
   /**
    * Role for the model: short grounded group reply, not freeform invent-the-ledger chat.
    */
-  reply_style_hint?: "scan_quip" | "grounded_companion";
+  reply_style_hint?: "scan_quip" | "grounded_companion" | "direct_chat";
+  /**
+   * Sanitized user message when they addressed Jemaw socially
+   * (e.g. "hey what's up?"). Not a ledger claim.
+   */
+  addressed_utterance?: string;
 };
 
 export type HumorPolicyDecision =
