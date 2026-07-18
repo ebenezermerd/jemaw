@@ -9,7 +9,7 @@ import { verifyCandidate } from "./verifier.js";
 import { shouldPreferSaferTone } from "./preferenceLearning.js";
 import { scoreFlowFit, textMentionsMoney } from "./conversationFlow.js";
 
-export const HUMOR_PROMPT_VERSION = "humor-v7-meddler-flow";
+export const HUMOR_PROMPT_VERSION = "humor-v8-thread-sulk";
 
 export const HUMOR_MAX_TOKENS = 320;
 
@@ -81,9 +81,11 @@ function buildSystem(
   if (chat) {
     return [
       ...base,
-      "Someone addressed you in chat. Answer USER_SAID as a character in the conversation.",
+      "Someone addressed you in chat. Answer USER_SAID as a CONTINUATION of THREAD (follow-up, not a cold restart).",
+      "Use THREAD: acknowledge what they just said and what you said last when relevant.",
       "Greetings and banter can stay social. Only bring money when FLOW allows.",
-      "Hard nudge may sound like: come on, clear that draft or I'll go quiet — still fact-locked.",
+      "If FLOW.will_sulk_after is true: this is your LAST social line — state you'll go quiet until the group clears an approved draft; backend enforces it.",
+      "Only threaten silence if will_sulk_after is true; otherwise do not promise actions you cannot take.",
       "Do not pretend a fresh scan ran unless counts.new > 0.",
     ]
       .filter(Boolean)
@@ -136,6 +138,10 @@ export function buildHumorContextPayload(packet: PublicSafeFactPacket): Record<
     ...(packet.addressed_utterance
       ? { user_said: packet.addressed_utterance }
       : {}),
+    thread: (packet.thread_turns ?? []).map((t) => ({
+      role: t.role,
+      text: t.text,
+    })),
     flow: flow
       ? {
           phase: flow.phase,
@@ -146,6 +152,8 @@ export function buildHumorContextPayload(packet: PublicSafeFactPacket): Record<
           max_day: flow.max_public_replies_per_day,
           near_cap: flow.near_daily_cap,
           directive: flow.directive,
+          will_sulk_after: flow.will_sulk_after === true,
+          sulk_minutes: flow.sulk_minutes,
         }
       : undefined,
   };
@@ -208,12 +216,18 @@ export async function composeModelCandidates(input: {
     .filter(Boolean)
     .slice(0, 3);
 
+  const threadLines = (input.packet.thread_turns ?? [])
+    .map((t) => `${t.role === "user" ? "group" : "jemaw"}: ${t.text}`)
+    .join("\n");
+
   const task = chat
-    ? `USER_SAID: ${input.packet.addressed_utterance ?? "(addressed jemaw)"}
+    ? `THREAD (oldest→newest):\n${threadLines || "(no prior turns)"}
+USER_SAID_NOW: ${input.packet.addressed_utterance ?? "(addressed jemaw)"}
 FLOW_PHASE: ${input.packet.conversation_flow?.phase ?? "open_banter"}
 MONEY_POLICY: ${input.packet.conversation_flow?.money_mention ?? "optional"}
+WILL_SULK_AFTER: ${input.packet.conversation_flow?.will_sulk_after === true}
 DIRECTIVE: ${input.packet.conversation_flow?.directive ?? "Be interactive."}
-Write ${n} distinct natural replies that follow FLOW and answer USER_SAID.`
+Write ${n} distinct follow-up replies that continue THREAD and answer USER_SAID_NOW.`
     : `FLOW_PHASE: scan_report
 Write ${n} distinct scan-outcome lines grounded in CONTEXT.`;
 

@@ -10,6 +10,7 @@ import type {
   HumorRiskClass,
   GroupVibeV1,
   ConversationFlowV1,
+  ConversationThreadTurn,
 } from "@jemaw/shared/humor";
 
 export interface ScanHumorFacts {
@@ -27,6 +28,7 @@ export interface ScanHumorFacts {
   vibe?: GroupVibeV1 | null;
   languageHint?: string;
   conversationFlow?: ConversationFlowV1;
+  threadTurns?: ConversationThreadTurn[];
 }
 
 export function buildScanOutcomePacket(input: ScanHumorFacts): PublicSafeFactPacket {
@@ -135,6 +137,7 @@ export function buildScanOutcomePacket(input: ScanHumorFacts): PublicSafeFactPac
     language_hint: input.languageHint,
     reply_style_hint: "grounded_companion",
     conversation_flow: input.conversationFlow,
+    thread_turns: input.threadTurns?.length ? input.threadTurns : undefined,
   };
 }
 
@@ -156,6 +159,7 @@ export function buildDirectChatPacket(input: {
   /** Sanitized user message (already bounded). */
   addressedUtterance: string;
   conversationFlow?: ConversationFlowV1;
+  threadTurns?: ConversationThreadTurn[];
 }): PublicSafeFactPacket {
   const pending = Math.max(0, Math.floor(input.pendingCount));
   const labels = (input.draftLabels ?? [])
@@ -232,6 +236,7 @@ export function buildDirectChatPacket(input: {
     reply_style_hint: "direct_chat",
     addressed_utterance: input.addressedUtterance.slice(0, 160),
     conversation_flow: input.conversationFlow,
+    thread_turns: input.threadTurns?.length ? input.threadTurns : undefined,
   };
 }
 

@@ -40,6 +40,13 @@ export type HumorSettingsV1 = {
   enabledByMemberId?: string;
   enabledAt?: string;
   mutedUntil?: string;
+  /**
+   * After a hard-nudge ultimatum, social chat stays quiet until this time
+   * (or until pending drafts drop). Scans still work.
+   */
+  chatSulkUntil?: string;
+  /** Pending count when sulk started — clear sulk if backlog shrinks. */
+  chatSulkPendingCount?: number;
 };
 
 /** Structured group vibe (Phase 3) — stored under groups.settings.vibe */
@@ -170,6 +177,17 @@ export type PublicSafeFactPacket = {
    * re-listing expenses every turn.
    */
   conversation_flow?: ConversationFlowV1;
+  /**
+   * Recent jemaw↔group turns (oldest→newest), for follow-up continuity.
+   * Sanitized short lines only — not full chat dump.
+   */
+  thread_turns?: ConversationThreadTurn[];
+};
+
+/** One turn in the recent jemaw conversation thread. */
+export type ConversationThreadTurn = {
+  role: "user" | "jemaw";
+  text: string;
 };
 
 /**
@@ -198,7 +216,17 @@ export type ConversationFlowV1 = {
   money_mention: MoneyMentionPolicy;
   /** Short directive string for the model. */
   directive: string;
+  /**
+   * After this hard_nudge reply is sent, backend will sulk (ignore social chat).
+   * Model should treat this line as the last banter until backlog moves.
+   */
+  will_sulk_after?: boolean;
+  /** Minutes of sulk the backend will apply (for the model to state accurately). */
+  sulk_minutes?: number;
 };
+
+/** Default social sulk after a hard-nudge ultimatum (minutes). */
+export const CHAT_SULK_MINUTES = 45;
 
 export type HumorPolicyDecision =
   | {

@@ -11,6 +11,7 @@ import type {
   MoneyMentionPolicy,
   PublicSafeFactPacket,
 } from "@jemaw/shared/humor";
+import { CHAT_SULK_MINUTES } from "@jemaw/shared/humor";
 
 const MONEYISH =
   /\b(draft|drafts|pending|expense|expenses|ledger|lunch|dinner|amount|etb|birr|owe|owes|pay|paid|settle|settlement|waiting|review|mini\s*app|books?|queue|backlog|\d{2,})\b/i;
@@ -93,14 +94,16 @@ export function buildConversationFlow(input: {
   } else {
     phase = "hard_nudge";
     money = "require_light";
-    directive =
-      "Hard playful ultimatum. You're the group infrastructure spirit tired of idle pokes: e.g. clear/pay/review the open draft (use one approved label+amount) or you'll go quiet. Never invent balances. Never shame poverty. Protect the GROUP process.";
+    directive = `Hard ultimatum — LAST social reply before you go quiet for ~${CHAT_SULK_MINUTES} minutes. Say you'll stop chatting until the group reviews/clears an approved open draft (one label+amount). Backend WILL enforce silence after this. Never invent balances. Protect GROUP process, not personal attacks.`;
   }
 
   if (nearCap) {
     directive +=
       " Also lightly note you're near your daily chatter budget for this group.";
   }
+
+  // Continuity: if thread exists, treat as follow-up not a cold open.
+  // (Caller may append more via packet.thread_turns in the model prompt.)
 
   return {
     phase,
@@ -111,7 +114,36 @@ export function buildConversationFlow(input: {
     near_daily_cap: nearCap,
     money_mention: money,
     directive,
+    will_sulk_after: phase === "hard_nudge",
+    sulk_minutes: phase === "hard_nudge" ? CHAT_SULK_MINUTES : undefined,
   };
+}
+
+/** True when social chat should stay silent after a prior ultimatum. */
+export function isChatSulking(input: {
+  chatSulkUntil?: string | null;
+  chatSulkPendingCount?: number | null;
+  pendingCount: number;
+  nowMs?: number;
+}): { sulking: boolean; reason?: string; shouldClear?: boolean } {
+  const now = input.nowMs ?? Date.now();
+  if (!input.chatSulkUntil) return { sulking: false };
+  const until = Date.parse(input.chatSulkUntil);
+  if (Number.isNaN(until)) return { sulking: false };
+
+  // Backlog cleared or shrunk → forgive and clear sulk.
+  if (
+    input.pendingCount === 0 ||
+    (input.chatSulkPendingCount != null &&
+      input.pendingCount < input.chatSulkPendingCount)
+  ) {
+    return { sulking: false, shouldClear: true, reason: "backlog_improved" };
+  }
+
+  if (now < until) {
+    return { sulking: true, reason: "chat_sulk_active" };
+  }
+  return { sulking: false, shouldClear: true, reason: "sulk_expired" };
 }
 
 export function moneyMentionStreak(
