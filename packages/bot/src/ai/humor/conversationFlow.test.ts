@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   buildConversationFlow,
+  isChatSulking,
   moneyMentionStreak,
   scoreFlowFit,
   textMentionsMoney,
@@ -46,6 +47,33 @@ describe("buildConversationFlow", () => {
     });
     expect(hard.phase).toBe("hard_nudge");
     expect(hard.money_mention).toBe("require_light");
+    expect(hard.will_sulk_after).toBe(true);
+    expect(hard.sulk_minutes).toBeGreaterThan(0);
+  });
+
+  it("detects active sulk and clears when backlog improves", () => {
+    const until = new Date(Date.now() + 30 * 60_000).toISOString();
+    expect(
+      isChatSulking({
+        chatSulkUntil: until,
+        chatSulkPendingCount: 3,
+        pendingCount: 3,
+      }).sulking,
+    ).toBe(true);
+    expect(
+      isChatSulking({
+        chatSulkUntil: until,
+        chatSulkPendingCount: 3,
+        pendingCount: 1,
+      }),
+    ).toMatchObject({ sulking: false, shouldClear: true });
+    expect(
+      isChatSulking({
+        chatSulkUntil: until,
+        chatSulkPendingCount: 3,
+        pendingCount: 0,
+      }),
+    ).toMatchObject({ sulking: false, shouldClear: true });
   });
 
   it("breaks money monologue when streak is high", () => {

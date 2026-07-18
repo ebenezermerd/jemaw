@@ -20,8 +20,13 @@ import {
 } from "./factPacket.js";
 import { composeHumorReply } from "./service.js";
 import { sanitizeAddressedUtterance } from "./intent.js";
-import { buildConversationFlow } from "./conversationFlow.js";
 import {
+  buildConversationFlow,
+  isChatSulking,
+} from "./conversationFlow.js";
+import { buildThreadTurns } from "./threadMemory.js";
+import {
+  CHAT_SULK_MINUTES,
   HUMOR_MODE_LIMITS,
   type HumorMode,
 } from "@jemaw/shared/humor";
@@ -35,6 +40,7 @@ import {
   countBotRepliesSince,
   insertBotReply,
   listRecentBotReplyTexts,
+  listRecentBotReplies,
   lastBotReplyAt,
   listPendingSuggestions,
   lastNMessages,
@@ -132,7 +138,8 @@ export async function maybeDeliverScanHumor(input: {
 
 /**
  * Social address: "hey jemaw", "you cooking something jemaw?"
- * Skips expense extract; still grounds reply in live pending drafts.
+ * Skips expense extract; grounds reply in live drafts + recent thread.
+ * After hard_nudge, enforces chat sulk (silence) until backlog moves.
  */
 export async function maybeDeliverDirectChat(input: {
   db: Db;
@@ -144,7 +151,7 @@ export async function maybeDeliverDirectChat(input: {
 }): Promise<void> {
   const started = Date.now();
   const settingsRaw = input.group.settings as Record<string, unknown> | null;
-  const settings = parseHumorSettings(settingsRaw?.humor);
+  let settings = parseHumorSettings(settingsRaw?.humor);
 
   if (settings.mode === "off") {
     console.log(
@@ -169,13 +176,62 @@ export async function maybeDeliverDirectChat(input: {
     currency: input.currency,
   });
 
+  // Enforce prior ultimatum: stay quiet unless backlog improved.
+  const sulk = isChatSulking({
+    chatSulkUntil: settings.chatSulkUntil,
+    chatSulkPendingCount: settings.chatSulkPendingCount,
+    pendingCount: ctx.pendingCount,
+  });
+  if (sulk.shouldClear) {
+    settings = await clearChatSulk(input.db, input.group.id, settings);
+    if (sulk.reason === "backlog_improved") {
+      console.log(
+        `[humor] sulk cleared group=${input.group.id} reason=backlog_improved`,
+      );
+    }
+  } else if (sulk.sulking) {
+    console.log(
+      `[humor] chat suppressed group=${input.group.id} reason=chat_sulk pending=${ctx.pendingCount}`,
+    );
+    await insertBotReply(input.db, {
+      groupId: input.group.id,
+      triggerEvent: "direct_mention",
+      channel: "group",
+      decision: "suppressed",
+      suppressionReason: "chat_sulk",
+      riskClass: "green",
+      latencyMs: Date.now() - started,
+    });
+    return;
+  }
+
   const dayStart = new Date();
   dayStart.setUTCHours(0, 0, 0, 0);
-  const [publicRepliesToday, recentTexts] = await Promise.all([
+  const [publicRepliesToday, recentReplies] = await Promise.all([
     countBotRepliesSince(input.db, input.group.id, dayStart),
-    listRecentBotReplyTexts(input.db, input.group.id, 8),
+    listRecentBotReplies(input.db, input.group.id, 10),
   ]);
+  const recentTexts = recentReplies.map((r) => r.text);
   const maxDay = maxRepliesForMode(settings.mode, settings.maxPublicRepliesPerDay);
+
+  const threadTurns = buildThreadTurns({
+    messages: ctx.recentMessages,
+    botReplies: recentReplies.map((r) => ({
+      text: r.text,
+      createdAt: r.createdAt,
+    })),
+    maxTurns: 8,
+  });
+  // Ensure current utterance is last user turn (capture may race).
+  if (
+    !threadTurns.length ||
+    threadTurns[threadTurns.length - 1]!.role !== "user" ||
+    threadTurns[threadTurns.length - 1]!.text !== utterance.slice(0, 140)
+  ) {
+    threadTurns.push({ role: "user", text: utterance.slice(0, 140) });
+    while (threadTurns.length > 8) threadTurns.shift();
+  }
+
   const flow = buildConversationFlow({
     kind: "chat",
     pendingCount: ctx.pendingCount,
@@ -185,6 +241,13 @@ export async function maybeDeliverDirectChat(input: {
     maxPublicRepliesPerDay: maxDay,
     userText: utterance,
   });
+
+  // Continuity directive when we have prior turns.
+  if (threadTurns.length >= 2) {
+    flow.directive =
+      `Continue the ongoing thread (${threadTurns.length} prior lines). ` +
+      flow.directive;
+  }
 
   const packet = buildDirectChatPacket({
     pendingCount: ctx.pendingCount,
@@ -199,10 +262,11 @@ export async function maybeDeliverDirectChat(input: {
     languageHint: ctx.languageHint,
     addressedUtterance: utterance,
     conversationFlow: flow,
+    threadTurns,
   });
 
   console.log(
-    `[humor] chat_flow group=${input.group.id} phase=${flow.phase} money=${flow.money_mention} pokes_1h=${flow.poke_count_1h} streak=${flow.recent_money_mention_streak}`,
+    `[humor] chat_flow group=${input.group.id} phase=${flow.phase} money=${flow.money_mention} pokes_1h=${flow.poke_count_1h} thread=${threadTurns.length} sulk_after=${flow.will_sulk_after === true}`,
   );
 
   await composeAndSend({
@@ -212,12 +276,13 @@ export async function maybeDeliverDirectChat(input: {
     group: input.group,
     settings,
     packet,
-    // Social address is always an explicit invocation — no cooldown.
     directInvocation: true,
     vibe: settings.useGroupVibe ? ctx.vibe : null,
     styleSamples: ctx.styleSamples,
     humor: input.humor,
     prefetched: { publicRepliesToday, recentTexts },
+    applySulkIfHardNudge: true,
+    pendingCountForSulk: ctx.pendingCount,
   });
 }
 
@@ -233,6 +298,9 @@ async function composeAndSend(input: {
   styleSamples: string[];
   humor: HumorRuntime;
   prefetched?: { publicRepliesToday: number; recentTexts: string[] };
+  /** After hard_nudge send, arm chat sulk so threats have teeth. */
+  applySulkIfHardNudge?: boolean;
+  pendingCountForSulk?: number;
 }): Promise<void> {
   const dayStart = new Date();
   dayStart.setUTCHours(0, 0, 0, 0);
@@ -307,6 +375,23 @@ async function composeAndSend(input: {
       inputTokens: composed.inputTokens ?? null,
       outputTokens: composed.outputTokens ?? null,
     });
+
+    // Ultimatum has teeth: social chat goes quiet until backlog moves or timer ends.
+    if (
+      input.applySulkIfHardNudge &&
+      input.packet.conversation_flow?.will_sulk_after &&
+      (input.pendingCountForSulk ?? 0) > 0
+    ) {
+      await armChatSulk(
+        input.db,
+        input.group.id,
+        input.settings,
+        input.pendingCountForSulk ?? 0,
+      );
+      console.log(
+        `[humor] chat_sulk armed group=${input.group.id} minutes=${CHAT_SULK_MINUTES} pending=${input.pendingCountForSulk}`,
+      );
+    }
   } catch (err) {
     console.error(
       `[humor] send failed group=${input.group.id}:`,
@@ -351,6 +436,8 @@ async function loadHumorGroupContext(input: {
   languageHint: string | undefined;
   /** Messages in the last hour that address jemaw. */
   pokeCount1h: number;
+  /** Recent raw messages for thread building. */
+  recentMessages: Array<{ text: string; sentAt: Date }>;
 }> {
   const [members, pending, msgs, prefsMap] = await Promise.all([
     listMembers(input.db, input.groupId),
@@ -364,6 +451,7 @@ async function loadHumorGroupContext(input: {
       m.sentAt.getTime() >= hourAgo &&
       /(?<![a-z0-9])jemaw(?![a-z0-9])/i.test(m.text),
   ).length;
+  const recentMessages = msgs.map((m) => ({ text: m.text, sentAt: m.sentAt }));
 
   const memberByTg = new Map(
     members.map((m) => [m.telegramUserId.toString(), m]),
@@ -450,6 +538,7 @@ async function loadHumorGroupContext(input: {
     pendingCount: pending.length,
     languageHint,
     pokeCount1h,
+    recentMessages,
   };
 }
 
@@ -457,6 +546,37 @@ function maxRepliesForMode(mode: HumorMode, settingsMax: number): number {
   if (mode === "off") return settingsMax;
   const limits = HUMOR_MODE_LIMITS[mode];
   return settingsMax || limits.maxPublicRepliesPerDay;
+}
+
+async function armChatSulk(
+  db: Db,
+  groupId: string,
+  settings: HumorSettingsV1,
+  pendingCount: number,
+): Promise<void> {
+  const until = new Date(
+    Date.now() + CHAT_SULK_MINUTES * 60_000,
+  ).toISOString();
+  const next: HumorSettingsV1 = {
+    ...settings,
+    chatSulkUntil: until,
+    chatSulkPendingCount: pendingCount,
+  };
+  await mergeGroupSettings(db, groupId, { humor: next });
+}
+
+async function clearChatSulk(
+  db: Db,
+  groupId: string,
+  settings: HumorSettingsV1,
+): Promise<HumorSettingsV1> {
+  const next: HumorSettingsV1 = {
+    ...settings,
+    chatSulkUntil: undefined,
+    chatSulkPendingCount: undefined,
+  };
+  await mergeGroupSettings(db, groupId, { humor: next });
+  return next;
 }
 
 async function loadPrefsMap(db: Db, groupId: string) {

@@ -1032,8 +1032,22 @@ export async function listRecentBotReplyTexts(
   groupId: string,
   limit: number,
 ): Promise<string[]> {
+  const rows = await listRecentBotReplies(db, groupId, limit);
+  return rows.map((r) => r.text);
+}
+
+/** Recent sent bot replies with timestamps (newest first). */
+export async function listRecentBotReplies(
+  db: Db,
+  groupId: string,
+  limit: number,
+): Promise<Array<{ text: string; createdAt: Date; triggerEvent: string }>> {
   const rows = await db
-    .select({ selectedText: botReplies.selectedText })
+    .select({
+      selectedText: botReplies.selectedText,
+      createdAt: botReplies.createdAt,
+      triggerEvent: botReplies.triggerEvent,
+    })
     .from(botReplies)
     .where(
       and(eq(botReplies.groupId, groupId), eq(botReplies.decision, "sent")),
@@ -1041,8 +1055,12 @@ export async function listRecentBotReplyTexts(
     .orderBy(desc(botReplies.createdAt))
     .limit(limit);
   return rows
-    .map((r) => r.selectedText)
-    .filter((t): t is string => typeof t === "string" && t.length > 0);
+    .filter((r) => typeof r.selectedText === "string" && r.selectedText.length > 0)
+    .map((r) => ({
+      text: r.selectedText as string,
+      createdAt: r.createdAt,
+      triggerEvent: r.triggerEvent,
+    }));
 }
 
 export async function getBotReply(
