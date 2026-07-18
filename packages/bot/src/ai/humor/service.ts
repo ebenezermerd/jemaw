@@ -82,9 +82,11 @@ export async function composeHumorReply(input: {
         input.settings.useGroupVibe && input.vibe?.status === "active"
           ? input.styleSamples
           : undefined,
+      unpredictability: input.settings.unpredictability,
     });
     inputTokens = modelOut.inputTokens;
     outputTokens = modelOut.outputTokens;
+    // Candidates already ranked by grounding score; take first non-repeat.
     for (const c of modelOut.candidates) {
       candidates.push(c.text);
       if (!allowRepeat && isTooSimilar(c.text, input.recentReplyTexts)) continue;

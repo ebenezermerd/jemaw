@@ -81,6 +81,27 @@ const TEMPLATES: Template[] = [
     body: "{{pending_count}} draft{{pending_s}} still hanging. The Mini App is patient. Are you?",
     style: "roast",
   },
+  {
+    id: "pending_topics",
+    event: "scan_still_pending",
+    modes: ["jemaw_dry", "roast", "chaos"],
+    body: "Still sitting on {{topic_line}}. {{pending_count}} open draft{{pending_s}}.",
+    style: "dry_observation",
+  },
+  {
+    id: "pending_topics_roast",
+    event: "scan_still_pending",
+    modes: ["roast", "chaos"],
+    body: "{{topic_line}} still waiting for a grown-up decision. {{pending_count}} draft{{pending_s}}.",
+    style: "roast",
+  },
+  {
+    id: "fresh_topics",
+    event: "scan_hit",
+    modes: ["jemaw_dry", "roast", "chaos"],
+    body: "New draft{{new_written_s}}: {{topic_line}}. {{pending_count}} total waiting.",
+    style: "dry_observation",
+  },
   // miss
   {
     id: "miss_1",
@@ -126,9 +147,12 @@ export function composeFromTemplates(
   rng: () => number = Math.random,
 ): TemplateReply | null {
   if (mode === "off") return null;
-  const pool = TEMPLATES.filter(
-    (t) => t.event === packet.event && t.modes.includes(mode),
-  );
+  const hasTopics = Boolean(formatTopicLine(packet));
+  const pool = TEMPLATES.filter((t) => {
+    if (t.event !== packet.event || !t.modes.includes(mode)) return false;
+    if (t.body.includes("{{topic_line}}") && !hasTopics) return false;
+    return true;
+  });
   if (pool.length === 0) return null;
   const pick = pool[Math.floor(rng() * pool.length)]!;
   const text = renderPlaceholders(pick.body, packet);
@@ -143,12 +167,18 @@ export function renderPlaceholders(
   const pf = packet.public_facts;
   const newW = pf.new_written ?? 0;
   const pending = pf.pending_count ?? pf.suggestion_count ?? 0;
+  const topicLine = formatTopicLine(packet);
+  // Templates that need topics skip when none exist (leave unrendered → null).
+  if (body.includes("{{topic_line}}") && !topicLine) {
+    return body;
+  }
   const values: Record<string, string> = {
     new_written: String(newW),
     pending_count: String(pending),
     suggestion_count: String(pending),
     new_written_s: newW === 1 ? "" : "s",
     pending_s: pending === 1 ? "" : "s",
+    topic_line: topicLine,
   };
   if (pf.currency && packet.allowed_placeholders.includes("currency")) {
     values.currency = pf.currency;
@@ -157,4 +187,20 @@ export function renderPlaceholders(
     if (key in values) return values[key]!;
     return `{{${key}}}`;
   });
+}
+
+function formatTopicLine(packet: PublicSafeFactPacket): string {
+  const drafts = packet.public_facts.drafts ?? [];
+  if (drafts.length) {
+    return drafts
+      .slice(0, 3)
+      .map((d) =>
+        d.amount
+          ? `${d.label} ${d.amount}${d.currency ? ` ${d.currency}` : ""}`
+          : d.label,
+      )
+      .join(", ");
+  }
+  const labels = packet.public_facts.draft_labels ?? [];
+  return labels.slice(0, 3).join(", ");
 }
