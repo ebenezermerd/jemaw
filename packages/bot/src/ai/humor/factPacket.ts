@@ -135,6 +135,101 @@ export function buildScanOutcomePacket(input: ScanHumorFacts): PublicSafeFactPac
   };
 }
 
+/**
+ * Social / direct-address packet: user said something to Jemaw (not a scan).
+ * Ground jokes in current pending drafts from the DB.
+ */
+export function buildDirectChatPacket(input: {
+  pendingCount: number;
+  currency?: string;
+  draftLabels?: string[];
+  drafts?: PublicSafeDraftFact[];
+  categories?: string[];
+  allowedTargetNames?: string[];
+  allowedTargetMemberIds?: string[];
+  activeMemberCount?: number;
+  vibe?: GroupVibeV1 | null;
+  languageHint?: string;
+  /** Sanitized user message (already bounded). */
+  addressedUtterance: string;
+}): PublicSafeFactPacket {
+  const pending = Math.max(0, Math.floor(input.pendingCount));
+  const labels = (input.draftLabels ?? [])
+    .map((s) => s.trim())
+    .filter(Boolean)
+    .slice(0, 5)
+    .map((s) => s.slice(0, 40));
+  const drafts = normalizeDrafts(input.drafts ?? [], input.currency);
+  const categories = (input.categories ?? []).filter(Boolean).slice(0, 5);
+
+  const outcome: PublicSafeFactPacket["outcome"] =
+    pending > 0 ? "still_pending" : "other";
+
+  const claims: string[] = [
+    "user addressed Jemaw in chat (social, not a ledger scan)",
+  ];
+  if (pending > 0) {
+    claims.push(`${pending} draft${pending === 1 ? "" : "s"} still waiting for review`);
+  } else {
+    claims.push("no pending drafts right now");
+  }
+  for (const d of drafts) {
+    if (d.amount) {
+      claims.push(
+        `draft "${d.label}" amount ${d.amount}${d.currency ? ` ${d.currency}` : ""}`,
+      );
+    } else {
+      claims.push(`draft "${d.label}"`);
+    }
+  }
+  if (input.activeMemberCount != null && input.activeMemberCount > 0) {
+    claims.push(`${input.activeMemberCount} active members in this group`);
+  }
+
+  const allowed_number_tokens = collectAllowedNumberTokens({
+    written: 0,
+    pending,
+    drafts,
+  });
+
+  return {
+    event: "direct_mention",
+    risk: "green",
+    outcome,
+    public_facts: {
+      suggestion_count: pending,
+      new_written: 0,
+      pending_count: pending,
+      categories: categories.length ? categories : undefined,
+      draft_labels: labels.length ? labels : undefined,
+      drafts: drafts.length ? drafts : undefined,
+      currency: input.currency,
+      active_member_count:
+        input.activeMemberCount != null && input.activeMemberCount > 0
+          ? input.activeMemberCount
+          : undefined,
+    },
+    allowed_claims: claims,
+    forbidden_claims: [
+      "any amount not listed in drafts or public_facts counts",
+      "any individual balance or net-owe figure",
+      "any information unavailable to the audience",
+      "any motive or diagnosis not explicitly supported",
+      "names of members not in allowed_target_names",
+      "private hardship, wealth ranking, or relationship drama",
+      "pretending a fresh scan just ran unless new_written > 0",
+    ],
+    allowed_target_names: input.allowedTargetNames ?? [],
+    allowed_target_member_ids: input.allowedTargetMemberIds ?? [],
+    allowed_placeholders: ["suggestion_count", "pending_count", "currency"],
+    allowed_number_tokens,
+    vibe_summary: input.vibe ? summarizeVibe(input.vibe) : undefined,
+    language_hint: input.languageHint,
+    reply_style_hint: "direct_chat",
+    addressed_utterance: input.addressedUtterance.slice(0, 160),
+  };
+}
+
 /** @deprecated use buildScanOutcomePacket */
 export function buildScanHitPacket(input: {
   suggestionCount: number;

@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import {
+  buildDirectChatPacket,
   buildScanOutcomePacket,
   collectAllowedNumberTokens,
   normalizeAmountToken,
@@ -51,6 +52,27 @@ describe("buildScanOutcomePacket", () => {
     expect(p.public_facts.active_member_count).toBe(4);
     expect(p.allowed_claims.some((c) => c.includes("Lunch") && c.includes("600"))).toBe(
       true,
+    );
+  });
+});
+
+describe("buildDirectChatPacket", () => {
+  it("marks direct_mention and keeps drafts for banter grounding", () => {
+    const p = buildDirectChatPacket({
+      pendingCount: 3,
+      currency: "ETB",
+      drafts: [
+        { label: "Lunch", amount: "600", currency: "ETB" },
+        { label: "Dinner", amount: "2500", currency: "ETB" },
+      ],
+      addressedUtterance: "you cooking something jemaw?",
+    });
+    expect(p.event).toBe("direct_mention");
+    expect(p.reply_style_hint).toBe("direct_chat");
+    expect(p.addressed_utterance).toMatch(/cooking/);
+    expect(p.public_facts.drafts?.[0]?.amount).toBe("600");
+    expect(p.allowed_number_tokens).toEqual(
+      expect.arrayContaining(["3", "600", "2500"]),
     );
   });
 });

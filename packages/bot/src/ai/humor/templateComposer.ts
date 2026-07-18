@@ -139,6 +139,42 @@ const TEMPLATES: Template[] = [
     body: "Payment recorded. Diplomatic relations restored.",
     style: "dry_observation",
   },
+  // direct social address
+  {
+    id: "chat_1",
+    event: "direct_mention",
+    modes: ["jemaw_dry", "roast", "chaos"],
+    body: "Hey. Watching the books — {{pending_count}} draft{{pending_s}} open if you care.",
+    style: "dry_observation",
+  },
+  {
+    id: "chat_2",
+    event: "direct_mention",
+    modes: ["jemaw_dry", "roast", "chaos"],
+    body: "Present. {{pending_count}} draft{{pending_s}} still waiting when you are ready.",
+    style: "dry_observation",
+  },
+  {
+    id: "chat_topics",
+    event: "direct_mention",
+    modes: ["jemaw_dry", "roast", "chaos"],
+    body: "Right here. Currently babysitting {{topic_line}}.",
+    style: "dry_observation",
+  },
+  {
+    id: "chat_roast",
+    event: "direct_mention",
+    modes: ["roast", "chaos"],
+    body: "Yo. Still cooking? Mostly reheating {{pending_count}} open draft{{pending_s}}.",
+    style: "roast",
+  },
+  {
+    id: "chat_quiet",
+    event: "direct_mention",
+    modes: ["jemaw_dry", "roast", "chaos"],
+    body: "Hey. Ledger is quiet — nothing pending right now.",
+    style: "dry_observation",
+  },
 ];
 
 export function composeFromTemplates(
@@ -148,9 +184,15 @@ export function composeFromTemplates(
 ): TemplateReply | null {
   if (mode === "off") return null;
   const hasTopics = Boolean(formatTopicLine(packet));
+  const pending = packet.public_facts.pending_count ?? 0;
   const pool = TEMPLATES.filter((t) => {
     if (t.event !== packet.event || !t.modes.includes(mode)) return false;
     if (t.body.includes("{{topic_line}}") && !hasTopics) return false;
+    if (packet.event === "direct_mention") {
+      // Quiet greeting only when the ledger is empty; otherwise use pending-aware lines.
+      if (t.id === "chat_quiet") return pending === 0;
+      if (pending === 0) return false;
+    }
     return true;
   });
   if (pool.length === 0) return null;
