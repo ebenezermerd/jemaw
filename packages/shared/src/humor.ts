@@ -165,6 +165,39 @@ export type PublicSafeFactPacket = {
    * (e.g. "hey what's up?"). Not a ledger claim.
    */
   addressed_utterance?: string;
+  /**
+   * Conversation-flow control so replies stay interactive instead of
+   * re-listing expenses every turn.
+   */
+  conversation_flow?: ConversationFlowV1;
+};
+
+/**
+ * How hard Jemaw should push money vs pure banter this turn.
+ * Built deterministically from recent pokes, prior replies, and pending work.
+ */
+export type ConversationPhase =
+  | "open_banter"
+  | "aware_idle"
+  | "bored_nudge"
+  | "hard_nudge"
+  | "scan_report";
+
+export type MoneyMentionPolicy = "avoid" | "optional" | "prefer" | "require_light";
+
+export type ConversationFlowV1 = {
+  phase: ConversationPhase;
+  /** Group pokes at jemaw in the last ~hour (messages containing jemaw). */
+  poke_count_1h: number;
+  /** How many of the last few bot replies already talked money/drafts. */
+  recent_money_mention_streak: number;
+  public_replies_today: number;
+  max_public_replies_per_day: number;
+  /** Near daily cap? model can reference being "busy / rate limited" lightly. */
+  near_daily_cap: boolean;
+  money_mention: MoneyMentionPolicy;
+  /** Short directive string for the model. */
+  directive: string;
 };
 
 export type HumorPolicyDecision =
