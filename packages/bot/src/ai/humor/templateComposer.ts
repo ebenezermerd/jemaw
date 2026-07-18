@@ -139,40 +139,69 @@ const TEMPLATES: Template[] = [
     body: "Payment recorded. Diplomatic relations restored.",
     style: "dry_observation",
   },
-  // direct social address
+  // direct social — pure banter (no money dump)
+  {
+    id: "chat_banter_1",
+    event: "direct_mention",
+    modes: ["jemaw_dry", "roast", "chaos"],
+    body: "Hey. Still lurking in the group infrastructure. What's good?",
+    style: "dry_observation",
+  },
+  {
+    id: "chat_banter_2",
+    event: "direct_mention",
+    modes: ["jemaw_dry", "roast", "chaos"],
+    body: "Yo. I'm around. Meddling at low power.",
+    style: "dry_observation",
+  },
+  {
+    id: "chat_banter_3",
+    event: "direct_mention",
+    modes: ["roast", "chaos"],
+    body: "Present. Don't poke me unless you want opinions.",
+    style: "roast",
+  },
+  // light / bored money
   {
     id: "chat_1",
     event: "direct_mention",
     modes: ["jemaw_dry", "roast", "chaos"],
-    body: "Hey. Watching the books — {{pending_count}} draft{{pending_s}} open if you care.",
+    body: "Hey. Queue still has {{pending_count}} open draft{{pending_s}} when the group is ready.",
     style: "dry_observation",
   },
   {
     id: "chat_2",
     event: "direct_mention",
     modes: ["jemaw_dry", "roast", "chaos"],
-    body: "Present. {{pending_count}} draft{{pending_s}} still waiting when you are ready.",
+    body: "Present. {{pending_count}} draft{{pending_s}} still waiting on a group decision.",
     style: "dry_observation",
   },
   {
     id: "chat_topics",
     event: "direct_mention",
     modes: ["jemaw_dry", "roast", "chaos"],
-    body: "Right here. Currently babysitting {{topic_line}}.",
+    body: "Getting bored. Still babysitting {{topic_line}} for the group.",
     style: "dry_observation",
   },
   {
     id: "chat_roast",
     event: "direct_mention",
     modes: ["roast", "chaos"],
-    body: "Yo. Still cooking? Mostly reheating {{pending_count}} open draft{{pending_s}}.",
+    body: "Man, come on — clear {{topic_line}} or stop poking the infrastructure.",
+    style: "roast",
+  },
+  {
+    id: "chat_hard",
+    event: "direct_mention",
+    modes: ["roast", "chaos"],
+    body: "Review {{topic_line}} for the group or I go quiet. I'm not a toy, I'm the books.",
     style: "roast",
   },
   {
     id: "chat_quiet",
     event: "direct_mention",
     modes: ["jemaw_dry", "roast", "chaos"],
-    body: "Hey. Ledger is quiet — nothing pending right now.",
+    body: "Hey. Books are clear — nothing pending. Free to mess around.",
     style: "dry_observation",
   },
 ];
@@ -185,13 +214,37 @@ export function composeFromTemplates(
   if (mode === "off") return null;
   const hasTopics = Boolean(formatTopicLine(packet));
   const pending = packet.public_facts.pending_count ?? 0;
+  const money = packet.conversation_flow?.money_mention ?? "optional";
+  const phase = packet.conversation_flow?.phase;
   const pool = TEMPLATES.filter((t) => {
     if (t.event !== packet.event || !t.modes.includes(mode)) return false;
     if (t.body.includes("{{topic_line}}") && !hasTopics) return false;
     if (packet.event === "direct_mention") {
-      // Quiet greeting only when the ledger is empty; otherwise use pending-aware lines.
       if (t.id === "chat_quiet") return pending === 0;
-      if (pending === 0) return false;
+      if (pending === 0) {
+        return t.id.startsWith("chat_banter");
+      }
+      // Flow-aware template lanes
+      if (money === "avoid" || phase === "open_banter") {
+        return t.id.startsWith("chat_banter");
+      }
+      if (phase === "hard_nudge" || money === "require_light") {
+        return t.id === "chat_hard" || t.id === "chat_roast" || t.id === "chat_topics";
+      }
+      if (phase === "bored_nudge" || money === "prefer") {
+        return (
+          t.id === "chat_topics" ||
+          t.id === "chat_roast" ||
+          t.id === "chat_1" ||
+          t.id === "chat_2"
+        );
+      }
+      // optional / aware
+      return (
+        t.id.startsWith("chat_banter") ||
+        t.id === "chat_1" ||
+        t.id === "chat_2"
+      );
     }
     return true;
   });

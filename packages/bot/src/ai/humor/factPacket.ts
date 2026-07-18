@@ -9,6 +9,7 @@ import type {
   PublicSafeDraftFact,
   HumorRiskClass,
   GroupVibeV1,
+  ConversationFlowV1,
 } from "@jemaw/shared/humor";
 
 export interface ScanHumorFacts {
@@ -25,6 +26,7 @@ export interface ScanHumorFacts {
   activeMemberCount?: number;
   vibe?: GroupVibeV1 | null;
   languageHint?: string;
+  conversationFlow?: ConversationFlowV1;
 }
 
 export function buildScanOutcomePacket(input: ScanHumorFacts): PublicSafeFactPacket {
@@ -132,12 +134,13 @@ export function buildScanOutcomePacket(input: ScanHumorFacts): PublicSafeFactPac
     vibe_summary,
     language_hint: input.languageHint,
     reply_style_hint: "grounded_companion",
+    conversation_flow: input.conversationFlow,
   };
 }
 
 /**
  * Social / direct-address packet: user said something to Jemaw (not a scan).
- * Ground jokes in current pending drafts from the DB.
+ * Drafts stay available for when flow allows money talk — not forced every turn.
  */
 export function buildDirectChatPacket(input: {
   pendingCount: number;
@@ -152,6 +155,7 @@ export function buildDirectChatPacket(input: {
   languageHint?: string;
   /** Sanitized user message (already bounded). */
   addressedUtterance: string;
+  conversationFlow?: ConversationFlowV1;
 }): PublicSafeFactPacket {
   const pending = Math.max(0, Math.floor(input.pendingCount));
   const labels = (input.draftLabels ?? [])
@@ -227,6 +231,7 @@ export function buildDirectChatPacket(input: {
     language_hint: input.languageHint,
     reply_style_hint: "direct_chat",
     addressed_utterance: input.addressedUtterance.slice(0, 160),
+    conversation_flow: input.conversationFlow,
   };
 }
 

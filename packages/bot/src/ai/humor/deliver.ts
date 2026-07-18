@@ -20,6 +20,11 @@ import {
 } from "./factPacket.js";
 import { composeHumorReply } from "./service.js";
 import { sanitizeAddressedUtterance } from "./intent.js";
+import { buildConversationFlow } from "./conversationFlow.js";
+import {
+  HUMOR_MODE_LIMITS,
+  type HumorMode,
+} from "@jemaw/shared/humor";
 import {
   extractStyleFeatures,
   mergeVibeProfile,
@@ -79,6 +84,22 @@ export async function maybeDeliverScanHumor(input: {
     currency: input.currency,
   });
 
+  const dayStart = new Date();
+  dayStart.setUTCHours(0, 0, 0, 0);
+  const [publicRepliesToday, recentTexts] = await Promise.all([
+    countBotRepliesSince(input.db, input.group.id, dayStart),
+    listRecentBotReplyTexts(input.db, input.group.id, 8),
+  ]);
+  const maxDay = maxRepliesForMode(settings.mode, settings.maxPublicRepliesPerDay);
+  const flow = buildConversationFlow({
+    kind: "scan",
+    pendingCount: input.pendingCount || ctx.pendingCount,
+    pokeCount1h: ctx.pokeCount1h,
+    recentBotTexts: recentTexts,
+    publicRepliesToday,
+    maxPublicRepliesPerDay: maxDay,
+  });
+
   const packet = buildScanOutcomePacket({
     written: input.written,
     pendingCount: input.pendingCount || ctx.pendingCount,
@@ -91,6 +112,7 @@ export async function maybeDeliverScanHumor(input: {
     activeMemberCount: ctx.activeMemberCount,
     vibe: settings.useGroupVibe ? ctx.vibe : null,
     languageHint: ctx.languageHint,
+    conversationFlow: flow,
   });
 
   await composeAndSend({
@@ -104,6 +126,7 @@ export async function maybeDeliverScanHumor(input: {
     vibe: settings.useGroupVibe ? ctx.vibe : null,
     styleSamples: ctx.styleSamples,
     humor: input.humor,
+    prefetched: { publicRepliesToday, recentTexts },
   });
 }
 
@@ -146,6 +169,23 @@ export async function maybeDeliverDirectChat(input: {
     currency: input.currency,
   });
 
+  const dayStart = new Date();
+  dayStart.setUTCHours(0, 0, 0, 0);
+  const [publicRepliesToday, recentTexts] = await Promise.all([
+    countBotRepliesSince(input.db, input.group.id, dayStart),
+    listRecentBotReplyTexts(input.db, input.group.id, 8),
+  ]);
+  const maxDay = maxRepliesForMode(settings.mode, settings.maxPublicRepliesPerDay);
+  const flow = buildConversationFlow({
+    kind: "chat",
+    pendingCount: ctx.pendingCount,
+    pokeCount1h: ctx.pokeCount1h,
+    recentBotTexts: recentTexts,
+    publicRepliesToday,
+    maxPublicRepliesPerDay: maxDay,
+    userText: utterance,
+  });
+
   const packet = buildDirectChatPacket({
     pendingCount: ctx.pendingCount,
     currency: input.currency,
@@ -158,7 +198,12 @@ export async function maybeDeliverDirectChat(input: {
     vibe: settings.useGroupVibe ? ctx.vibe : null,
     languageHint: ctx.languageHint,
     addressedUtterance: utterance,
+    conversationFlow: flow,
   });
+
+  console.log(
+    `[humor] chat_flow group=${input.group.id} phase=${flow.phase} money=${flow.money_mention} pokes_1h=${flow.poke_count_1h} streak=${flow.recent_money_mention_streak}`,
+  );
 
   await composeAndSend({
     started,
@@ -172,6 +217,7 @@ export async function maybeDeliverDirectChat(input: {
     vibe: settings.useGroupVibe ? ctx.vibe : null,
     styleSamples: ctx.styleSamples,
     humor: input.humor,
+    prefetched: { publicRepliesToday, recentTexts },
   });
 }
 
@@ -186,13 +232,18 @@ async function composeAndSend(input: {
   vibe: GroupVibeV1 | null;
   styleSamples: string[];
   humor: HumorRuntime;
+  prefetched?: { publicRepliesToday: number; recentTexts: string[] };
 }): Promise<void> {
   const dayStart = new Date();
   dayStart.setUTCHours(0, 0, 0, 0);
   const [publicRepliesToday, lastAt, recentTexts] = await Promise.all([
-    countBotRepliesSince(input.db, input.group.id, dayStart),
+    input.prefetched
+      ? Promise.resolve(input.prefetched.publicRepliesToday)
+      : countBotRepliesSince(input.db, input.group.id, dayStart),
     lastBotReplyAt(input.db, input.group.id),
-    listRecentBotReplyTexts(input.db, input.group.id, 20),
+    input.prefetched
+      ? Promise.resolve(input.prefetched.recentTexts)
+      : listRecentBotReplyTexts(input.db, input.group.id, 20),
   ]);
 
   const composed = await composeHumorReply({
@@ -298,13 +349,21 @@ async function loadHumorGroupContext(input: {
   activeMemberCount: number;
   pendingCount: number;
   languageHint: string | undefined;
+  /** Messages in the last hour that address jemaw. */
+  pokeCount1h: number;
 }> {
   const [members, pending, msgs, prefsMap] = await Promise.all([
     listMembers(input.db, input.groupId),
     listPendingSuggestions(input.db, input.groupId),
-    lastNMessages(input.db, input.groupId, 50),
+    lastNMessages(input.db, input.groupId, 80),
     loadPrefsMap(input.db, input.groupId),
   ]);
+  const hourAgo = Date.now() - 60 * 60 * 1000;
+  const pokeCount1h = msgs.filter(
+    (m) =>
+      m.sentAt.getTime() >= hourAgo &&
+      /(?<![a-z0-9])jemaw(?![a-z0-9])/i.test(m.text),
+  ).length;
 
   const memberByTg = new Map(
     members.map((m) => [m.telegramUserId.toString(), m]),
@@ -390,7 +449,14 @@ async function loadHumorGroupContext(input: {
     activeMemberCount: members.filter((m) => m.isActive).length,
     pendingCount: pending.length,
     languageHint,
+    pokeCount1h,
   };
+}
+
+function maxRepliesForMode(mode: HumorMode, settingsMax: number): number {
+  if (mode === "off") return settingsMax;
+  const limits = HUMOR_MODE_LIMITS[mode];
+  return settingsMax || limits.maxPublicRepliesPerDay;
 }
 
 async function loadPrefsMap(db: Db, groupId: string) {
