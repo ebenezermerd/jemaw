@@ -9,6 +9,10 @@ import OpenAI from "openai";
 export interface ScanPromptInput {
   systemPrompt: string;
   userPrompt: string;
+  /** Default 0 for extraction stability; humor may raise this. */
+  temperature?: number;
+  /** Optional completion budget (humor stays small). */
+  maxTokens?: number;
 }
 
 export interface GeminiResult {
@@ -39,13 +43,14 @@ export function createGeminiClient(apiKey: string, model?: string): ScanClient {
   const genAI = new GoogleGenerativeAI(apiKey);
   const modelName = model?.trim() || DEFAULT_GEMINI_MODEL;
   return {
-    async suggest({ systemPrompt, userPrompt }) {
+    async suggest({ systemPrompt, userPrompt, temperature, maxTokens }) {
       const generativeModel = genAI.getGenerativeModel({
         model: modelName,
         systemInstruction: systemPrompt,
         generationConfig: {
           responseMimeType: "application/json",
-          temperature: 0,
+          temperature: temperature ?? 0,
+          ...(maxTokens != null ? { maxOutputTokens: maxTokens } : {}),
         },
       });
       const result = await generativeModel.generateContent(userPrompt);
@@ -70,10 +75,11 @@ export function createGroqClient(apiKey: string, model?: string): ScanClient {
   });
   const modelName = model?.trim() || DEFAULT_GROQ_MODEL;
   return {
-    async suggest({ systemPrompt, userPrompt }) {
+    async suggest({ systemPrompt, userPrompt, temperature, maxTokens }) {
       const res = await client.chat.completions.create({
         model: modelName,
-        temperature: 0,
+        temperature: temperature ?? 0,
+        ...(maxTokens != null ? { max_tokens: maxTokens } : {}),
         response_format: { type: "json_object" },
         messages: [
           { role: "system", content: systemPrompt },
