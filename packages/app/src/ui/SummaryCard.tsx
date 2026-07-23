@@ -6,6 +6,7 @@
  */
 import { AnimatedNumber } from "../motion/AnimatedNumber.js";
 import { currencyAffix, formatNumber } from "../lib/money.js";
+import { formatDisplayName } from "../lib/names.js";
 import type { MeSummaryDto } from "@jemaw/shared/types";
 
 export function SummaryCard({ s }: { s: MeSummaryDto }) {
@@ -87,7 +88,7 @@ export function SummaryCard({ s }: { s: MeSummaryDto }) {
               borderRadius: 999,
             }}
           >
-            {s.displayName}
+            {formatDisplayName(s.displayName)}
           </span>
           <Chip />
         </div>
