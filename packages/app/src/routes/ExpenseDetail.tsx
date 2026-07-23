@@ -13,6 +13,7 @@ import { PageHeader } from "../ui/PageHeader.js";
 import { PageLoader } from "../motion/Loader.js";
 import { Centered } from "./Balances.js";
 import { currentTelegramId } from "../telegram.js";
+import { formatDisplayName } from "../lib/names.js";
 
 /**
  * View + edit an existing expense (Phase 2). Equal-split editor for simplicity;
@@ -124,7 +125,7 @@ export function ExpenseDetail() {
       <Field label={kind === "loan" ? "Lent by" : "Paid by"}>
         <div style={{ display: "flex", gap: 8, overflowX: "auto", paddingBottom: 4 }}>
           {members.map((m) => (
-            <Chip key={m.id} active={payer === m.id} onClick={() => setPayer(m.id)} name={m.displayName} />
+            <Chip key={m.id} active={payer === m.id} onClick={() => setPayer(m.id)} name={formatDisplayName(m.displayName)} />
           ))}
         </div>
       </Field>
@@ -139,7 +140,7 @@ export function ExpenseDetail() {
                   key={m.id}
                   active={borrower === m.id}
                   onClick={() => setSplitWith(new Set([m.id]))}
-                  name={m.displayName}
+                  name={formatDisplayName(m.displayName)}
                 />
               ))}
           </div>
@@ -165,8 +166,8 @@ export function ExpenseDetail() {
                     cursor: "pointer",
                   }}
                 >
-                  <Avatar name={m.displayName} size={28} />
-                  <span className="t-body-strong">{m.displayName}</span>
+                  <Avatar name={formatDisplayName(m.displayName)} size={28} />
+                  <span className="t-body-strong">{formatDisplayName(m.displayName)}</span>
                 </button>
               );
             })}
