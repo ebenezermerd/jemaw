@@ -105,12 +105,47 @@ export function History() {
   }, [page]);
 
   const loading = history.isLoading || group.isLoading;
+  const hasFilters = Boolean(memberFilter || fromDate || toDate || page > 1);
+
+  const clearFilters = () => setParams({});
 
   return (
     <div style={{ padding: 16, maxWidth: "100%", paddingBottom: 24 }}>
-      <h1 className="t-screen-title" style={{ margin: "8px 0 12px" }}>
-        History
-      </h1>
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          gap: 12,
+          margin: "8px 0 12px",
+        }}
+      >
+        <h1 className="t-screen-title" style={{ margin: 0 }}>
+          History
+        </h1>
+        {hasFilters && (
+          <button
+            type="button"
+            aria-label="Clear filters"
+            title="Clear filters"
+            onClick={clearFilters}
+            style={{
+              flexShrink: 0,
+              border: "none",
+              background: "transparent",
+              padding: 4,
+              margin: 0,
+              color: "var(--text-muted)",
+              cursor: "pointer",
+              display: "grid",
+              placeItems: "center",
+              lineHeight: 0,
+            }}
+          >
+            <ClearFiltersIcon />
+          </button>
+        )}
+      </div>
 
       {loading ? (
         <HistoryFiltersSkeleton />
@@ -697,5 +732,25 @@ function FilterChip({
     >
       {label}
     </button>
+  );
+}
+
+/** Minimal filter-off glyph — funnel with slash, no button chrome. */
+function ClearFiltersIcon() {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      width="20"
+      height="20"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.75"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+    >
+      <path d="M3 4h18l-7 8v6l-4 2v-8L3 4z" />
+      <path d="M19 19L5 5" />
+    </svg>
   );
 }
