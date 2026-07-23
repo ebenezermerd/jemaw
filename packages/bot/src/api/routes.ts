@@ -930,14 +930,9 @@ export async function registerApi(
       let expenses = await listLiveExpenses(db, group.id); // includes covered
       let settlements = await listSettlements(db, group.id);
       if (memberId) {
-        expenses = expenses.filter(
-          (e) =>
-            e.expense.payerMemberId === memberId ||
-            e.shares.some((s) => s.memberId === memberId),
-        );
-        settlements = settlements.filter(
-          (s) => s.fromMemberId === memberId || s.toMemberId === memberId,
-        );
+        // "Who paid" filter: expenses the member fronted, settlements they sent.
+        expenses = expenses.filter((e) => e.expense.payerMemberId === memberId);
+        settlements = settlements.filter((s) => s.fromMemberId === memberId);
       }
 
       // Each item carries its day + a sort timestamp.
