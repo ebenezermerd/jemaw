@@ -19,6 +19,7 @@ import {
 } from "recharts";
 import type { BalanceDto, ExpenseDto } from "@jemaw/shared/types";
 import { formatMoney } from "../lib/money.js";
+import { formatDisplayName, memberDisplayName } from "../lib/names.js";
 
 // Color-vision-deficiency-friendly categorical palette (Jemaw Brand.dc.html).
 // Distinct hues, not luminance-only greens — fixes the unreadable donut.
@@ -42,8 +43,7 @@ export function BalancesAnalytics({
   members: { id: string; displayName: string }[];
   currency: string;
 }) {
-  const nameOf = (id: string) =>
-    members.find((m) => m.id === id)?.displayName ?? "Member";
+  const nameOf = (id: string) => memberDisplayName(members, id);
 
   // ── derived data ──
   const spendEntries = expenses.filter((e) => e.kind === "expense");
@@ -51,7 +51,7 @@ export function BalancesAnalytics({
   const avg = spendEntries.length ? totalSpend / spendEntries.length : 0;
 
   const netData = [...balances]
-    .map((b) => ({ name: b.displayName, net: Number(b.net) }))
+    .map((b) => ({ name: formatDisplayName(b.displayName), net: Number(b.net) }))
     .sort((a, b) => b.net - a.net);
 
   // share of spend = sum each member paid

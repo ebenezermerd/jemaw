@@ -3,6 +3,7 @@ import { useGroup, useSettlePlan, useBalances } from "../lib/hooks.js";
 import { Avatar, Money } from "../ui/primitives.js";
 import { MemberAvatar } from "../ui/MemberAvatar.js";
 import { SkeletonList } from "../motion/Skeleton.js";
+import { memberDisplayName, formatDisplayName } from "../lib/names.js";
 
 const ellip: React.CSSProperties = {
   overflow: "hidden",
@@ -42,8 +43,7 @@ export function Settle() {
   const currency = group.data?.defaultCurrency ?? "EUR";
   const members = group.data?.members ?? [];
   const tgId = (id: string) => members.find((m) => m.id === id)?.telegramUserId;
-  const nameOf = (id: string) =>
-    members.find((m) => m.id === id)?.displayName ?? "Member";
+  const nameOf = (id: string) => memberDisplayName(members, id);
 
   if (plan.isLoading) return <SkeletonList count={3} height={72} />;
   const transfers = plan.data?.transfers ?? [];
@@ -64,12 +64,12 @@ export function Settle() {
           {rows.map((r) => (
             <div key={r.memberId} style={evenRow}>
               <MemberAvatar
-                name={r.displayName}
+                name={formatDisplayName(r.displayName)}
                 telegramUserId={tgId(r.memberId)}
                 size={36}
               />
               <div className="t-body-strong" style={{ flex: 1, minWidth: 0, ...ellip }}>
-                {r.displayName}
+                {formatDisplayName(r.displayName)}
               </div>
               <div className="t-heading" style={{ flexShrink: 0 }}>
                 <Money value={r.net} currency={currency} signed />

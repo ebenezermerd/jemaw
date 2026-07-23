@@ -26,6 +26,7 @@ import { formatMoney } from "../lib/money.js";
 import { ApiError } from "../lib/api.js";
 import { AlertBanner } from "../ui/AlertBanner.js";
 import { currentTelegramId } from "../telegram.js";
+import { firstDisplayName, formatDisplayName } from "../lib/names.js";
 
 const METHODS: { value: PaymentMethod; label: string }[] = [
   { value: "cash", label: "Cash" },
@@ -140,7 +141,7 @@ export function SettleForm() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [from, to, expenses]);
 
-  const toName = members.find((m) => m.id === to)?.displayName ?? "them";
+  const toName = formatDisplayName(members.find((m) => m.id === to)?.displayName ?? "them");
   // Gross of the selected owed shares; the credit is what nets off it so the
   // payable amount matches the settle plan's netted figure.
   const selectedGrossCents = relevant
@@ -527,7 +528,7 @@ function DuoHeader({
           <MemberAvatar name={from.displayName} telegramUserId={from.telegramUserId} size={46} />
         </div>
         <div style={{ fontSize: 11, color: "var(--text-muted)" }}>
-          {firstName(from.displayName)} pays
+          {firstDisplayName(from.displayName)} pays
         </div>
       </div>
       <svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="var(--accent)" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
@@ -539,15 +540,11 @@ function DuoHeader({
           <MemberAvatar name={to.displayName} telegramUserId={to.telegramUserId} size={46} />
         </div>
         <div style={{ fontSize: 11, color: "var(--text-muted)" }}>
-          {firstName(to.displayName)}
+          {firstDisplayName(to.displayName)}
         </div>
       </div>
     </div>
   );
-}
-
-function firstName(name: string): string {
-  return name.trim().split(/\s+/)[0] ?? name;
 }
 
 function CalcRow({

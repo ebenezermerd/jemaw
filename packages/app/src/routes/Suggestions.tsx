@@ -14,6 +14,7 @@ import { EmptyState } from "../ui/EmptyState.js";
 import { useReducedMotion } from "../motion/useReducedMotion.js";
 import { spring } from "../motion/tokens.js";
 import type { SuggestionDto } from "@jemaw/shared/types";
+import { memberDisplayName } from "../lib/names.js";
 
 export function Suggestions() {
   const group = useGroup();
@@ -25,8 +26,9 @@ export function Suggestions() {
   const nav = useNavigate();
 
   const currency = group.data?.defaultCurrency ?? "EUR";
+  const members = group.data?.members ?? [];
   const nameOf = (id: string | null) =>
-    id ? group.data?.members.find((m) => m.id === id)?.displayName ?? "Member" : "someone";
+    id ? memberDisplayName(members, id, "Member") : "Someone";
 
   // A settlement suggestion is already settled when no current transfer exists
   // for its from→to pair — recording it would be rejected by the API, so we
