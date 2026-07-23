@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useSearchParams, useNavigate } from "react-router-dom";
 import {
   type PanInfo,
@@ -13,7 +13,7 @@ import {
   useVoidExpense,
 } from "../lib/hooks.js";
 import { Avatar, Button, Money } from "../ui/primitives.js";
-import { SkeletonList } from "../motion/Skeleton.js";
+import { Skeleton } from "../motion/Skeleton.js";
 import { EmptyState } from "../ui/EmptyState.js";
 import { Modal } from "../motion/Modal.js";
 import { useReducedMotion } from "../motion/useReducedMotion.js";
@@ -100,7 +100,11 @@ export function History() {
     };
   }, [history.data, fromDate, toDate, page]);
 
-  if (history.isLoading) return <SkeletonList count={4} height={56} />;
+  useEffect(() => {
+    window.scrollTo({ top: 0, left: 0, behavior: "auto" });
+  }, [page]);
+
+  const loading = history.isLoading || group.isLoading;
 
   return (
     <div style={{ padding: 16, maxWidth: "100%", paddingBottom: 24 }}>
@@ -108,63 +112,71 @@ export function History() {
         History
       </h1>
 
-      <div
-        style={{
-          display: "flex",
-          gap: 8,
-          marginBottom: 12,
-        }}
-      >
-        <DateFilterField
-          label="From"
-          value={fromDate}
-          max={toDate || todayISO()}
-          onChange={(v) => patchParams({ from: v || undefined })}
-        />
-        <DateFilterField
-          label="To"
-          value={toDate}
-          min={fromDate || undefined}
-          max={todayISO()}
-          onChange={(v) => patchParams({ to: v || undefined })}
-        />
-      </div>
+      {loading ? (
+        <HistoryFiltersSkeleton />
+      ) : (
+        <>
+          <div
+            style={{
+              display: "flex",
+              gap: 8,
+              marginBottom: 12,
+            }}
+          >
+            <DateFilterField
+              label="From"
+              value={fromDate}
+              max={toDate || todayISO()}
+              onChange={(v) => patchParams({ from: v || undefined })}
+            />
+            <DateFilterField
+              label="To"
+              value={toDate}
+              min={fromDate || undefined}
+              max={todayISO()}
+              onChange={(v) => patchParams({ to: v || undefined })}
+            />
+          </div>
 
-      <div
-        className="history-member-scroll"
-        style={{
-          display: "flex",
-          gap: 8,
-          marginBottom: 16,
-          overflowX: "auto",
-          overflowY: "hidden",
-          WebkitOverflowScrolling: "touch",
-          paddingBottom: 2,
-        }}
-      >
-        <FilterChip
-          active={!memberFilter}
-          onClick={() => patchParams({ member: undefined })}
-          label="All"
-        />
-        {members.map((m) => (
-          <FilterChip
-            key={m.id}
-            active={memberFilter === m.id}
-            onClick={() => patchParams({ member: m.id })}
-            label={formatMemberChipLabel(m.displayName)}
-          />
-        ))}
-      </div>
+          <div
+            className="history-member-scroll"
+            style={{
+              display: "flex",
+              gap: 8,
+              marginBottom: 16,
+              overflowX: "auto",
+              overflowY: "hidden",
+              WebkitOverflowScrolling: "touch",
+              paddingBottom: 2,
+            }}
+          >
+            <FilterChip
+              active={!memberFilter}
+              onClick={() => patchParams({ member: undefined })}
+              label="All"
+            />
+            {members.map((m) => (
+              <FilterChip
+                key={m.id}
+                active={memberFilter === m.id}
+                onClick={() => patchParams({ member: m.id })}
+                label={formatMemberChipLabel(m.displayName)}
+              />
+            ))}
+          </div>
+        </>
+      )}
 
-      {flatFiltered.length === 0 ? (
+      {loading ? (
+        <HistoryListSkeleton />
+      ) : flatFiltered.length === 0 ? (
         <EmptyState
           compact
           icon="↻"
           title="Nothing here yet"
           hint={
             fromDate || toDate || memberFilter
-              ? "Try widening the date range or clearing the member filter."
+              ? "Try widening the date range or clearing the paid by filter."
               : "Expenses, loans, and settlements will appear in this timeline."
           }
         />
@@ -221,6 +233,44 @@ export function History() {
           </Button>
         </div>
       </Modal>
+    </div>
+  );
+}
+
+function HistoryFiltersSkeleton() {
+  return (
+    <>
+      <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <Skeleton height={58} radius="var(--r-md)" />
+        </div>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <Skeleton height={58} radius="var(--r-md)" />
+        </div>
+      </div>
+      <div
+        className="history-member-scroll"
+        style={{ display: "flex", gap: 8, marginBottom: 16 }}
+      >
+        {[72, 88, 96, 84].map((w, i) => (
+          <div key={i} style={{ width: w, flexShrink: 0 }}>
+            <Skeleton height={32} radius="var(--r-full)" />
+          </div>
+        ))}
+      </div>
+    </>
+  );
+}
+
+function HistoryListSkeleton() {
+  return (
+    <div style={{ display: "grid", gap: 8 }}>
+      <Skeleton height={14} radius="var(--r-sm)" />
+      <Skeleton height={88} radius="var(--r-lg)" />
+      <Skeleton height={88} radius="var(--r-lg)" />
+      <Skeleton height={14} radius="var(--r-sm)" />
+      <Skeleton height={88} radius="var(--r-lg)" />
+      <Skeleton height={52} radius="var(--r-lg)" />
     </div>
   );
 }
