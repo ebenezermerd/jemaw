@@ -239,3 +239,95 @@ d("Phase 2 settle integration", () => {
     expect((res.json() as GroupDto).name).toBe("SettleTrip");
   });
 });
+
+d("Phase 2 global settle plan", () => {
+  let db: Db;
+  let app: FastifyInstance;
+  let groupId: string;
+  let aliceTg: bigint;
+  let bobTg: bigint;
+  let carolTg: bigint;
+  let aliceId: string;
+  let bobId: string;
+  let carolId: string;
+
+  const initData = (tg: bigint) =>
+    signInitDataForTest(
+      {
+        auth_date: String(NOW - 5),
+        user: JSON.stringify({ id: Number(tg), first_name: "U" }),
+      },
+      BOT_TOKEN,
+    );
+  const h = (tg: bigint) => ({ "x-telegram-init-data": initData(tg) });
+
+  beforeAll(async () => {
+    db = createDb(DATABASE_URL!);
+    const base = BigInt(-4_000_000_000 - Math.floor(process.uptime() * 1000));
+    aliceTg = base - 1n;
+    bobTg = base - 2n;
+    carolTg = base - 3n;
+    const g = await upsertGroup(db, base, "GlobalSettle", "EUR");
+    groupId = g.id;
+    aliceId = (await upsertMember(db, groupId, aliceTg, "Alice", null)).id;
+    bobId = (await upsertMember(db, groupId, bobTg, "Bob", null)).id;
+    carolId = (await upsertMember(db, groupId, carolTg, "Carol", null)).id;
+    app = await buildServer({
+      api: { db, botToken: BOT_TOKEN, now: () => NOW, scanLimiter: { tryAcquire: () => true } as never },
+      corsOrigin: undefined,
+    });
+  });
+
+  afterAll(async () => {
+    const exp = await db
+      .select({ id: expenses.id })
+      .from(expenses)
+      .where(eq(expenses.groupId, groupId));
+    if (exp.length > 0) {
+      await db.delete(expenseShares).where(
+        inArray(expenseShares.expenseId, exp.map((e) => e.id)),
+      );
+    }
+    await db.delete(expenses).where(eq(expenses.groupId, groupId));
+    await db.delete(members).where(eq(members.groupId, groupId));
+    await db.delete(groups).where(eq(groups.id, groupId));
+    await app.close();
+  });
+
+  it("three member settle plan uses global nets not per-creditor pairwise", async () => {
+    await app.inject({
+      method: "POST",
+      url: `/api/groups/${groupId}/expenses`,
+      headers: h(aliceTg),
+      payload: {
+        description: "Lunch",
+        amount: "90.00",
+        payerMemberId: aliceId,
+        splitType: "equal",
+        splitWith: [aliceId, bobId, carolId],
+      },
+    });
+    await app.inject({
+      method: "POST",
+      url: `/api/groups/${groupId}/expenses`,
+      headers: h(bobTg),
+      payload: {
+        description: "Coffee",
+        amount: "60.00",
+        payerMemberId: bobId,
+        splitType: "equal",
+        splitWith: [bobId, carolId],
+      },
+    });
+    const plan = (
+      await app.inject({
+        method: "GET",
+        url: `/api/groups/${groupId}/settle`,
+        headers: h(carolTg),
+      })
+    ).json() as SettlePlanResponse;
+    expect(plan.transfers).toEqual([
+      { fromMemberId: carolId, toMemberId: aliceId, amount: "60.00" },
+    ]);
+  });
+});

@@ -46,9 +46,7 @@ import {
   type MemberNet,
 } from "../domain/balances.js";
 import {
-  deriveExpenseDebts,
   isExpenseCovered,
-  computePairwiseTransfers,
   COVERAGE_TOLERANCE_CENTS,
   type ExpenseForDebt,
   type AllocationForDebt,
@@ -63,7 +61,7 @@ import {
   type SettlePlanResponse,
   type ExpenseDto,
 } from "@jemaw/shared/types";
-import type { Transfer } from "../domain/settle.js";
+import { computeSettlement, type Transfer } from "../domain/settle.js";
 import type { Group, Member, Settlement } from "@jemaw/shared/schema";
 import { formatSettlementAnnouncement } from "../telegram/announcements.js";
 import {
@@ -89,11 +87,11 @@ import type { ScanRateLimiter } from "../ai/rateLimit.js";
 
 /**
  * Load the full ledger for a group: net balances (for Balances screen),
- * per-creditor pairwise transfers (for the Settle plan), coverage set, and
- * the raw data needed by settlement-create validation.
+ * global net settle plan (for Settle / Home), coverage set, and the raw data
+ * needed by settlement-create validation.
  *
  * nets   — computed from ALL live expenses + ALL settlements (zero-sum invariant).
- * transfers — per-creditor pairwise plan from expense_shares minus allocations.
+ * transfers — minimum global transfers from member nets (matches Balances).
  * coveredExpenseIds — expenses where every debtor share is within tolerance.
  */
 async function loadLedger(
@@ -131,7 +129,7 @@ async function loadLedger(
     forSettle,
   );
 
-  // Per-creditor pairwise debt (new — drives Settle plan + coverage).
+  // Expense-level debt for coverage checks and settlement allocation.
   const expensesForDebt: ExpenseForDebt[] = liveExpenses.map((e) => ({
     expenseId: e.expense.id,
     payerMemberId: e.expense.payerMemberId,
@@ -153,8 +151,7 @@ async function loadLedger(
       .map((e) => e.expenseId),
   );
 
-  const pairDebts = deriveExpenseDebts(expensesForDebt, allocations);
-  const transfers = computePairwiseTransfers(pairDebts);
+  const transfers = computeSettlement(nets);
 
   return { members, nets, expensesForDebt, allocations, coveredExpenseIds, transfers };
 }
@@ -449,7 +446,7 @@ export async function registerApi(
     },
   );
 
-  // GET live settle-up plan (per-creditor pairwise, not global netting)
+  // GET live settle-up plan (global net transfers, aligned with Balances)
   app.get(
     "/api/groups/:groupId/settle",
     { preHandler: auth },
