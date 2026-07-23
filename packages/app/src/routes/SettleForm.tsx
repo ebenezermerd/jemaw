@@ -373,9 +373,25 @@ export function SettleForm() {
                     >
                       {on ? "✓" : ""}
                     </span>
-                    <span style={{ flex: 1, minWidth: 0, fontSize: 14, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                      {e.description}
-                    </span>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div
+                        style={{
+                          fontSize: 14,
+                          fontWeight: 600,
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
+                          whiteSpace: "nowrap",
+                        }}
+                      >
+                        {e.description}
+                      </div>
+                      <div
+                        className="t-caption"
+                        style={{ fontSize: 10, color: "var(--text-faint)", marginTop: 2 }}
+                      >
+                        {expenseDateLabel(e.occurredAt)}
+                      </div>
+                    </div>
                     <span style={{ flexShrink: 0, textAlign: "right" }}>
                       <div className="tnum" style={{ fontSize: 14, fontWeight: 700, color: "var(--text)" }}>
                         {formatMoney(centsToDecimal(owedShareCents(e, from)), currency)}
@@ -673,4 +689,11 @@ const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "
 function friendlyDate(ymd: string): string {
   const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(ymd);
   return m ? `${MONTHS[Number(m[2]) - 1]} ${Number(m[3])} ${m[1]}` : ymd;
+}
+
+/** Expense occurredAt → "(Mar 2 2026)" for share-entry subtext. */
+function expenseDateLabel(iso: string): string {
+  const ymd = iso.slice(0, 10);
+  const label = friendlyDate(ymd);
+  return label === ymd ? label : `(${label})`;
 }
