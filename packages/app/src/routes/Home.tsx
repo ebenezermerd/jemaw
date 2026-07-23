@@ -23,6 +23,7 @@ import { Skeleton } from "../motion/Skeleton.js";
 import { useReducedMotion } from "../motion/useReducedMotion.js";
 import { type PanInfo, useMotionValue, useTransform } from "framer-motion";
 import type { SuggestionDto, TransferDto } from "@jemaw/shared/types";
+import { firstDisplayName, memberDisplayName } from "../lib/names.js";
 
 type Tab = "suggested" | "settle";
 
@@ -38,7 +39,7 @@ export function Home() {
   const currency = group.data?.defaultCurrency ?? "EUR";
   const members = group.data?.members ?? [];
   const nameOf = (id: string | null) =>
-    id ? members.find((m) => m.id === id)?.displayName ?? "Member" : "someone";
+    id ? memberDisplayName(members, id, "Member") : "Someone";
   const tgId = (id: string) => members.find((m) => m.id === id)?.telegramUserId;
   const me = currentMemberId(members);
 
@@ -84,11 +85,11 @@ export function Home() {
                   color: "var(--text)",
                 }}
               >
-                Hi, {firstName(summary.data.displayName)}
+                Hi, {firstDisplayName(summary.data.displayName)}
               </div>
             </div>
             <MemberAvatar
-              name={summary.data.displayName}
+              name={firstDisplayName(summary.data.displayName)}
               telegramUserId={me ? tgId(me) : undefined}
               size={38}
             />
@@ -704,9 +705,4 @@ function todayLabel(): string {
     month: "short",
     day: "numeric",
   });
-}
-
-/** First token of a display name, for the "Hi, X" greeting. */
-function firstName(name: string): string {
-  return name.trim().split(/\s+/)[0] ?? name;
 }

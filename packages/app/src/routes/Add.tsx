@@ -13,6 +13,7 @@ import { MemberAvatar } from "../ui/MemberAvatar.js";
 import { PageHeader } from "../ui/PageHeader.js";
 import { PageLoader } from "../motion/Loader.js";
 import { Centered } from "./Balances.js";
+import { formatDisplayName } from "../lib/names.js";
 
 export function Add() {
   const group = useGroup();
@@ -214,7 +215,7 @@ export function Add() {
                 key={m.id}
                 active={payer === m.id}
                 onClick={() => setPayer(m.id)}
-                name={m.displayName}
+                name={formatDisplayName(m.displayName)}
                 telegramUserId={m.telegramUserId}
               />
             ))}
@@ -231,7 +232,7 @@ export function Add() {
                     key={m.id}
                     active={borrower === m.id}
                     onClick={() => setSplitWith(new Set([m.id]))}
-                    name={m.displayName}
+                    name={formatDisplayName(m.displayName)}
                     telegramUserId={m.telegramUserId}
                   />
                 ))}
@@ -287,11 +288,11 @@ export function Add() {
                         }}
                       >
                         <MemberAvatar
-                          name={m.displayName}
+                          name={formatDisplayName(m.displayName)}
                           telegramUserId={m.telegramUserId}
                           size={28}
                         />
-                        <span className="t-body-strong">{m.displayName}</span>
+                        <span className="t-body-strong">{formatDisplayName(m.displayName)}</span>
                       </button>
 
                       {on && splitType === "shares" && (

@@ -5,6 +5,7 @@ import { MemberAvatar } from "../ui/MemberAvatar.js";
 import { SkeletonList } from "../motion/Skeleton.js";
 import { EmptyState } from "../ui/EmptyState.js";
 import { BalancesAnalytics } from "../ui/BalancesAnalytics.js";
+import { formatDisplayName } from "../lib/names.js";
 
 export function Balances() {
   const group = useGroup();
@@ -60,13 +61,13 @@ export function Balances() {
                 style={kpiCard}
               >
                 <MemberAvatar
-                  name={r.displayName}
+                  name={formatDisplayName(r.displayName)}
                   telegramUserId={tgId(r.memberId)}
                   size={36}
                 />
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div className="t-body-strong" style={ellipsis}>
-                    {r.displayName}
+                    {formatDisplayName(r.displayName)}
                   </div>
                   <span
                     className="t-caption"

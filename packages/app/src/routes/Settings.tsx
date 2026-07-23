@@ -30,6 +30,7 @@ import { Modal } from "../motion/Modal.js";
 import { Centered } from "./Balances.js";
 import { getThemePref, setThemePref, type ThemePref } from "../lib/theme.js";
 import { useToast } from "../ui/Toast.js";
+import { formatDisplayName } from "../lib/names.js";
 
 const CURRENCIES = ["EUR", "USD", "GBP", "ETB", "JPY", "CHF", "CAD", "AUD"];
 
@@ -372,13 +373,13 @@ export function Settings() {
               }}
             >
               <MemberAvatar
-                name={m.displayName}
+                name={formatDisplayName(m.displayName)}
                 telegramUserId={m.telegramUserId}
                 size={32}
               />
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div className="t-body-strong" style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                  {m.displayName}
+                  {formatDisplayName(m.displayName)}
                 </div>
                 <div className="t-caption" style={{ color: "var(--text-muted)" }}>
                   {m.role === "admin" ? "Admin" : "Member"}
@@ -577,9 +578,9 @@ function MemberEditor({
   return (
     <div style={{ display: "grid", gap: 16 }}>
       <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-        <MemberAvatar name={member.displayName} telegramUserId={member.telegramUserId} size={44} />
+        <MemberAvatar name={formatDisplayName(member.displayName)} telegramUserId={member.telegramUserId} size={44} />
         <h2 className="t-heading" style={{ margin: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-          {member.displayName}
+          {formatDisplayName(member.displayName)}
         </h2>
       </div>
 
@@ -747,13 +748,13 @@ function RemoveMemberModal({
     <div style={{ display: "grid", gap: 14 }}>
       <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
         <MemberAvatar
-          name={s.member.displayName}
+          name={formatDisplayName(s.member.displayName)}
           telegramUserId={s.member.telegramUserId}
           size={44}
         />
         <div style={{ minWidth: 0 }}>
           <h2 className="t-heading" style={{ margin: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-            Remove {s.member.displayName}?
+            Remove {formatDisplayName(s.member.displayName)}?
           </h2>
           <span className="t-caption" style={{ color: "var(--text-muted)" }}>
             Review their record before you decide.
@@ -872,7 +873,7 @@ function RemoveMemberModal({
       {/* Confirm */}
       <p className="t-caption" style={{ color: "var(--text-faint)", margin: 0 }}>
         Are you sure you want to proceed? History stays intact: if{" "}
-        {s.member.displayName} appears in past entries the account is kept but
+        {formatDisplayName(s.member.displayName)} appears in past entries the account is kept but
         marked removed and locked out of the app; otherwise it is deleted
         permanently.
       </p>
@@ -1085,7 +1086,7 @@ function TelegramSection({ member }: { member: MemberDto }) {
                     whiteSpace: "nowrap",
                   }}
                 >
-                  {c.displayName ?? `User ${c.telegramUserId}`}
+                  {formatDisplayName(c.displayName ?? `User ${c.telegramUserId}`)}
                 </span>
                 {c.username && (
                   <span
