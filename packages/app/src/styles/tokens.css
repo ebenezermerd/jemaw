@@ -248,6 +248,13 @@ select {
   padding-right: 28px;
 }
 
+.history-member-scroll {
+  scrollbar-width: none;
+}
+.history-member-scroll::-webkit-scrollbar {
+  display: none;
+}
+
 /* §12.8 #5 — reduced motion collapses durations, kills springs. */
 @media (prefers-reduced-motion: reduce) {
   :root {
