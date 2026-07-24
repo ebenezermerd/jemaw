@@ -259,9 +259,9 @@ export function SettleForm() {
   }
 
   return (
-    <div>
+    <div style={{ minWidth: 0, width: "100%", overflowX: "hidden", boxSizing: "border-box" }}>
       <PageHeader title={suggestionId ? "Edit settlement" : "Settle up"} fallback="/settle" />
-      <div style={{ padding: "0 16px 16px", display: "grid", gap: 14 }}>
+      <div style={{ padding: "0 16px 16px", display: "grid", gap: 14, minWidth: 0, width: "100%", boxSizing: "border-box" }}>
       {/* who pays whom — already determined, shown as a fixed presentation */}
       <DuoHeader
         from={members.find((m) => m.id === from)}
@@ -317,7 +317,7 @@ export function SettleForm() {
 
       {/* settling your share of — check-tile entry rows */}
       {to && (
-        <div style={{ display: "grid", gap: 10, marginTop: 2 }}>
+        <div style={{ display: "grid", gap: 10, marginTop: 2, minWidth: 0, width: "100%" }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
             <span style={{ fontSize: 13, fontWeight: 700, color: "var(--text)" }}>
               Settling your share of{" "}
@@ -363,7 +363,7 @@ export function SettleForm() {
                 : "No matches."}
             </p>
           ) : (
-            <div style={{ maxHeight: 240, overflowY: "auto", display: "grid", gap: 9 }}>
+            <div style={{ maxHeight: 240, overflowY: "auto", overflowX: "hidden", display: "grid", gap: 9, minWidth: 0, width: "100%" }}>
               {filtered.map((e) => {
                 const on = selected.has(e.id);
                 return (
@@ -384,6 +384,9 @@ export function SettleForm() {
                       color: "var(--text)",
                       cursor: "pointer",
                       textAlign: "left",
+                      width: "100%",
+                      minWidth: 0,
+                      boxSizing: "border-box",
                     }}
                   >
                     <span
@@ -445,6 +448,10 @@ export function SettleForm() {
                 display: "grid",
                 gap: 7,
                 background: "var(--surface)",
+                minWidth: 0,
+                width: "100%",
+                boxSizing: "border-box",
+                overflowX: "hidden",
               }}
             >
               <span className="t-mono-label" style={{ color: "var(--text-muted)" }}>
