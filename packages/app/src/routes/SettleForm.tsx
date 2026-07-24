@@ -50,6 +50,9 @@ export function SettleForm() {
   const editSuggestion = useEditSettlementSuggestion();
   const nav = useNavigate();
   const suggestionId = params.get("suggestion") ?? undefined;
+  const suggestedAmount = params.get("amount") ?? undefined;
+  const attributedParam = params.get("attributed") ?? undefined;
+  const hasSuggestedAmount = Boolean(suggestedAmount);
 
   const members = group.data?.members.filter((m) => m.isActive) ?? [];
   const currency = group.data?.defaultCurrency ?? "EUR";
@@ -94,7 +97,7 @@ export function SettleForm() {
     if (!group.data) return;
     setFrom(params.get("from") ?? settlementSuggestion?.fromMemberId ?? me);
     setTo(params.get("to") ?? settlementSuggestion?.toMemberId ?? "");
-    const a = params.get("amount") ?? settlementSuggestion?.amount;
+    const a = suggestedAmount ?? settlementSuggestion?.amount;
     if (a) setAmount(a);
     const m = params.get("method") as PaymentMethod | null;
     if (m) setMethod(m);
@@ -149,14 +152,27 @@ export function SettleForm() {
     .reduce((sum, e) => sum + owedShareCents(e, from), 0);
   const creditAppliedCents = Math.min(counterTotalCents, selectedGrossCents);
   const computedPayCents = selectedGrossCents - creditAppliedCents;
+  const attributedCents = attributedParam
+    ? decimalToCents(attributedParam)
+    : selected.size > 0
+      ? computedPayCents
+      : null;
+  const suggestedCents =
+    hasSuggestedAmount && amount && /^\d+(\.\d{1,2})?$/.test(amount)
+      ? decimalToCents(amount)
+      : null;
+  const showReconcileNote =
+    suggestedCents !== null &&
+    attributedCents !== null &&
+    Math.abs(suggestedCents - attributedCents) > 0;
 
   // Keep the amount in step with the calculation until the user edits it.
   const [amountEdited, setAmountEdited] = useState(false);
   useEffect(() => {
-    if (amountEdited || selected.size === 0) return;
+    if (amountEdited || selected.size === 0 || hasSuggestedAmount) return;
     setAmount(centsToDecimal(computedPayCents));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selected, computedPayCents, amountEdited]);
+  }, [selected, computedPayCents, amountEdited, hasSuggestedAmount]);
 
   if (group.isLoading || expensesQ.isLoading || (suggestionId && suggestionsQ.isLoading)) {
     return <PageLoader />;
@@ -213,11 +229,15 @@ export function SettleForm() {
       nav("/settle");
     } catch (err: unknown) {
       if (err instanceof ApiError && err.body.maxAllocatable) {
+        const cap =
+          typeof err.body.maxPayable === "string"
+            ? err.body.maxPayable
+            : err.body.maxAllocatable;
         setFormError({
           title: "Amount too high",
-          message: `That's more than ${toName} is owed here. The most you can settle is ${formatMoney(err.body.maxAllocatable, currency)} — we've adjusted it for you.`,
+          message: `That's more than ${toName} is owed here. The most you can settle is ${formatMoney(cap, currency)} — we've adjusted it for you.`,
         });
-        setAmount(err.body.maxAllocatable);
+        setAmount(cap);
       } else if (
         err instanceof ApiError &&
         /no current debt|already settled/i.test(err.body.error ?? "")
@@ -320,8 +340,16 @@ export function SettleForm() {
             </button>
           </div>
           <p className="t-caption" style={{ color: "var(--text-faint)", margin: 0 }}>
-            Entries {toName} paid or lent where you owe a share.
+            Entries {toName} paid or lent where you owe your share.
           </p>
+          {showReconcileNote && suggestedCents !== null && attributedCents !== null && (
+            <p className="t-caption" style={{ color: "var(--text-muted)", margin: 0 }}>
+              Suggested payment {formatMoney(centsToDecimal(suggestedCents), currency)} clears
+              your balance with {toName}.{" "}
+              {formatMoney(centsToDecimal(attributedCents), currency)} ties to the expenses
+              below.
+            </p>
+          )}
           <input
             value={query}
             onChange={(e) => setQuery(e.target.value)}
@@ -398,7 +426,7 @@ export function SettleForm() {
                         {formatMoney(centsToDecimal(owedShareCents(e, from)), currency)}
                       </div>
                       <div className="tnum" style={{ fontSize: 10, color: "var(--text-faint)" }}>
-                        of {formatMoney(e.amount, currency)}
+                        share of {formatMoney(e.amount, currency)} bill
                       </div>
                     </span>
                   </button>
@@ -442,10 +470,31 @@ export function SettleForm() {
                 ))}
               <div style={{ borderTop: "1px solid var(--border)", paddingTop: 7 }}>
                 <CalcRow
-                  label="You pay"
-                  amount={formatMoney(centsToDecimal(computedPayCents), currency)}
+                  label={
+                    suggestedCents !== null &&
+                    Math.abs(suggestedCents - computedPayCents) > 0
+                      ? "Suggested payment"
+                      : "You pay"
+                  }
+                  amount={formatMoney(
+                    centsToDecimal(
+                      suggestedCents !== null &&
+                        Math.abs(suggestedCents - computedPayCents) > 0
+                        ? suggestedCents
+                        : computedPayCents,
+                    ),
+                    currency,
+                  )}
                   strong
                 />
+                {suggestedCents !== null &&
+                  Math.abs(suggestedCents - computedPayCents) > 0 && (
+                    <CalcRow
+                      label="Share total on selected expenses"
+                      amount={formatMoney(centsToDecimal(computedPayCents), currency)}
+                      muted
+                    />
+                  )}
               </div>
             </div>
           )}

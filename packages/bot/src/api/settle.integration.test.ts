@@ -327,7 +327,35 @@ d("Phase 2 global settle plan", () => {
       })
     ).json() as SettlePlanResponse;
     expect(plan.transfers).toEqual([
-      { fromMemberId: carolId, toMemberId: aliceId, amount: "60.00" },
+      {
+        fromMemberId: carolId,
+        toMemberId: aliceId,
+        amount: "60.00",
+        attributedAmount: "30.00",
+      },
     ]);
+
+    const lunchId = (
+      await app.inject({
+        method: "GET",
+        url: `/api/groups/${groupId}/expenses?forMember=${carolId}`,
+        headers: h(carolTg),
+      })
+    )
+      .json()
+      .find((e: { description: string }) => e.description === "Lunch")!.id;
+
+    const recorded = await app.inject({
+      method: "POST",
+      url: `/api/groups/${groupId}/settlements`,
+      headers: h(carolTg),
+      payload: {
+        fromMemberId: carolId,
+        toMemberId: aliceId,
+        amount: "60.00",
+        expenseIds: [lunchId],
+      },
+    });
+    expect(recorded.statusCode).toBe(201);
   });
 });
