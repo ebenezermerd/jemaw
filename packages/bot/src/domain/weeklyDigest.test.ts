@@ -4,6 +4,8 @@ import {
   formatWeeklyDigest,
   type WeeklyKpis,
 } from "./weeklyDigest.js";
+import { computeBalances } from "./balances.js";
+import { computeSettlement } from "./settle.js";
 
 const since = new Date("2026-06-28T00:00:00Z");
 const inWeek = new Date("2026-07-01T12:00:00Z");
@@ -13,9 +15,9 @@ describe("computeWeeklyKpis", () => {
   it("counts only activity inside the window and finds the top payer", () => {
     const kpis = computeWeeklyKpis(
       [
-        { payerMemberId: "a", amountCents: 200000, occurredAt: inWeek },
-        { payerMemberId: "b", amountCents: 50000, occurredAt: inWeek },
-        { payerMemberId: "a", amountCents: 999900, occurredAt: before },
+        { payerMemberId: "a", amountCents: 200000, occurredAt: inWeek, kind: "expense" },
+        { payerMemberId: "b", amountCents: 50000, occurredAt: inWeek, kind: "expense" },
+        { payerMemberId: "a", amountCents: 999900, occurredAt: before, kind: "expense" },
       ],
       [
         { amountCents: 30000, when: inWeek },
@@ -36,6 +38,22 @@ describe("computeWeeklyKpis", () => {
     const kpis = computeWeeklyKpis([], [], () => "x", since);
     expect(kpis.expenseCount).toBe(0);
     expect(kpis.topPayerName).toBeNull();
+  });
+
+  it("excludes loans from spend KPIs", () => {
+    const kpis = computeWeeklyKpis(
+      [
+        { payerMemberId: "a", amountCents: 100000, occurredAt: inWeek, kind: "expense" },
+        { payerMemberId: "b", amountCents: 500000, occurredAt: inWeek, kind: "loan" },
+      ],
+      [],
+      (id) => (id === "a" ? "Lender" : "Borrower"),
+      since,
+    );
+    expect(kpis.spentCents).toBe(100000);
+    expect(kpis.expenseCount).toBe(1);
+    expect(kpis.topPayerName).toBe("Lender");
+    expect(kpis.topPayerCents).toBe(100000);
   });
 });
 
@@ -103,5 +121,41 @@ describe("formatWeeklyDigest", () => {
     });
     expect(msg).toContain("All square");
     expect(msg).not.toContain("<i>Spending");
+  });
+});
+
+describe("digest open debts align with standings", () => {
+  it("uses global settle plan so debtor totals match negative nets", () => {
+    const memberIds = ["alice", "bob", "carol"];
+    const expenses = [
+      {
+        payerMemberId: "alice",
+        shares: [
+          { memberId: "alice", shareCents: 3000 },
+          { memberId: "bob", shareCents: 3000 },
+          { memberId: "carol", shareCents: 3000 },
+        ],
+      },
+      {
+        payerMemberId: "bob",
+        shares: [
+          { memberId: "bob", shareCents: 3000 },
+          { memberId: "carol", shareCents: 3000 },
+        ],
+      },
+    ];
+    const nets = computeBalances(memberIds, expenses);
+    const transfers = computeSettlement(nets);
+    const debtorTotals = new Map<string, number>();
+    for (const t of transfers) {
+      debtorTotals.set(
+        t.fromMemberId,
+        (debtorTotals.get(t.fromMemberId) ?? 0) + t.amountCents,
+      );
+    }
+    for (const n of nets) {
+      if (n.netCents >= 0) continue;
+      expect(debtorTotals.get(n.memberId)).toBe(-n.netCents);
+    }
   });
 });
