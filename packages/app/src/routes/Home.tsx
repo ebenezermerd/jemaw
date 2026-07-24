@@ -24,6 +24,7 @@ import { useReducedMotion } from "../motion/useReducedMotion.js";
 import { type PanInfo, useMotionValue, useTransform } from "framer-motion";
 import type { SuggestionDto, TransferDto } from "@jemaw/shared/types";
 import { firstDisplayName, memberDisplayName } from "../lib/names.js";
+import { settleFormSearchParams } from "../lib/settleLink.js";
 
 type Tab = "suggested" | "settle";
 
@@ -182,7 +183,7 @@ export function Home() {
                 toName={nameOf(t.toMemberId)}
                 toTgId={tgId(t.toMemberId)}
                 onSettle={() =>
-                  nav(`/settle/new?from=${t.fromMemberId}&to=${t.toMemberId}&amount=${t.amount}`)
+                  nav(`/settle/new?${settleFormSearchParams(t)}`)
                 }
               />
             ))}
