@@ -13,16 +13,10 @@ import {
   listMembers,
   listLiveExpenses,
   listSettlements,
-  listSettlementAllocations,
   mergeGroupSettings,
 } from "../repo.js";
 import { computeBalances } from "../domain/balances.js";
-import {
-  deriveExpenseDebts,
-  computePairwiseTransfers,
-  type ExpenseForDebt,
-  type AllocationForDebt,
-} from "../domain/pairwiseDebt.js";
+import { computeSettlement } from "../domain/settle.js";
 import {
   computeWeeklyKpis,
   formatWeeklyDigest,
@@ -49,7 +43,6 @@ export async function sendWeeklyDigest(
   const members = await listMembers(db, group.id);
   const liveExpenses = await listLiveExpenses(db, group.id);
   const settlements = await listSettlements(db, group.id);
-  const rawAllocations = await listSettlementAllocations(db, group.id);
   const nameOf = (id: string) =>
     members.find((m) => m.id === id)?.displayName ?? "Member";
 
@@ -59,6 +52,7 @@ export async function sendWeeklyDigest(
       payerMemberId: e.expense.payerMemberId,
       amountCents: decimalToCents(e.expense.amount),
       occurredAt: e.expense.occurredAt,
+      kind: e.expense.kind,
     })),
     settlements.map((s) => ({
       amountCents: decimalToCents(s.amount),
@@ -89,23 +83,7 @@ export async function sendWeeklyDigest(
     netCents: n.netCents,
   }));
 
-  const expensesForDebt: ExpenseForDebt[] = liveExpenses.map((e) => ({
-    expenseId: e.expense.id,
-    payerMemberId: e.expense.payerMemberId,
-    occurredAt: e.expense.occurredAt,
-    shares: e.shares.map((s) => ({
-      memberId: s.memberId,
-      shareCents: decimalToCents(s.shareAmount),
-    })),
-  }));
-  const allocations: AllocationForDebt[] = rawAllocations.map((a) => ({
-    expenseId: a.expenseId,
-    memberId: a.memberId,
-    allocatedCents: decimalToCents(a.allocatedAmount),
-  }));
-  const openDebts = computePairwiseTransfers(
-    deriveExpenseDebts(expensesForDebt, allocations),
-  ).map((t) => ({
+  const openDebts = computeSettlement(nets).map((t) => ({
     fromName: nameOf(t.fromMemberId),
     toName: nameOf(t.toMemberId),
     amountCents: t.amountCents,

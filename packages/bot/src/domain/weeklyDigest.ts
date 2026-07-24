@@ -12,6 +12,7 @@ export interface ExpenseForDigest {
   payerMemberId: string;
   amountCents: number;
   occurredAt: Date;
+  kind: "expense" | "loan";
 }
 
 export interface SettlementForDigest {
@@ -34,7 +35,10 @@ export function computeWeeklyKpis(
   nameOf: (memberId: string) => string,
   since: Date,
 ): WeeklyKpis {
-  const weekExpenses = expenses.filter((e) => e.occurredAt >= since);
+  // Loans affect balances but are not shared spending — exclude from KPIs.
+  const weekExpenses = expenses.filter(
+    (e) => e.occurredAt >= since && e.kind === "expense",
+  );
   const weekSettlements = settlements.filter((s) => s.when >= since);
 
   const paidBy = new Map<string, number>();
