@@ -15,6 +15,20 @@ export function formatDisplayName(raw: string): string {
 }
 
 /**
+ * Compact inline label: "Ebenezer Merdekios" → "Ebenezer M..."
+ * Single names stay fully capitalized.
+ */
+export function formatCompactDisplayName(raw: string): string {
+  const parts = formatDisplayName(raw).split(/\s+/);
+  if (parts.length >= 2) {
+    const first = parts[0]!;
+    const lastInitial = parts[parts.length - 1]!.charAt(0);
+    return `${first} ${lastInitial}...`;
+  }
+  return parts[0] ?? raw;
+}
+
+/**
  * Compact chip label: "Ebenezer Merdekios" → "Ebenezer M.."
  * Single names stay fully capitalized.
  */
