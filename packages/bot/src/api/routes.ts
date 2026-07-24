@@ -47,6 +47,8 @@ import {
 } from "../domain/balances.js";
 import {
   isExpenseCovered,
+  deriveExpenseDebts,
+  computePairwiseTransfers,
   COVERAGE_TOLERANCE_CENTS,
   type ExpenseForDebt,
   type AllocationForDebt,
@@ -452,8 +454,29 @@ export async function registerApi(
     { preHandler: auth },
     async (req) => {
       const { group } = req.jemaw!;
-      const { transfers } = await loadLedger(db, group.id);
-      const res: SettlePlanResponse = { transfers: transfers.map(toTransferDto) };
+      const { transfers, expensesForDebt, allocations } = await loadLedger(
+        db,
+        group.id,
+      );
+      const attributed = computePairwiseTransfers(
+        deriveExpenseDebts(expensesForDebt, allocations),
+      );
+      const attributedCents = new Map(
+        attributed.map((t) => [
+          `${t.fromMemberId}|${t.toMemberId}`,
+          t.amountCents,
+        ]),
+      );
+      const res: SettlePlanResponse = {
+        transfers: transfers.map((t) => {
+          const dto = toTransferDto(t);
+          const attr = attributedCents.get(`${t.fromMemberId}|${t.toMemberId}`);
+          if (attr !== undefined && attr !== t.amountCents) {
+            return { ...dto, attributedAmount: centsToDecimal(attr) };
+          }
+          return dto;
+        }),
+      };
       return res;
     },
   );
@@ -620,18 +643,26 @@ export async function registerApi(
     counterDebts.sort((a, b) => a.occurredAt.getTime() - b.occurredAt.getTime());
     const counterTotalCents = counterDebts.reduce((s, d) => s + d.residual, 0);
 
+    const pairOwedCents =
+      transfers.find(
+        (t) => t.fromMemberId === fromMemberId && t.toMemberId === toMemberId,
+      )?.amountCents ?? 0;
+
     const requestedCents = input.amount
       ? decimalToCents(input.amount)
       : Math.max(0, maxAllocatableCents - counterTotalCents);
 
-    if (requestedCents > maxAllocatableCents + COVERAGE_TOLERANCE_CENTS) {
+    if (requestedCents > pairOwedCents + COVERAGE_TOLERANCE_CENTS) {
       return {
-        error: "amount exceeds what you owe on the selected expenses",
+        error: "amount exceeds your settle plan for this pair",
         status: 409,
-        extra: { maxAllocatable: centsToDecimal(maxAllocatableCents) },
+        extra: {
+          maxPayable: centsToDecimal(pairOwedCents),
+          maxAllocatable: centsToDecimal(maxAllocatableCents),
+        },
       };
     }
-    const paidCents = Math.min(requestedCents, maxAllocatableCents);
+    const paidCents = Math.min(requestedCents, pairOwedCents);
     // Offset: the slice of the selected shares settled by what `to` owes
     // `from` rather than by cash.
     const offsetCents = Math.min(
