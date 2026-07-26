@@ -1,7 +1,6 @@
 import { useNavigate } from "react-router-dom";
 import { useGroup, useSettlePlan, useBalances } from "../lib/hooks.js";
 import { settleFormSearchParams } from "../lib/settleLink.js";
-import { formatMoney } from "../lib/money.js";
 import { Avatar, Money } from "../ui/primitives.js";
 import { MemberAvatar } from "../ui/MemberAvatar.js";
 import { SkeletonList } from "../motion/Skeleton.js";
@@ -123,11 +122,6 @@ export function Settle() {
               <div className="t-body-strong">
                 <Money value={t.amount} currency={currency} animate />
               </div>
-              {t.attributedAmount && t.attributedAmount !== t.amount && (
-                <div className="t-caption" style={{ color: "var(--text-faint)" }}>
-                  {formatMoney(t.attributedAmount, currency)} on their expenses
-                </div>
-              )}
             </div>
             <span style={{ color: "var(--text-faint)", flexShrink: 0 }}>›</span>
           </button>

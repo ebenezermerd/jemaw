@@ -294,10 +294,8 @@ export interface AssignTelegramInput {
 export interface TransferDto {
   fromMemberId: string;
   toMemberId: string;
-  /** decimal string; global settle plan amount (matches Balances) */
+  /** decimal string */
   amount: string;
-  /** unsettled shares on the payee's expenses when it differs from amount */
-  attributedAmount?: string;
 }
 
 export interface SettlePlanResponse {

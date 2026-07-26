@@ -63,7 +63,7 @@ import {
   type SettlePlanResponse,
   type ExpenseDto,
 } from "@jemaw/shared/types";
-import { computeSettlement, type Transfer } from "../domain/settle.js";
+import { type Transfer } from "../domain/settle.js";
 import type { Group, Member, Settlement } from "@jemaw/shared/schema";
 import { formatSettlementAnnouncement } from "../telegram/announcements.js";
 import {
@@ -89,11 +89,10 @@ import type { ScanRateLimiter } from "../ai/rateLimit.js";
 
 /**
  * Load the full ledger for a group: net balances (for Balances screen),
- * global net settle plan (for Settle / Home), coverage set, and the raw data
- * needed by settlement-create validation.
+ * pairwise settle plan (pay who fronted), coverage set, and settlement validation.
  *
  * nets   — computed from ALL live expenses + ALL settlements (zero-sum invariant).
- * transfers — minimum global transfers from member nets (matches Balances).
+ * transfers — per-creditor pairwise debts (matches settle form expense rows).
  * coveredExpenseIds — expenses where every debtor share is within tolerance.
  */
 async function loadLedger(
@@ -153,7 +152,9 @@ async function loadLedger(
       .map((e) => e.expenseId),
   );
 
-  const transfers = computeSettlement(nets);
+  const transfers = computePairwiseTransfers(
+    deriveExpenseDebts(expensesForDebt, allocations),
+  );
 
   return { members, nets, expensesForDebt, allocations, coveredExpenseIds, transfers };
 }
@@ -448,35 +449,14 @@ export async function registerApi(
     },
   );
 
-  // GET live settle-up plan (global net transfers, aligned with Balances)
+  // GET live settle-up plan (pairwise: pay who fronted each expense)
   app.get(
     "/api/groups/:groupId/settle",
     { preHandler: auth },
     async (req) => {
       const { group } = req.jemaw!;
-      const { transfers, expensesForDebt, allocations } = await loadLedger(
-        db,
-        group.id,
-      );
-      const attributed = computePairwiseTransfers(
-        deriveExpenseDebts(expensesForDebt, allocations),
-      );
-      const attributedCents = new Map(
-        attributed.map((t) => [
-          `${t.fromMemberId}|${t.toMemberId}`,
-          t.amountCents,
-        ]),
-      );
-      const res: SettlePlanResponse = {
-        transfers: transfers.map((t) => {
-          const dto = toTransferDto(t);
-          const attr = attributedCents.get(`${t.fromMemberId}|${t.toMemberId}`);
-          if (attr !== undefined && attr !== t.amountCents) {
-            return { ...dto, attributedAmount: centsToDecimal(attr) };
-          }
-          return dto;
-        }),
-      };
+      const { transfers } = await loadLedger(db, group.id);
+      const res: SettlePlanResponse = { transfers: transfers.map(toTransferDto) };
       return res;
     },
   );

@@ -51,8 +51,6 @@ export function SettleForm() {
   const nav = useNavigate();
   const suggestionId = params.get("suggestion") ?? undefined;
   const suggestedAmount = params.get("amount") ?? undefined;
-  const attributedParam = params.get("attributed") ?? undefined;
-  const hasSuggestedAmount = Boolean(suggestedAmount);
 
   const members = group.data?.members.filter((m) => m.isActive) ?? [];
   const currency = group.data?.defaultCurrency ?? "EUR";
@@ -155,27 +153,14 @@ export function SettleForm() {
     .reduce((sum, e) => sum + owedShareCents(e, from), 0);
   const creditAppliedCents = Math.min(counterTotalCents, selectedGrossCents);
   const computedPayCents = selectedGrossCents - creditAppliedCents;
-  const attributedCents = attributedParam
-    ? decimalToCents(attributedParam)
-    : selected.size > 0
-      ? computedPayCents
-      : null;
-  const suggestedCents =
-    hasSuggestedAmount && amount && /^\d+(\.\d{1,2})?$/.test(amount)
-      ? decimalToCents(amount)
-      : null;
-  const showReconcileNote =
-    suggestedCents !== null &&
-    attributedCents !== null &&
-    Math.abs(suggestedCents - attributedCents) > 0;
 
-  // Keep the amount in step with the calculation until the user edits it.
+  // Keep the amount in step with selected expense shares until the user edits it.
   const [amountEdited, setAmountEdited] = useState(false);
   useEffect(() => {
-    if (amountEdited || selected.size === 0 || hasSuggestedAmount) return;
+    if (amountEdited || selected.size === 0) return;
     setAmount(centsToDecimal(computedPayCents));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selected, computedPayCents, amountEdited, hasSuggestedAmount]);
+  }, [selected, computedPayCents, amountEdited]);
 
   if (group.isLoading || expensesQ.isLoading || (suggestionId && suggestionsQ.isLoading)) {
     return <PageLoader />;
@@ -345,14 +330,6 @@ export function SettleForm() {
           <p className="t-caption" style={{ color: "var(--text-faint)", margin: 0 }}>
             Entries {toName} paid or lent where you owe your share.
           </p>
-          {showReconcileNote && suggestedCents !== null && attributedCents !== null && (
-            <p className="t-caption" style={{ color: "var(--text-muted)", margin: 0 }}>
-              Suggested payment {formatMoney(centsToDecimal(suggestedCents), currency)} clears
-              your balance with {toName}.{" "}
-              {formatMoney(centsToDecimal(attributedCents), currency)} ties to the expenses
-              below.
-            </p>
-          )}
           <input
             value={query}
             onChange={(e) => setQuery(e.target.value)}
@@ -480,31 +457,10 @@ export function SettleForm() {
                 ))}
               <div style={{ borderTop: "1px solid var(--border)", paddingTop: 7 }}>
                 <CalcRow
-                  label={
-                    suggestedCents !== null &&
-                    Math.abs(suggestedCents - computedPayCents) > 0
-                      ? "Suggested payment"
-                      : "You pay"
-                  }
-                  amount={formatMoney(
-                    centsToDecimal(
-                      suggestedCents !== null &&
-                        Math.abs(suggestedCents - computedPayCents) > 0
-                        ? suggestedCents
-                        : computedPayCents,
-                    ),
-                    currency,
-                  )}
+                  label="You pay"
+                  amount={formatMoney(centsToDecimal(computedPayCents), currency)}
                   strong
                 />
-                {suggestedCents !== null &&
-                  Math.abs(suggestedCents - computedPayCents) > 0 && (
-                    <CalcRow
-                      label="Share total on selected expenses"
-                      amount={formatMoney(centsToDecimal(computedPayCents), currency)}
-                      muted
-                    />
-                  )}
               </div>
             </div>
           )}
