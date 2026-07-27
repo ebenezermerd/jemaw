@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   formatDisplayName,
+  formatCompactDisplayName,
   formatMemberChipLabel,
   firstDisplayName,
 } from "./names.js";
@@ -9,6 +10,17 @@ describe("formatDisplayName", () => {
   it("capitalizes each word", () => {
     expect(formatDisplayName("ebenezer merdekios")).toBe("Ebenezer Merdekios");
     expect(formatDisplayName("mjdd")).toBe("Mjdd");
+  });
+});
+
+describe("formatCompactDisplayName", () => {
+  it("shortens to first name plus last initial and ellipsis", () => {
+    expect(formatCompactDisplayName("Ebenezer Merdekios")).toBe("Ebenezer M...");
+    expect(formatCompactDisplayName("Amanuel M")).toBe("Amanuel M...");
+  });
+
+  it("keeps single names", () => {
+    expect(formatCompactDisplayName("mjdd")).toBe("Mjdd");
   });
 });
 

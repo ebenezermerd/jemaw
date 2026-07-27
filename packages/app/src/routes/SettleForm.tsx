@@ -26,7 +26,7 @@ import { formatMoney } from "../lib/money.js";
 import { ApiError } from "../lib/api.js";
 import { AlertBanner } from "../ui/AlertBanner.js";
 import { currentTelegramId } from "../telegram.js";
-import { firstDisplayName, formatDisplayName } from "../lib/names.js";
+import { firstDisplayName, formatDisplayName, formatCompactDisplayName } from "../lib/names.js";
 
 const METHODS: { value: PaymentMethod; label: string }[] = [
   { value: "cash", label: "Cash" },
@@ -153,6 +153,9 @@ export function SettleForm() {
   }, [from, to, expenses]);
 
   const toName = formatDisplayName(members.find((m) => m.id === to)?.displayName ?? "them");
+  const toCalcName = formatCompactDisplayName(
+    members.find((m) => m.id === to)?.displayName ?? "them",
+  );
   // Gross of the selected owed shares; the credit is what nets off it so the
   // payable amount matches the settle plan's netted figure.
   const selectedGrossCents = relevant
@@ -250,9 +253,9 @@ export function SettleForm() {
   }
 
   return (
-    <div>
+    <div style={{ minWidth: 0, width: "100%", overflowX: "hidden", boxSizing: "border-box" }}>
       <PageHeader title={suggestionId ? "Edit settlement" : "Settle up"} fallback="/settle" />
-      <div style={{ padding: "0 16px 16px", display: "grid", gap: 14 }}>
+      <div style={{ padding: "0 16px 16px", display: "grid", gap: 14, minWidth: 0, width: "100%", boxSizing: "border-box" }}>
       {/* who pays whom — already determined, shown as a fixed presentation */}
       <DuoHeader
         from={members.find((m) => m.id === from)}
@@ -308,7 +311,7 @@ export function SettleForm() {
 
       {/* settling your share of — check-tile entry rows */}
       {to && (
-        <div style={{ display: "grid", gap: 10, marginTop: 2 }}>
+        <div style={{ display: "grid", gap: 10, marginTop: 2, minWidth: 0, width: "100%" }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
             <span style={{ fontSize: 13, fontWeight: 700, color: "var(--text)" }}>
               Settling your share of{" "}
@@ -346,7 +349,7 @@ export function SettleForm() {
                 : "No matches."}
             </p>
           ) : (
-            <div style={{ maxHeight: 240, overflowY: "auto", display: "grid", gap: 9 }}>
+            <div style={{ maxHeight: 240, overflowY: "auto", overflowX: "hidden", display: "grid", gap: 9, minWidth: 0, width: "100%" }}>
               {filtered.map((e) => {
                 const on = selected.has(e.id);
                 return (
@@ -367,6 +370,9 @@ export function SettleForm() {
                       color: "var(--text)",
                       cursor: "pointer",
                       textAlign: "left",
+                      width: "100%",
+                      minWidth: 0,
+                      boxSizing: "border-box",
                     }}
                   >
                     <span
@@ -428,6 +434,10 @@ export function SettleForm() {
                 display: "grid",
                 gap: 7,
                 background: "var(--surface)",
+                minWidth: 0,
+                width: "100%",
+                boxSizing: "border-box",
+                overflowX: "hidden",
               }}
             >
               <span className="t-mono-label" style={{ color: "var(--text-muted)" }}>
@@ -446,7 +456,7 @@ export function SettleForm() {
                 apportionCredit(counter, to, creditAppliedCents).map((c) => (
                   <CalcRow
                     key={c.id}
-                    label={`${toName} owes you · ${c.description}`}
+                    label={`${toCalcName} owes you · ${c.description}`}
                     amount={`−${formatMoney(centsToDecimal(c.cents), currency)}`}
                     muted
                   />
@@ -570,9 +580,20 @@ function CalcRow({
   strong?: boolean;
 }) {
   return (
-    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 10 }}>
+    <div
+      style={{
+        display: "grid",
+        gridTemplateColumns: "minmax(0, 1fr) auto",
+        alignItems: "baseline",
+        gap: 10,
+        width: "100%",
+        minWidth: 0,
+        maxWidth: "100%",
+      }}
+    >
       <span
         className={strong ? "t-body-strong" : "t-caption"}
+        title={label}
         style={{
           color: strong ? "var(--text)" : muted ? "var(--positive)" : "var(--text-muted)",
           overflow: "hidden",
@@ -590,6 +611,7 @@ function CalcRow({
           fontSize: strong ? 15 : 12,
           fontWeight: strong ? 700 : 600,
           color: strong ? "var(--text)" : muted ? "var(--positive)" : "var(--text)",
+          whiteSpace: "nowrap",
         }}
       >
         {amount}
