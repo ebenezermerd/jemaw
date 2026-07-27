@@ -129,15 +129,26 @@ export function SettleForm() {
     0,
   );
 
-  // Reset selection when the from→to pair changes (unless the link named specific ones).
+  // Reset selection when the from→to pair changes. When opened from the settle
+  // plan (amount in the URL), pre-select every owed expense so the calculation
+  // matches the listed total.
   const [selectedPair, setSelectedPair] = useState("");
   useEffect(() => {
-    if (!from || !to) return;
+    if (!from || !to || params.get("expenses")) return;
     const pair = `${from}>${to}`;
+    const owedIds = expenses
+      .filter((e) => isOwedBetween(e, from, to) && owedShareCents(e, from) > 0)
+      .map((e) => e.id);
+
+    if (params.get("amount") && owedIds.length > 0) {
+      setSelected(new Set(owedIds));
+      setSelectedPair(pair);
+      return;
+    }
+
     if (pair === selectedPair) return;
     setSelectedPair(pair);
-    if (params.get("expenses")) return; // link named specific expenses — keep them
-    setSelected(new Set()); // start empty; user picks what this payment covers
+    setSelected(new Set());
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [from, to, expenses]);
 
