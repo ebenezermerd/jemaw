@@ -26,7 +26,7 @@ import { formatMoney } from "../lib/money.js";
 import { ApiError } from "../lib/api.js";
 import { AlertBanner } from "../ui/AlertBanner.js";
 import { currentTelegramId } from "../telegram.js";
-import { firstDisplayName, formatDisplayName } from "../lib/names.js";
+import { firstDisplayName, formatDisplayName, formatCompactDisplayName } from "../lib/names.js";
 
 const METHODS: { value: PaymentMethod; label: string }[] = [
   { value: "cash", label: "Cash" },
@@ -153,6 +153,9 @@ export function SettleForm() {
   }, [from, to, expenses]);
 
   const toName = formatDisplayName(members.find((m) => m.id === to)?.displayName ?? "them");
+  const toCalcName = formatCompactDisplayName(
+    members.find((m) => m.id === to)?.displayName ?? "them",
+  );
   // Gross of the selected owed shares; the credit is what nets off it so the
   // payable amount matches the settle plan's netted figure.
   const selectedGrossCents = relevant
@@ -453,7 +456,7 @@ export function SettleForm() {
                 apportionCredit(counter, to, creditAppliedCents).map((c) => (
                   <CalcRow
                     key={c.id}
-                    label={`${toName} owes you · ${c.description}`}
+                    label={`${toCalcName} owes you · ${c.description}`}
                     amount={`−${formatMoney(centsToDecimal(c.cents), currency)}`}
                     muted
                   />
@@ -577,9 +580,20 @@ function CalcRow({
   strong?: boolean;
 }) {
   return (
-    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 10 }}>
+    <div
+      style={{
+        display: "grid",
+        gridTemplateColumns: "minmax(0, 1fr) auto",
+        alignItems: "baseline",
+        gap: 10,
+        width: "100%",
+        minWidth: 0,
+        maxWidth: "100%",
+      }}
+    >
       <span
         className={strong ? "t-body-strong" : "t-caption"}
+        title={label}
         style={{
           color: strong ? "var(--text)" : muted ? "var(--positive)" : "var(--text-muted)",
           overflow: "hidden",
@@ -597,6 +611,7 @@ function CalcRow({
           fontSize: strong ? 15 : 12,
           fontWeight: strong ? 700 : 600,
           color: strong ? "var(--text)" : muted ? "var(--positive)" : "var(--text)",
+          whiteSpace: "nowrap",
         }}
       >
         {amount}
