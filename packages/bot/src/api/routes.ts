@@ -47,6 +47,8 @@ import {
 } from "../domain/balances.js";
 import {
   isExpenseCovered,
+  deriveExpenseDebts,
+  computePairwiseTransfers,
   COVERAGE_TOLERANCE_CENTS,
   type ExpenseForDebt,
   type AllocationForDebt,
@@ -61,7 +63,7 @@ import {
   type SettlePlanResponse,
   type ExpenseDto,
 } from "@jemaw/shared/types";
-import { computeSettlement, type Transfer } from "../domain/settle.js";
+import type { Transfer } from "../domain/settle.js";
 import type { Group, Member, Settlement } from "@jemaw/shared/schema";
 import { formatSettlementAnnouncement } from "../telegram/announcements.js";
 import {
@@ -87,11 +89,11 @@ import type { ScanRateLimiter } from "../ai/rateLimit.js";
 
 /**
  * Load the full ledger for a group: net balances (for Balances screen),
- * global net settle plan (for Settle / Home), coverage set, and the raw data
+ * pairwise settle plan (for Settle / Home), coverage set, and the raw data
  * needed by settlement-create validation.
  *
  * nets   — computed from ALL live expenses + ALL settlements (zero-sum invariant).
- * transfers — minimum global transfers from member nets (matches Balances).
+ * transfers — per-creditor pairwise debts (pay who fronted your share).
  * coveredExpenseIds — expenses where every debtor share is within tolerance.
  */
 async function loadLedger(
@@ -151,7 +153,9 @@ async function loadLedger(
       .map((e) => e.expenseId),
   );
 
-  const transfers = computeSettlement(nets);
+  const transfers = computePairwiseTransfers(
+    deriveExpenseDebts(expensesForDebt, allocations),
+  );
 
   return { members, nets, expensesForDebt, allocations, coveredExpenseIds, transfers };
 }
@@ -446,7 +450,7 @@ export async function registerApi(
     },
   );
 
-  // GET live settle-up plan (global net transfers, aligned with Balances)
+  // GET live settle-up plan (pairwise: pay who fronted your share)
   app.get(
     "/api/groups/:groupId/settle",
     { preHandler: auth },

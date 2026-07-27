@@ -240,7 +240,7 @@ d("Phase 2 settle integration", () => {
   });
 });
 
-d("Phase 2 global settle plan", () => {
+d("Phase 2 pairwise settle plan", () => {
   let db: Db;
   let app: FastifyInstance;
   let groupId: string;
@@ -294,7 +294,7 @@ d("Phase 2 global settle plan", () => {
     await app.close();
   });
 
-  it("three member settle plan uses global nets not per-creditor pairwise", async () => {
+  it("three member settle plan uses per-creditor pairwise not global nets", async () => {
     await app.inject({
       method: "POST",
       url: `/api/groups/${groupId}/expenses`,
@@ -327,7 +327,8 @@ d("Phase 2 global settle plan", () => {
       })
     ).json() as SettlePlanResponse;
     expect(plan.transfers).toEqual([
-      { fromMemberId: carolId, toMemberId: aliceId, amount: "60.00" },
+      { fromMemberId: carolId, toMemberId: aliceId, amount: "30.00" },
+      { fromMemberId: carolId, toMemberId: bobId, amount: "30.00" },
     ]);
   });
 });
