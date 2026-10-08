@@ -1,0 +1,9 @@
+// Mini app on Cloudflare Workers static assets (free). Deploy: scripts/cloudflare-deploy-app.sh
+{
+  "name": "jemaw-app",
+  "compatibility_date": "2026-09-01",
+  "assets": {
+    "directory": "./dist",
+    "not_found_handling": "single-page-application"
+  }
+}

@@ -18,3 +18,7 @@ work/
 .terraform/
 tfplan
 infra/aws/terraform.tfvars
+
+# DB dumps from migration (scripts/migrate-db-to-neon.sh)
+*.dump
+jemaw-rds.dump
