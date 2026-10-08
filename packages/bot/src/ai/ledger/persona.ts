@@ -1,0 +1,141 @@
+/**
+ * The one-line personality Jemaw adds under an exact ledger answer: friendly
+ * bragging about whoever carries the group and playful guilt-trips for whoever
+ * owes. The model line must pass the fact-lock verifier against the snapshot;
+ * otherwise a template line is used so the answer is never held up.
+ */
+import type { HumorMode } from "@jemaw/shared/humor";
+import type { ScanClient } from "../geminiClient.js";
+import type { LedgerQuestionKind } from "../humor/intent.js";
+import { buildDirectChatPacket } from "../humor/factPacket.js";
+import { verifyCandidate } from "../humor/verifier.js";
+import {
+  ledgerHighlights,
+  ledgerNames,
+  ledgerNumberTokens,
+  plainAmount,
+  type LedgerSnapshot,
+} from "./snapshot.js";
+
+const PERSONA_MAX_TOKENS = 320;
+
+export interface PersonaLine {
+  text: string;
+  source: "model" | "template";
+  inputTokens?: number;
+  outputTokens?: number;
+}
+
+const MODE_TONE: Record<Exclude<HumorMode, "off">, string> = {
+  jemaw_dry: "deadpan and understated, a raised eyebrow rather than a roast",
+  roast: "sharp teasing between close friends, a proper roast that still lands as love",
+  chaos: "dramatic and absurd, theatrical outrage and over-the-top praise",
+};
+
+function systemPrompt(mode: Exclude<HumorMode, "off">): string {
+  return [
+    "You are Jemaw, the meddlesome spirit living in a friend group's shared expense ledger.",
+    "The exact ledger answer has already been shown. You add ONE short line of personality under it.",
+    `Tone: ${MODE_TONE[mode]}.`,
+    "Talk to ASKER by name. Brag about whoever carries the group (top spender, top creditor) and playfully guilt-trip whoever owes, including ASKER if they owe.",
+    "Friendly ribbing only: never cruel, never about poverty, worth, family or appearance.",
+    "Only use names and numbers that appear in FACTS. Write numbers exactly as given, without thousands separators. Do not restate the whole answer.",
+    'Return JSON only: {"candidates":[{"text":"..."},{"text":"..."}]} with 2 candidates, each one sentence of at most 30 words.',
+  ].join(" ");
+}
+
+export async function composeLedgerPersonaLine(input: {
+  client?: ScanClient;
+  mode: Exclude<HumorMode, "off">;
+  snapshot: LedgerSnapshot;
+  kind: LedgerQuestionKind;
+  rng?: () => number;
+}): Promise<PersonaLine> {
+  const s = input.snapshot;
+  const highlights = ledgerHighlights(s);
+  const packet = buildDirectChatPacket({
+    pendingCount: s.pending.count,
+    currency: s.currency,
+    addressedUtterance: "",
+    addressedBy: s.asker?.name,
+    allowedTargetNames: ledgerNames(s),
+    ledger: highlights,
+  });
+  packet.allowed_number_tokens = [
+    ...new Set([...(packet.allowed_number_tokens ?? []), ...ledgerNumberTokens(s)]),
+  ];
+
+  if (input.client) {
+    try {
+      const res = await input.client.suggest({
+        systemPrompt: systemPrompt(input.mode),
+        userPrompt: `FACTS:${JSON.stringify({
+          asker: s.asker?.name ?? null,
+          asker_net: s.asker ? plainAmount(s.asker.netCents) : null,
+          asker_is: s.asker ? (s.asker.netCents < 0 ? "in_debt" : s.asker.netCents > 0 ? "owed_money" : "square") : null,
+          question: input.kind,
+          ledger: highlights,
+          spent_this_month: plainAmount(s.stats.monthCents),
+          pending_drafts: s.pending.count,
+        })}`,
+        temperature: input.mode === "chaos" ? 0.9 : input.mode === "roast" ? 0.8 : 0.6,
+        maxTokens: PERSONA_MAX_TOKENS,
+      });
+      const list = (res.json as { candidates?: { text?: unknown }[] })?.candidates ?? [];
+      for (const c of Array.isArray(list) ? list : []) {
+        const text = String(c?.text ?? "").trim();
+        if (text && verifyCandidate(text, packet).ok) {
+          return { text, source: "model", inputTokens: res.inputTokens, outputTokens: res.outputTokens };
+        }
+      }
+      console.log(`[ledger] persona model lines rejected by verifier`);
+    } catch (err) {
+      console.warn(`[ledger] persona model failed:`, err instanceof Error ? err.message : err);
+    }
+  }
+  return { text: templateLine(s, input.rng ?? Math.random), source: "template" };
+}
+
+function pick<T>(list: T[], rng: () => number): T {
+  return list[Math.floor(rng() * list.length)] ?? list[0]!;
+}
+
+function templateLine(s: LedgerSnapshot, rng: () => number): string {
+  const asker = s.asker;
+  const top = s.stats.topSpenderMonth?.name;
+  const debtor = [...s.balances].sort((a, b) => a.netCents - b.netCents)[0];
+  if (asker && asker.netCents < 0) {
+    return pick(
+      [
+        `${asker.name}, the ledger has noticed. It's not angry, just disappointed.`,
+        `${asker.name}, pay up before the ledger starts a group chat about you.`,
+        `${asker.name}, every unpaid birr adds a wrinkle to my pages.`,
+      ],
+      rng,
+    );
+  }
+  if (asker && asker.netCents > 0) {
+    return pick(
+      [
+        `${asker.name}, you're basically the group's bank. Interest-free, sadly.`,
+        `${asker.name} out here funding everyone's lifestyle. Respect.`,
+      ],
+      rng,
+    );
+  }
+  if (debtor && debtor.netCents < 0) {
+    return pick(
+      [
+        `${debtor.name}, the books whisper your name at night.`,
+        top
+          ? `${top} carrying the group's economy while ${debtor.name} carries the debt.`
+          : `${debtor.name}, the ledger is keeping a seat warm for your payment.`,
+      ],
+      rng,
+    );
+  }
+  return pick(
+    ["Spotless books. Suspiciously spotless.", "Everyone's square. I've never been so bored."],
+    rng,
+  );
+}
