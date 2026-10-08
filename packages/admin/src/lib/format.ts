@@ -19,3 +19,11 @@ export function fmtCompact(dec: string | number): string {
   if (Math.abs(n) >= 1_000) return `${(n / 1000).toFixed(1).replace(/\.0$/, "")}k`;
   return n.toLocaleString("en-US", { maximumFractionDigits: 0 });
 }
+
+/** "ebenezer merd" → "Ebenezer Merd". Display only; leaves @handles alone. */
+export function titleCase(name: string): string {
+  return name.replace(/(^|[\s\-'’(])(\p{Ll})/gu, (_, sep: string, ch: string) => sep + ch.toUpperCase());
+}
+
+/** Max height that shows `rows` rows before the list starts to scroll. */
+export const scrollAfter = (rows: number, rowHeight: number) => rows * rowHeight;
