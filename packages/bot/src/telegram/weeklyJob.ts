@@ -174,11 +174,17 @@ export async function runWeeklyDigestSweep(deps: WeeklyJobDeps): Promise<void> {
 
 /** Start the hourly sweep. Returns a stop function. */
 export function startWeeklyDigestScheduler(deps: WeeklyJobDeps): () => void {
-  const timer = setInterval(() => {
-    void runWeeklyDigestSweep(deps);
-  }, SWEEP_INTERVAL_MS);
+  const sweep = () =>
+    runWeeklyDigestSweep(deps).catch((err) =>
+      console.warn(
+        `[digest] sweep failed: ${err instanceof Error ? err.message : err}`,
+      ),
+    );
+  const timer = setInterval(sweep, SWEEP_INTERVAL_MS);
   // Unref so the timer never keeps a dying process alive.
   timer.unref?.();
+  // Sweep once on boot too, so hosts that sleep when idle still post digests.
+  void sweep();
   return () => clearInterval(timer);
 }
 
