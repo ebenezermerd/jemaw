@@ -1,7 +1,8 @@
-import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useState, useRef, useEffect } from "react";
+import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { api } from "../lib/api.js";
-import type { AdminExpenseDto, AdminGroupDto } from "@jemaw/shared/types";
+import type { AdminExpenseDto, AdminExpensePageDto, AdminGroupDto } from "@jemaw/shared/types";
+import { fmtMoney } from "../lib/format.js";
 import { CenteredMessage } from "../ui/primitives.js";
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
@@ -18,13 +19,9 @@ function fmtDateShort(iso: string): string {
   return new Date(iso).toLocaleDateString("en-US", { month: "short", day: "numeric" });
 }
 
-function fmtAmountNum(dec: string): string {
-  return Number(dec).toLocaleString(undefined, { maximumFractionDigits: 0 });
-}
-
 // ─── kind config (icon + colors) ─────────────────────────────────────────────
 
-type Kind = "expense" | "loan" | "settlement";
+type Kind = "expense" | "loan";
 
 const KIND_CFG: Record<
   Kind,
@@ -54,46 +51,26 @@ const KIND_CFG: Record<
       </svg>
     ),
   },
-  settlement: {
-    bg: "rgba(45,212,167,.14)",
-    border: "rgba(45,212,167,.34)",
-    stroke: "#2DD4A7",
-    label: "Settlement",
-    icon: (
-      <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="#2DD4A7" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-        <path d="M4 9h13l-3-3" />
-        <path d="M20 15H7l3 3" />
-      </svg>
-    ),
-  },
 };
 
 function kindOf(e: AdminExpenseDto): Kind {
-  if (e.kind === "loan") return "loan";
-  // source-based settlement detection not in DTO — rely on kind field
-  return "expense";
+  return e.kind === "loan" ? "loan" : "expense";
 }
 
 // ─── status pill ─────────────────────────────────────────────────────────────
 
+const STATUS_CFG = {
+  open: { text: "Open", color: "#E0B23C", bg: "rgba(224,178,60,.12)" },
+  settled: { text: "Settled", color: "#2DD4A7", bg: "rgba(45,212,167,.12)" },
+  voided: { text: "Voided", color: "rgba(244,242,251,.45)", bg: "rgba(255,255,255,.06)" },
+} as const;
+
+/** Open: someone still owes on it. Settled: every share was paid back. */
 function ExpenseStatusPill({ e }: { e: AdminExpenseDto }) {
-  if (e.voided) {
-    return (
-      <span style={{ fontSize: 11, fontWeight: 700, color: "rgba(244,242,251,.45)", background: "rgba(255,255,255,.06)", padding: "3px 9px", borderRadius: 7 }}>
-        Voided
-      </span>
-    );
-  }
-  if (e.kind === "loan") {
-    return (
-      <span style={{ fontSize: 11, fontWeight: 700, color: "#E0B23C", background: "rgba(224,178,60,.12)", padding: "3px 9px", borderRadius: 7 }}>
-        Open
-      </span>
-    );
-  }
+  const c = STATUS_CFG[e.status];
   return (
-    <span style={{ fontSize: 11, fontWeight: 700, color: "#2DD4A7", background: "rgba(45,212,167,.12)", padding: "3px 9px", borderRadius: 7 }}>
-      Settled
+    <span style={{ fontSize: 11, fontWeight: 700, color: c.color, background: c.bg, padding: "3px 9px", borderRadius: 7 }}>
+      {c.text}
     </span>
   );
 }
@@ -133,8 +110,6 @@ function memberAvatar(name: string, size = 32): JSX.Element {
 }
 
 // ─── GROUP FILTER DROPDOWN (reused pattern) ───────────────────────────────────
-
-import { useRef, useEffect } from "react";
 
 function GroupDropdown({ groups, value, onChange }: {
   groups: AdminGroupDto[];
@@ -228,12 +203,11 @@ function ExpenseDetail({ e, onBack }: { e: AdminExpenseDto; onBack: () => void }
   const k = kindOf(e);
   const cfg = KIND_CFG[k];
   const isAI = e.source === "ai_confirmed" || e.source === "ai_edited";
-  const amount = Number(e.amount);
-
-  // Approximate equal split — we don't have per-member shares in AdminExpenseDto
-  // Show payer as net positive (amount - share), others as net negative (share)
-  const splitCount = 4; // placeholder — DTO doesn't carry shares
-  const share = amount / splitCount;
+  const equal = new Set(e.shares.map((s) => s.amount)).size <= 1;
+  const splitLabel =
+    k === "loan"
+      ? `Loan to ${e.shares[0]?.name ?? "?"}`
+      : `${equal ? "Equal" : "Custom"} · ${e.shares.length} ${e.shares.length === 1 ? "person" : "people"}`;
 
   return (
     <div style={{ maxWidth: 760 }}>
@@ -267,7 +241,6 @@ function ExpenseDetail({ e, onBack }: { e: AdminExpenseDto; onBack: () => void }
             <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke={cfg.stroke} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               {k === "expense" && (<><rect x="4" y="6" width="16" height="12" rx="2" /><path d="M4 10h16" /></>)}
               {k === "loan" && (<><path d="M7 17L17 7" /><path d="M9 7h8v8" /></>)}
-              {k === "settlement" && (<><path d="M4 9h13l-3-3" /><path d="M20 15H7l3 3" /></>)}
             </svg>
           </div>
 
@@ -287,22 +260,9 @@ function ExpenseDetail({ e, onBack }: { e: AdminExpenseDto; onBack: () => void }
               fontFamily: "var(--font-display)", fontWeight: 800, fontSize: 28,
               fontVariantNumeric: "tabular-nums", lineHeight: 1, marginBottom: 6,
             }}>
-              {fmtAmountNum(e.amount)}
-              <span style={{ fontSize: 16, opacity: 0.6 }}> {e.currency}</span>
+              {fmtMoney(e.amount, e.currency)}
             </div>
-            {e.voided ? (
-              <span style={{ fontSize: 11, fontWeight: 700, color: "rgba(244,242,251,.45)", background: "rgba(255,255,255,.06)", padding: "3px 10px", borderRadius: 7 }}>
-                Voided
-              </span>
-            ) : k === "loan" ? (
-              <span style={{ fontSize: 11, fontWeight: 700, color: "#E0B23C", background: "rgba(224,178,60,.12)", padding: "3px 10px", borderRadius: 7 }}>
-                Open · unsettled
-              </span>
-            ) : (
-              <span style={{ fontSize: 11, fontWeight: 700, color: "#2DD4A7", background: "rgba(45,212,167,.12)", padding: "3px 10px", borderRadius: 7 }}>
-                Settled
-              </span>
-            )}
+            <ExpenseStatusPill e={e} />
           </div>
         </div>
 
@@ -314,7 +274,7 @@ function ExpenseDetail({ e, onBack }: { e: AdminExpenseDto; onBack: () => void }
           {[
             { label: "Paid by", value: e.payerName },
             { label: "Date", value: fmtDate(e.occurredAt) },
-            { label: "Split", value: k === "expense" ? "Equal · 4 ways" : k === "loan" ? "Loan" : "Transfer" },
+            { label: "Split", value: splitLabel },
             { label: "Entry ID", value: e.id.slice(0, 8).toUpperCase(), mono: true },
           ].map(({ label, value, mono }) => (
             <div key={label}>
@@ -342,14 +302,8 @@ function ExpenseDetail({ e, onBack }: { e: AdminExpenseDto; onBack: () => void }
               ✦ AI drafted
             </span>
             <span style={{ fontSize: 13, color: "rgba(244,242,251,.6)" }}>
-              {e.source === "ai_edited" ? "edited after AI draft" : "confidence: high"}
+              {e.source === "ai_edited" ? "edited by a member before saving" : "confirmed as drafted"}
             </span>
-          </div>
-          <div style={{
-            fontSize: 14, color: "rgba(244,242,251,.8)", fontStyle: "italic",
-            paddingLeft: 10, borderLeft: "2px solid rgba(168,156,227,.45)",
-          }}>
-            "{e.payerName} said '{e.description.toLowerCase()}' in chat — drafted an expense split equally."
           </div>
         </div>
       )}
@@ -363,47 +317,37 @@ function ExpenseDetail({ e, onBack }: { e: AdminExpenseDto; onBack: () => void }
           Split breakdown
         </div>
 
-        {/* payer row — net positive */}
-        {[
-          {
-            name: e.payerName,
-            net: amount - share,
-            isPayer: true,
-          },
-        ].concat(
-          k === "expense"
-            ? [
-                { name: "Member 2", net: -share, isPayer: false },
-                { name: "Member 3", net: -share, isPayer: false },
-                { name: "Member 4", net: -share, isPayer: false },
-              ]
-            : [],
-        ).map((m, i, arr) => (
-          <div
-            key={m.name}
-            style={{
-              display: "flex", alignItems: "center", gap: 11,
-              padding: "13px 20px",
-              borderBottom: i < arr.length - 1 ? "1px solid rgba(255,255,255,.04)" : "none",
-            }}
-          >
-            {memberAvatar(m.name, 32)}
-            <div style={{ flex: 1 }}>
-              <div style={{ fontSize: 14, fontWeight: 600 }}>
-                {m.name}
-                {m.isPayer && (
-                  <span style={{ fontSize: 11, color: "#2DD4A7", marginLeft: 6 }}>· paid</span>
-                )}
+        {e.shares.length === 0 ? (
+          <CenteredMessage>No shares recorded.</CenteredMessage>
+        ) : (
+          e.shares.map((m, i, arr) => {
+            const isPayer = m.memberId === e.payerMemberId;
+            return (
+              <div
+                key={m.memberId}
+                style={{
+                  display: "flex", alignItems: "center", gap: 11,
+                  padding: "13px 20px",
+                  borderBottom: i < arr.length - 1 ? "1px solid rgba(255,255,255,.04)" : "none",
+                }}
+              >
+                {memberAvatar(m.name, 32)}
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontSize: 14, fontWeight: 600 }}>
+                    {m.name}
+                    {isPayer && <span style={{ fontSize: 11, color: "#2DD4A7", marginLeft: 6 }}>· paid</span>}
+                  </div>
+                  <div style={{ fontSize: 12, color: "rgba(244,242,251,.45)" }}>
+                    {isPayer ? "their own share" : `owes ${e.payerName} for this`}
+                  </div>
+                </div>
+                <span style={{ fontSize: 14, fontWeight: 700, fontVariantNumeric: "tabular-nums", color: isPayer ? "rgba(244,242,251,.7)" : "#F0A640" }}>
+                  {fmtMoney(m.amount, e.currency)}
+                </span>
               </div>
-            </div>
-            <span style={{
-              fontSize: 14, fontWeight: 700, fontVariantNumeric: "tabular-nums",
-              color: m.net >= 0 ? "#2DD4A7" : "#F0A640",
-            }}>
-              {m.net >= 0 ? "+" : "−"}{Math.abs(m.net).toLocaleString(undefined, { maximumFractionDigits: 0 })} {e.currency}
-            </span>
-          </div>
-        ))}
+            );
+          })
+        )}
       </div>
     </div>
   );
@@ -413,24 +357,42 @@ function ExpenseDetail({ e, onBack }: { e: AdminExpenseDto; onBack: () => void }
 
 const COLS = "2fr 1.3fr 1.3fr 1fr 1fr 1fr";
 
-type KindFilter = "all" | "expense" | "loan" | "settlement";
+type KindFilter = "all" | "expense" | "loan";
 const KIND_FILTERS: { key: KindFilter; label: string }[] = [
   { key: "all", label: "All types" },
   { key: "expense", label: "Expense" },
   { key: "loan", label: "Loan" },
-  { key: "settlement", label: "Settlement" },
 ];
+const PAGE_SIZE = 50;
 
 export function Expenses() {
   const [search, setSearch] = useState("");
   const [kindFilter, setKindFilter] = useState<KindFilter>("all");
   const [groupId, setGroupId] = useState<string | null>(null);
   const [selected, setSelected] = useState<AdminExpenseDto | null>(null);
+  const [page, setPage] = useState(0);
+  const [debounced, setDebounced] = useState("");
 
-  const { data: expenses = [], isLoading, error } = useQuery({
-    queryKey: ["expenses"],
-    queryFn: () => api.get<AdminExpenseDto[]>("/api/admin/expenses"),
+  useEffect(() => {
+    const t = setTimeout(() => setDebounced(search.trim()), 250);
+    return () => clearTimeout(t);
+  }, [search]);
+  // Any filter change starts again from the first page.
+  useEffect(() => setPage(0), [debounced, kindFilter, groupId]);
+
+  const params = new URLSearchParams({ limit: String(PAGE_SIZE), offset: String(page * PAGE_SIZE) });
+  if (groupId) params.set("groupId", groupId);
+  if (kindFilter !== "all") params.set("kind", kindFilter);
+  if (debounced) params.set("q", debounced);
+
+  const { data, isLoading, error } = useQuery({
+    queryKey: ["expenses", params.toString()],
+    queryFn: () => api.get<AdminExpensePageDto>(`/api/admin/expenses?${params}`),
+    placeholderData: keepPreviousData,
   });
+  const rows = data?.items ?? [];
+  const total = data?.total ?? 0;
+  const pages = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
   const { data: groups = [] } = useQuery({
     queryKey: ["groups"],
@@ -444,18 +406,7 @@ export function Expenses() {
     return <ExpenseDetail e={selected} onBack={() => setSelected(null)} />;
   }
 
-  const groupNameById = new Map(groups.map((g) => [g.id, g.name]));
-  const selectedGroupName = groupId ? (groupNameById.get(groupId) ?? null) : null;
-
-  const q = search.trim().toLowerCase();
-  const rows = expenses.filter((e) => {
-    if (kindFilter !== "all" && e.kind !== kindFilter) return false;
-    if (selectedGroupName && e.groupName !== selectedGroupName) return false;
-    if (q && !e.description.toLowerCase().includes(q) &&
-        !e.payerName.toLowerCase().includes(q) &&
-        !e.groupName.toLowerCase().includes(q)) return false;
-    return true;
-  });
+  const q = debounced;
 
   return (
     <div>
@@ -513,7 +464,7 @@ export function Expenses() {
         <div style={{ flex: 1 }} />
 
         <span style={{ fontSize: 13, color: "rgba(244,242,251,.45)" }}>
-          {rows.length.toLocaleString()} total
+          {total === 0 ? "0" : `${page * PAGE_SIZE + 1}–${page * PAGE_SIZE + rows.length}`} of {total.toLocaleString()}
         </span>
       </div>
 
@@ -582,7 +533,7 @@ export function Expenses() {
 
                 {/* amount */}
                 <span style={{ fontSize: 14, fontWeight: 700, fontVariantNumeric: "tabular-nums" }}>
-                  {fmtAmountNum(e.amount)} {e.currency}
+                  {fmtMoney(e.amount, e.currency)}
                 </span>
 
                 {/* date */}
@@ -597,6 +548,30 @@ export function Expenses() {
           })
         )}
       </div>
+
+      {pages > 1 && (
+        <div style={{ display: "flex", justifyContent: "flex-end", alignItems: "center", gap: 10, marginTop: 14 }}>
+          {[
+            { label: "Previous", to: page - 1, disabled: page === 0 },
+            { label: "Next", to: page + 1, disabled: page >= pages - 1 },
+          ].map(({ label, to, disabled }) => (
+            <button
+              key={label}
+              disabled={disabled}
+              onClick={() => setPage(to)}
+              style={{
+                fontSize: 13, fontWeight: 600, padding: "8px 14px", borderRadius: 9,
+                color: disabled ? "rgba(244,242,251,.3)" : "rgba(244,242,251,.8)",
+                background: "transparent", border: "1px solid rgba(255,255,255,.1)",
+                cursor: disabled ? "default" : "pointer",
+              }}
+            >
+              {label}
+            </button>
+          ))}
+          <span style={{ fontSize: 13, color: "rgba(244,242,251,.45)" }}>Page {page + 1} of {pages}</span>
+        </div>
+      )}
     </div>
   );
 }

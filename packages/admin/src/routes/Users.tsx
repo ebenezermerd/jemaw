@@ -1,7 +1,8 @@
 import { useState, useRef, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "../lib/api.js";
-import type { AdminUserDto, AdminExpenseDto, AdminGroupDto } from "@jemaw/shared/types";
+import type { AdminGroupDetailDto, AdminGroupDto, AdminUserDetailDto, AdminUserDto } from "@jemaw/shared/types";
+import { fmtMoney, fmtNet } from "../lib/format.js";
 import { StatusPill, CenteredMessage } from "../ui/primitives.js";
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
@@ -619,55 +620,49 @@ function GroupsDropdown({
 
 function UserDetail({
   user,
-  expenses,
   onBack,
   onToggle,
   isPending,
 }: {
   user: AdminUserDto;
-  expenses: AdminExpenseDto[];
   onBack: () => void;
   onToggle: () => void;
   isPending: boolean;
 }) {
   const [showMessage, setShowMessage] = useState(false);
   const { bg, color } = getAvatarStyle(user.displayName);
+  const { data: detail, isLoading: detailLoading } = useQuery({
+    queryKey: ["user", user.telegramUserId, user.isActive],
+    queryFn: () => api.get<AdminUserDetailDto>(`/api/admin/users/${user.telegramUserId}`),
+  });
 
-  const userExpenses = expenses
-    .filter((e) => e.payerName === user.displayName && !e.voided)
-    .slice(0, 30);
+  const memberships = detail?.memberships ?? [];
+  const activeMemberships = memberships.filter((m) => m.isActive);
+  const currencies = new Set(memberships.map((m) => m.currency));
+  // Sums only make sense when every group uses the same currency.
+  const oneCurrency = currencies.size === 1 ? [...currencies][0]! : null;
+  const sum = (pick: (m: (typeof memberships)[number]) => string) =>
+    memberships.reduce((acc, m) => acc + Number(pick(m)), 0);
+  const totalNet = sum((m) => m.net);
+  const expensesPaid = memberships.reduce((acc, m) => acc + m.expenseCount, 0);
 
-  const totalPaid = userExpenses.reduce((s, e) => s + Number(e.amount), 0);
-
-  const groupMap = new Map<string, { name: string; entries: number; amount: number }>();
-  expenses
-    .filter((e) => e.payerName === user.displayName && !e.voided)
-    .forEach((e) => {
-      const g = groupMap.get(e.groupName) ?? { name: e.groupName, entries: 0, amount: 0 };
-      g.entries++;
-      g.amount += Number(e.amount);
-      groupMap.set(e.groupName, g);
-    });
-  const groups = [...groupMap.values()].sort((a, b) => b.amount - a.amount);
-
-  const timeline = expenses
-    .filter((e) => e.payerName === user.displayName)
-    .slice(0, 5)
-    .map((e) => ({
-      id: e.id,
-      dot: e.kind === "loan" ? "#E0B23C" : e.kind === "expense" ? "#8A78D6" : "#5BA8E0",
-      text:
-        e.kind === "loan" ? (
-          <>
-            Recorded loan <b>{Number(e.amount).toLocaleString()} {e.currency}</b> · {e.groupName}
-          </>
-        ) : (
-          <>
-            Added expense <b>{e.description} · {Number(e.amount).toLocaleString()} {e.currency}</b>
-          </>
-        ),
-      at: e.occurredAt,
-    }));
+  const timeline = (detail?.recentExpenses ?? []).slice(0, 8).map((e) => ({
+    id: e.id,
+    dot: e.voided ? "rgba(244,242,251,.3)" : e.kind === "loan" ? "#E0B23C" : "#8A78D6",
+    text:
+      e.kind === "loan" ? (
+        <>
+          Lent <b>{fmtMoney(e.amount, e.currency)}</b> to {e.shares[0]?.name ?? "someone"} · {e.groupName}
+          {e.voided ? " (voided)" : ""}
+        </>
+      ) : (
+        <>
+          Paid <b>{e.description} · {fmtMoney(e.amount, e.currency)}</b> · {e.groupName}
+          {e.voided ? " (voided)" : ""}
+        </>
+      ),
+    at: e.occurredAt,
+  }));
 
   return (
     <>
@@ -746,7 +741,8 @@ function UserDetail({
               <StatusPill status={user.status} />
             </div>
             <div style={{ fontSize: 13, color: "rgba(244,242,251,.5)", marginTop: 3 }}>
-              {user.username ? `@${user.username} · ` : ""}ID {user.telegramUserId}
+              {user.isManual ? "Added by hand, no Telegram account · " : user.username ? `@${user.username} · ` : ""}
+              {user.isManual ? "" : `ID ${user.telegramUserId}`}
               {user.lastActiveAt ? ` · Last active ${fmtDate(user.lastActiveAt)}` : ""}
             </div>
           </div>
@@ -790,57 +786,42 @@ function UserDetail({
         {/* 4-stat grid */}
         <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 16, marginBottom: 18 }}>
           {[
-            { value: String(user.groupCount), label: "Groups" },
+            { value: String(activeMemberships.length), label: "Groups" },
             {
-              value: totalPaid,
-              label: "Total paid",
-              suffix: " Br",
+              value: detailLoading ? "…" : oneCurrency ? fmtMoney(sum((m) => m.paid), oneCurrency) : "Mixed currencies",
+              label: "Total paid (loans excluded)",
             },
             {
-              value: null,
+              value: detailLoading ? "…" : oneCurrency ? fmtNet(totalNet, oneCurrency) : "See groups",
               label: "Net balance",
-              accent: "#2DD4A7",
+              accent: !oneCurrency || totalNet === 0 ? undefined : totalNet > 0 ? "#2DD4A7" : "#F0A640",
             },
-            { value: userExpenses.length, label: "Entries logged" },
-          ].map(({ value, label, suffix, accent }) => {
-            const display =
-              value === null
-                ? "—"
-                : typeof value === "number" && value > 0
-                  ? value.toLocaleString(undefined, { maximumFractionDigits: 0 })
-                  : typeof value === "number"
-                    ? String(value)
-                    : value;
-
-            return (
+            { value: detailLoading ? "…" : String(expensesPaid), label: "Expenses paid for" },
+          ].map(({ value, label, accent }) => (
+            <div
+              key={label}
+              style={{
+                background: "#16151F",
+                border: "1px solid rgba(255,255,255,.07)",
+                borderRadius: 14,
+                padding: 16,
+              }}
+            >
               <div
-                key={label}
                 style={{
-                  background: "#16151F",
-                  border: "1px solid rgba(255,255,255,.07)",
-                  borderRadius: 14,
-                  padding: 16,
+                  fontFamily: "var(--font-display)",
+                  fontWeight: 800,
+                  fontSize: 22,
+                  fontVariantNumeric: "tabular-nums",
+                  color: accent ?? "var(--text)",
+                  lineHeight: 1,
                 }}
               >
-                <div
-                  style={{
-                    fontFamily: "var(--font-display)",
-                    fontWeight: 800,
-                    fontSize: 24,
-                    fontVariantNumeric: "tabular-nums",
-                    color: accent ?? "var(--text)",
-                    lineHeight: 1,
-                  }}
-                >
-                  {display}
-                  {suffix && value !== null && Number(value) > 0 && (
-                    <span style={{ fontSize: 14, opacity: 0.6 }}>{suffix}</span>
-                  )}
-                </div>
-                <div style={{ fontSize: 12, color: "rgba(244,242,251,.5)", marginTop: 6 }}>{label}</div>
+                {value}
               </div>
-            );
-          })}
+              <div style={{ fontSize: 12, color: "rgba(244,242,251,.5)", marginTop: 6 }}>{label}</div>
+            </div>
+          ))}
         </div>
 
         {/* two-column */}
@@ -864,22 +845,23 @@ function UserDetail({
             >
               Group memberships
             </div>
-            {groups.length === 0 ? (
+            {memberships.length === 0 ? (
               <div style={{ padding: "16px 20px", fontSize: 13, color: "rgba(244,242,251,.4)" }}>
-                No group activity found.
+                {detailLoading ? "Loading…" : "Not in any group."}
               </div>
             ) : (
-              groups.map((g, i) => (
+              memberships.map((g, i) => (
                 <div
-                  key={g.name}
+                  key={g.memberId}
                   className="jx-row"
                   style={{
                     display: "flex",
                     alignItems: "center",
                     gap: 11,
                     padding: "13px 20px",
-                    borderBottom: i < groups.length - 1 ? "1px solid rgba(255,255,255,.04)" : "none",
+                    borderBottom: i < memberships.length - 1 ? "1px solid rgba(255,255,255,.04)" : "none",
                     cursor: "default",
+                    opacity: g.isActive ? 1 : 0.5,
                   }}
                 >
                   <GroupIcon size={34} />
@@ -893,23 +875,25 @@ function UserDetail({
                         whiteSpace: "nowrap",
                       }}
                     >
-                      {g.name}
+                      {g.groupName}
                     </div>
                     <div style={{ fontSize: 11, color: "rgba(244,242,251,.45)" }}>
-                      Member · {g.entries} {g.entries === 1 ? "entry" : "entries"}
+                      {g.isActive ? (g.role === "admin" ? "Admin" : "Member") : "Removed"}
+                      {g.displayName !== user.displayName ? ` as ${g.displayName}` : ""} · paid{" "}
+                      {fmtMoney(g.paid, g.currency)} over {g.expenseCount}{" "}
+                      {g.expenseCount === 1 ? "expense" : "expenses"}
                     </div>
                   </div>
                   <span
                     style={{
                       fontSize: 13,
                       fontWeight: 700,
-                      color: g.amount >= 0 ? "#2DD4A7" : "#F0A640",
+                      color: Number(g.net) > 0 ? "#2DD4A7" : Number(g.net) < 0 ? "#F0A640" : "rgba(244,242,251,.55)",
                       fontVariantNumeric: "tabular-nums",
                       flex: "none",
                     }}
                   >
-                    {g.amount >= 0 ? "+" : "−"}
-                    {Math.abs(g.amount).toLocaleString(undefined, { maximumFractionDigits: 0 })} Br
+                    {fmtNet(g.net, g.currency)}
                   </span>
                 </div>
               ))
@@ -927,7 +911,9 @@ function UserDetail({
           >
             <div style={{ fontSize: 15, fontWeight: 700, marginBottom: 16 }}>Recent activity</div>
             {timeline.length === 0 ? (
-              <div style={{ fontSize: 13, color: "rgba(244,242,251,.4)" }}>No activity recorded.</div>
+              <div style={{ fontSize: 13, color: "rgba(244,242,251,.4)" }}>
+                {detailLoading ? "Loading…" : "Has not paid for anything yet."}
+              </div>
             ) : (
               <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
                 {timeline.map((item, i) => (
@@ -1003,9 +989,10 @@ export function Users() {
     queryFn: () => api.get<AdminUserDto[]>("/api/admin/users"),
   });
 
-  const { data: expenses = [] } = useQuery({
-    queryKey: ["expenses"],
-    queryFn: () => api.get<AdminExpenseDto[]>("/api/admin/expenses"),
+  const { data: groupDetail } = useQuery({
+    queryKey: ["group", groupId],
+    queryFn: () => api.get<AdminGroupDetailDto>(`/api/admin/groups/${groupId}`),
+    enabled: groupId !== null,
   });
 
   const { data: groups = [] } = useQuery({
@@ -1030,7 +1017,6 @@ export function Users() {
     return (
       <UserDetail
         user={liveSelected}
-        expenses={expenses}
         onBack={() => setSelected(null)}
         onToggle={() => toggle.mutate(liveSelected)}
         isPending={toggle.isPending}
@@ -1038,17 +1024,14 @@ export function Users() {
     );
   }
 
-  // ── derive group membership lookup from expenses ──────────────────────────
-  // { groupId → Set<payerName> } for group filtering
-  const groupNameById = new Map(groups.map((g) => [g.id, g.name]));
-  const usersInGroup = groupId
-    ? new Set(expenses.filter((e) => e.groupName === groupNameById.get(groupId ?? "")).map((e) => e.payerName))
-    : null;
+  // Real membership of the chosen group, by Telegram id.
+  const usersInGroup =
+    groupId && groupDetail ? new Set(groupDetail.members.map((m) => m.telegramUserId)) : null;
 
   const q = search.trim().toLowerCase();
   const filtered = users
     .filter((u) => filter === "all" || u.status === filter)
-    .filter((u) => !usersInGroup || usersInGroup.has(u.displayName))
+    .filter((u) => !groupId || (usersInGroup?.has(u.telegramUserId) ?? false))
     .filter(
       (u) =>
         !q ||

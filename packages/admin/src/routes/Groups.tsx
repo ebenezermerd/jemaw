@@ -1,21 +1,11 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "../lib/api.js";
-import type { AdminGroupDto, AdminExpenseDto } from "@jemaw/shared/types";
+import type { AdminExpensePageDto, AdminGroupDetailDto, AdminGroupDto } from "@jemaw/shared/types";
+import { fmtCompact, fmtMoney, fmtNet } from "../lib/format.js";
 import { CenteredMessage } from "../ui/primitives.js";
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
-
-function fmtVolume(decStr: string): string {
-  const n = Number(decStr);
-  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1).replace(/\.0$/, "")}M`;
-  if (n >= 1_000) return `${(n / 1000).toFixed(0)}k`;
-  return n.toLocaleString(undefined, { maximumFractionDigits: 0 });
-}
-
-function fmtFull(decStr: string): string {
-  return Number(decStr).toLocaleString(undefined, { maximumFractionDigits: 0 });
-}
 
 function fmtDate(iso: string): string {
   return new Date(iso).toLocaleDateString("en-US", {
@@ -112,45 +102,120 @@ function GroupAvatar({ name, size }: { name: string; size: number }) {
 
 // ─── GROUP DETAIL PAGE ────────────────────────────────────────────────────────
 
-const MEM_COLS = "2fr 1fr 1.2fr 1.2fr 0.8fr";
+const MEM_COLS = "2fr 0.9fr 1.1fr 1.1fr 1.2fr 0.6fr";
+const card = {
+  background: "#16151F",
+  border: "1px solid rgba(255,255,255,.07)",
+  borderRadius: 16,
+  overflow: "hidden",
+} as const;
+const cardHead = {
+  padding: "15px 20px",
+  borderBottom: "1px solid rgba(255,255,255,.07)",
+  fontSize: 15,
+  fontWeight: 700,
+} as const;
+const colHead = {
+  display: "grid",
+  gap: 12,
+  padding: "11px 20px",
+  borderBottom: "1px solid rgba(255,255,255,.07)",
+  fontFamily: "var(--font-mono)",
+  fontSize: 10,
+  letterSpacing: ".1em",
+  textTransform: "uppercase",
+  color: "rgba(244,242,251,.4)",
+} as const;
 
-function GroupDetail({
-  group,
-  expenses,
-  onBack,
-}: {
-  group: AdminGroupDto;
-  expenses: AdminExpenseDto[];
-  onBack: () => void;
-}) {
-  const groupExpenses = expenses.filter((e) => e.groupName === group.name && !e.voided);
+function Pill({ text, color, bg }: { text: string; color: string; bg: string }) {
+  return (
+    <span style={{ fontSize: 11, fontWeight: 700, color, background: bg, padding: "3px 9px", borderRadius: 7 }}>
+      {text}
+    </span>
+  );
+}
 
-  // Build member stats from expense data
-  const memberMap = new Map<string, { name: string; paid: number; entries: number }>();
-  groupExpenses.forEach((e) => {
-    const m = memberMap.get(e.payerName) ?? { name: e.payerName, paid: 0, entries: 0 };
-    m.paid += Number(e.amount);
-    m.entries++;
-    memberMap.set(e.payerName, m);
+function MemberAvatar({ name }: { name: string }) {
+  const g = getGG(name);
+  return (
+    <div
+      style={{
+        width: 34,
+        height: 34,
+        borderRadius: 10,
+        background: g.jemaw
+          ? `linear-gradient(150deg,${g.from},${g.mid ?? g.to} 65%,${g.to})`
+          : `linear-gradient(140deg,${g.from},${g.to})`,
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        fontWeight: 700,
+        fontSize: 13,
+        color: g.text ?? "#fff",
+        flex: "none",
+      }}
+    >
+      {name[0]?.toUpperCase() ?? "?"}
+    </div>
+  );
+}
+
+function GroupDetail({ groupId, onBack }: { groupId: string; onBack: () => void }) {
+  const { data, isLoading, error } = useQuery({
+    queryKey: ["group", groupId],
+    queryFn: () => api.get<AdminGroupDetailDto>(`/api/admin/groups/${groupId}`),
+  });
+  const { data: recent } = useQuery({
+    queryKey: ["expenses", { groupId }],
+    queryFn: () => api.get<AdminExpensePageDto>(`/api/admin/expenses?groupId=${groupId}&limit=15`),
   });
 
-  const totalSpend = groupExpenses.reduce((s, e) => s + Number(e.amount), 0);
-  const memberCount = memberMap.size || group.memberCount;
-  const equalShare = memberCount > 0 ? totalSpend / memberCount : 0;
+  const back = (
+    <button
+      onClick={onBack}
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        gap: 7,
+        fontSize: 13,
+        fontWeight: 600,
+        color: "#A99CE3",
+        background: "none",
+        border: "none",
+        cursor: "pointer",
+        padding: 0,
+        marginBottom: 16,
+      }}
+    >
+      <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M15 18l-6-6 6-6" />
+      </svg>
+      All groups
+    </button>
+  );
 
-  const members = [...memberMap.values()]
-    .map((m) => ({ ...m, net: m.paid - equalShare }))
-    .sort((a, b) => b.net - a.net);
+  if (isLoading) return <div>{back}<CenteredMessage>Loading group…</CenteredMessage></div>;
+  if (error || !data) return <div>{back}<CenteredMessage>Could not load this group.</CenteredMessage></div>;
 
-  const unsettledCount = groupExpenses.filter((e) => e.kind === "loan").length;
+  const { group, members, transfers, stats } = data;
+  const cur = group.defaultCurrency;
   const isJemaw = group.name.toLowerCase() === "jemaw";
 
   function exportData() {
-    const cols = ["Name", "Paid (Br)", "Net Balance (Br)", "Entries"];
+    const cols = ["Name", "Username", "Role", "Status", `Paid (${cur})`, `Share (${cur})`, `Net (${cur})`, "Expenses paid"];
     const lines = [
       cols.join(","),
       ...members.map((m) =>
-        [`"${m.name}"`, m.paid.toFixed(0), m.net.toFixed(0), m.entries].join(","),
+        [
+          `"${m.displayName.replace(/"/g, '""')}"`,
+          m.username ?? "",
+          m.role,
+          m.isActive ? "active" : "removed",
+          m.paid,
+          m.share,
+          m.net,
+          m.expenseCount,
+        ].join(","),
       ),
     ];
     const blob = new Blob([lines.join("\n")], { type: "text/csv" });
@@ -164,240 +229,90 @@ function GroupDetail({
 
   return (
     <div>
-      {/* back link */}
-      <button
-        onClick={onBack}
-        style={{
-          display: "inline-flex",
-          alignItems: "center",
-          gap: 7,
-          fontSize: 13,
-          fontWeight: 600,
-          color: "#A99CE3",
-          background: "none",
-          border: "none",
-          cursor: "pointer",
-          padding: 0,
-          marginBottom: 16,
-        }}
-      >
-        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-          <path d="M15 18l-6-6 6-6" />
-        </svg>
-        All groups
-      </button>
+      {back}
 
       {/* header card */}
-      <div
-        style={{
-          background: "#16151F",
-          border: "1px solid rgba(255,255,255,.07)",
-          borderRadius: 18,
-          padding: 22,
-          display: "flex",
-          alignItems: "center",
-          gap: 18,
-          marginBottom: 18,
-        }}
-      >
+      <div style={{ ...card, padding: 22, display: "flex", alignItems: "center", gap: 18, marginBottom: 18, overflow: "visible" }}>
         <GroupAvatar name={group.name} size={64} />
-
         <div style={{ flex: 1 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-            <h2
-              style={{
-                fontFamily: "var(--font-display)",
-                fontWeight: 700,
-                fontSize: 26,
-                letterSpacing: "-.02em",
-                margin: 0,
-              }}
-            >
+            <h2 style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 26, letterSpacing: "-.02em", margin: 0 }}>
               {group.name}
             </h2>
             {isJemaw && (
-              <span style={{ fontFamily: "var(--font-brand)", fontSize: 20, color: "#8A78D6" }}>
-                ጀማው
-              </span>
+              <span style={{ fontFamily: "var(--font-brand)", fontSize: 20, color: "#8A78D6" }}>ጀማው</span>
             )}
-            <span
-              style={{
-                fontSize: 11,
-                fontWeight: 700,
-                color: "#2DD4A7",
-                background: "rgba(45,212,167,.12)",
-                padding: "3px 10px",
-                borderRadius: 7,
-              }}
-            >
-              Active
-            </span>
           </div>
-          <div
-            style={{
-              fontSize: 13,
-              color: "rgba(244,242,251,.45)",
-              marginTop: 3,
-              fontVariantNumeric: "tabular-nums",
-            }}
-          >
-            {group.id.slice(0, 8).toUpperCase()} · {group.defaultCurrency} · created {fmtDate(group.createdAt)}
+          <div style={{ fontSize: 13, color: "rgba(244,242,251,.45)", marginTop: 3, fontVariantNumeric: "tabular-nums" }}>
+            {group.id.slice(0, 8).toUpperCase()} · {cur} · created {fmtDate(group.createdAt)}
           </div>
         </div>
-
-        <div style={{ display: "flex", gap: 9 }}>
-          <button
-            onClick={exportData}
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 7,
-              fontSize: 13,
-              fontWeight: 700,
-              color: "#fff",
-              background: "#6E59C7",
-              border: "none",
-              padding: "9px 14px",
-              borderRadius: 9,
-              cursor: "pointer",
-              boxShadow: "0 8px 20px -8px rgba(110,89,199,.6)",
-            }}
-          >
-            <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M12 3v12" />
-              <path d="M7 10l5 5 5-5" />
-              <path d="M5 21h14" />
-            </svg>
-            Export group data
-          </button>
-          <button
-            style={{
-              fontSize: 13,
-              fontWeight: 600,
-              color: "rgba(244,242,251,.7)",
-              border: "1px solid rgba(255,255,255,.12)",
-              background: "transparent",
-              padding: "9px 14px",
-              borderRadius: 9,
-              cursor: "pointer",
-            }}
-          >
-            Message admin
-          </button>
-          <button
-            style={{
-              fontSize: 13,
-              fontWeight: 700,
-              color: "#F2685F",
-              border: "1px solid rgba(242,104,95,.3)",
-              background: "transparent",
-              padding: "9px 14px",
-              borderRadius: 9,
-              cursor: "pointer",
-            }}
-          >
-            Suspend group
-          </button>
-        </div>
+        <button
+          onClick={exportData}
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 7,
+            fontSize: 13,
+            fontWeight: 700,
+            color: "#fff",
+            background: "#6E59C7",
+            border: "none",
+            padding: "9px 14px",
+            borderRadius: 9,
+            cursor: "pointer",
+            boxShadow: "0 8px 20px -8px rgba(110,89,199,.6)",
+          }}
+        >
+          <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M12 3v12" />
+            <path d="M7 10l5 5 5-5" />
+            <path d="M5 21h14" />
+          </svg>
+          Export members
+        </button>
       </div>
 
-      {/* 4-stat strip */}
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "repeat(4,1fr)",
-          gap: 16,
-          marginBottom: 18,
-        }}
-      >
+      {/* stat strip */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 16, marginBottom: 18 }}>
         {[
-          { value: fmtFull(group.volume), suffix: " Br", label: "Total spend" },
-          { value: String(group.memberCount), label: "Members" },
-          { value: String(groupExpenses.length), label: "Expenses" },
+          { value: fmtMoney(stats.spend, cur), label: "Total spend (loans excluded)" },
+          { value: String(group.memberCount), label: "Active members" },
+          { value: String(group.expenseCount), label: `Expenses · ${stats.settledExpenses} settled` },
           {
-            value: String(unsettledCount),
-            label: "Unsettled",
-            accent: unsettledCount > 0 ? "#F0A640" : undefined,
+            value: String(stats.openExpenses),
+            label: "Still owed on",
+            accent: stats.openExpenses > 0 ? "#F0A640" : undefined,
           },
-        ].map(({ value, suffix, label, accent }) => (
-          <div
-            key={label}
-            style={{
-              background: "#16151F",
-              border: "1px solid rgba(255,255,255,.07)",
-              borderRadius: 14,
-              padding: 16,
-            }}
-          >
-            <div
-              style={{
-                fontFamily: "var(--font-display)",
-                fontWeight: 800,
-                fontSize: 24,
-                fontVariantNumeric: "tabular-nums",
-                color: accent ?? "var(--text)",
-                lineHeight: 1,
-              }}
-            >
+        ].map(({ value, label, accent }) => (
+          <div key={label} style={{ ...card, padding: 16 }}>
+            <div style={{ fontFamily: "var(--font-display)", fontWeight: 800, fontSize: 22, fontVariantNumeric: "tabular-nums", color: accent ?? "var(--text)", lineHeight: 1 }}>
               {value}
-              {suffix && <span style={{ fontSize: 14, opacity: 0.6 }}>{suffix}</span>}
             </div>
             <div style={{ fontSize: 12, color: "rgba(244,242,251,.5)", marginTop: 6 }}>{label}</div>
           </div>
         ))}
       </div>
 
-      {/* members & balances table */}
-      <div
-        style={{
-          background: "#16151F",
-          border: "1px solid rgba(255,255,255,.07)",
-          borderRadius: 16,
-          overflow: "hidden",
-        }}
-      >
-        <div
-          style={{
-            padding: "15px 20px",
-            borderBottom: "1px solid rgba(255,255,255,.07)",
-            fontSize: 15,
-            fontWeight: 700,
-          }}
-        >
-          Members &amp; balances
-        </div>
-
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: MEM_COLS,
-            gap: 12,
-            padding: "11px 20px",
-            borderBottom: "1px solid rgba(255,255,255,.07)",
-            fontFamily: "var(--font-mono)",
-            fontSize: 10,
-            letterSpacing: ".1em",
-            textTransform: "uppercase",
-            color: "rgba(244,242,251,.4)",
-          }}
-        >
+      {/* members & balances */}
+      <div style={{ ...card, marginBottom: 18 }}>
+        <div style={cardHead}>Members &amp; balances</div>
+        <div style={{ ...colHead, gridTemplateColumns: MEM_COLS }}>
           <span>Member</span>
           <span>Role</span>
           <span>Paid</span>
+          <span>Share</span>
           <span>Net balance</span>
-          <span>Entries</span>
+          <span>Paid for</span>
         </div>
-
         {members.length === 0 ? (
-          <CenteredMessage>No expense data for this group yet.</CenteredMessage>
+          <CenteredMessage>No members yet.</CenteredMessage>
         ) : (
           members.map((m, i) => {
-            const isAdmin = i === 0;
-            const g = getGG(m.name);
-            const letter = m.name[0]?.toUpperCase() ?? "?";
+            const net = Number(m.net);
             return (
               <div
-                key={m.name}
+                key={m.memberId}
                 className="jx-row"
                 style={{
                   display: "grid",
@@ -406,82 +321,123 @@ function GroupDetail({
                   padding: "13px 20px",
                   borderBottom: i < members.length - 1 ? "1px solid rgba(255,255,255,.04)" : "none",
                   alignItems: "center",
+                  opacity: m.isActive ? 1 : 0.5,
                 }}
               >
-                <div style={{ display: "flex", alignItems: "center", gap: 11 }}>
-                  <div
-                    style={{
-                      width: 34,
-                      height: 34,
-                      borderRadius: 10,
-                      background: g.jemaw
-                        ? `linear-gradient(150deg,${g.from},${g.mid ?? g.to} 65%,${g.to})`
-                        : `linear-gradient(140deg,${g.from},${g.to})`,
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      fontWeight: 700,
-                      fontSize: 13,
-                      color: g.text ?? "#fff",
-                      flex: "none",
-                    }}
-                  >
-                    {letter}
+                <div style={{ display: "flex", alignItems: "center", gap: 11, minWidth: 0 }}>
+                  <MemberAvatar name={m.displayName} />
+                  <div style={{ minWidth: 0 }}>
+                    <div style={{ fontSize: 14, fontWeight: 600, display: "flex", gap: 6, alignItems: "center" }}>
+                      {m.displayName}
+                      {!m.isActive && <Pill text="Removed" color="#F2685F" bg="rgba(242,104,95,.12)" />}
+                    </div>
+                    <div style={{ fontSize: 12, color: "rgba(244,242,251,.45)" }}>
+                      {m.isManual ? "added by hand" : m.username ? `@${m.username}` : `id ${m.telegramUserId}`}
+                      {!m.isPrimary && m.isActive ? " · not in default splits" : ""}
+                    </div>
                   </div>
-                  <span style={{ fontSize: 14, fontWeight: 600 }}>{m.name}</span>
                 </div>
-
                 <span>
-                  {isAdmin ? (
-                    <span
-                      style={{
-                        fontSize: 11,
-                        fontWeight: 700,
-                        color: "#A99CE3",
-                        background: "rgba(110,89,199,.16)",
-                        padding: "3px 9px",
-                        borderRadius: 7,
-                      }}
-                    >
-                      Admin
-                    </span>
+                  {m.role === "admin" ? (
+                    <Pill text="Admin" color="#A99CE3" bg="rgba(110,89,199,.16)" />
                   ) : (
-                    <span
-                      style={{
-                        fontSize: 11,
-                        fontWeight: 600,
-                        color: "rgba(244,242,251,.55)",
-                        background: "rgba(255,255,255,.06)",
-                        padding: "3px 9px",
-                        borderRadius: 7,
-                      }}
-                    >
-                      Member
-                    </span>
+                    <Pill text="Member" color="rgba(244,242,251,.55)" bg="rgba(255,255,255,.06)" />
                   )}
                 </span>
-
-                <span style={{ fontSize: 13, fontVariantNumeric: "tabular-nums" }}>
-                  {m.paid.toLocaleString(undefined, { maximumFractionDigits: 0 })} Br
-                </span>
-
+                <span style={{ fontSize: 13, fontVariantNumeric: "tabular-nums" }}>{fmtMoney(m.paid, cur)}</span>
+                <span style={{ fontSize: 13, fontVariantNumeric: "tabular-nums" }}>{fmtMoney(m.share, cur)}</span>
                 <span
                   style={{
                     fontSize: 14,
                     fontWeight: 700,
                     fontVariantNumeric: "tabular-nums",
-                    color: m.net >= 0 ? "#2DD4A7" : "#F0A640",
+                    color: net > 0 ? "#2DD4A7" : net < 0 ? "#F0A640" : "rgba(244,242,251,.55)",
                   }}
                 >
-                  {m.net >= 0 ? "+" : "−"}
-                  {Math.abs(m.net).toLocaleString(undefined, { maximumFractionDigits: 0 })} Br
+                  {fmtNet(m.net, cur)}
                 </span>
-
-                <span style={{ fontSize: 13, fontVariantNumeric: "tabular-nums" }}>{m.entries}</span>
+                <span style={{ fontSize: 13, fontVariantNumeric: "tabular-nums" }}>{m.expenseCount}</span>
               </div>
             );
           })
         )}
+      </div>
+
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1.4fr", gap: 18 }}>
+        {/* settle plan */}
+        <div style={card}>
+          <div style={cardHead}>Who pays whom</div>
+          {transfers.length === 0 ? (
+            <CenteredMessage>Everyone is settled up.</CenteredMessage>
+          ) : (
+            transfers.map((t, i) => (
+              <div
+                key={`${t.fromMemberId}-${t.toMemberId}`}
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  padding: "12px 20px",
+                  borderBottom: i < transfers.length - 1 ? "1px solid rgba(255,255,255,.04)" : "none",
+                  fontSize: 13,
+                }}
+              >
+                <span>
+                  <b>{t.fromName}</b> <span style={{ color: "rgba(244,242,251,.45)" }}>→</span> <b>{t.toName}</b>
+                </span>
+                <span style={{ fontWeight: 700, fontVariantNumeric: "tabular-nums", color: "#F0A640" }}>
+                  {fmtMoney(t.amount, cur)}
+                </span>
+              </div>
+            ))
+          )}
+        </div>
+
+        {/* recent expenses */}
+        <div style={card}>
+          <div style={cardHead}>
+            Recent expenses
+            {recent && (
+              <span style={{ fontWeight: 500, fontSize: 12, color: "rgba(244,242,251,.45)" }}>
+                {" "}· {recent.items.length} of {recent.total}
+              </span>
+            )}
+          </div>
+          {!recent ? (
+            <CenteredMessage>Loading…</CenteredMessage>
+          ) : recent.items.length === 0 ? (
+            <CenteredMessage>No expenses yet.</CenteredMessage>
+          ) : (
+            recent.items.map((e, i) => (
+              <div
+                key={e.id}
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "1fr auto",
+                  gap: 10,
+                  padding: "11px 20px",
+                  borderBottom: i < recent.items.length - 1 ? "1px solid rgba(255,255,255,.04)" : "none",
+                  fontSize: 13,
+                  opacity: e.voided ? 0.45 : 1,
+                }}
+              >
+                <div style={{ minWidth: 0 }}>
+                  <div style={{ fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    {e.kind === "loan" ? "Loan: " : ""}{e.description}
+                  </div>
+                  <div style={{ fontSize: 12, color: "rgba(244,242,251,.45)" }}>
+                    {e.payerName} paid · split with {e.shares.length} · {fmtDate(e.occurredAt)}
+                  </div>
+                </div>
+                <div style={{ textAlign: "right" }}>
+                  <div style={{ fontWeight: 700, fontVariantNumeric: "tabular-nums" }}>{fmtMoney(e.amount, e.currency)}</div>
+                  <div style={{ fontSize: 11, color: e.status === "open" ? "#F0A640" : e.status === "settled" ? "#2DD4A7" : "#F2685F" }}>
+                    {e.status === "open" ? "Open" : e.status === "settled" ? "Settled" : "Voided"}
+                  </div>
+                </div>
+              </div>
+            ))
+          )}
+        </div>
       </div>
     </div>
   );
@@ -491,39 +447,22 @@ function GroupDetail({
 
 export function Groups() {
   const [search, setSearch] = useState("");
-  const [selected, setSelected] = useState<AdminGroupDto | null>(null);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
 
   const { data: groups = [], isLoading, error } = useQuery({
     queryKey: ["groups"],
     queryFn: () => api.get<AdminGroupDto[]>("/api/admin/groups"),
   });
 
-  const { data: expenses = [] } = useQuery({
-    queryKey: ["expenses"],
-    queryFn: () => api.get<AdminExpenseDto[]>("/api/admin/expenses"),
-  });
-
   if (isLoading) return <CenteredMessage>Loading groups…</CenteredMessage>;
   if (error) return <CenteredMessage>Could not load groups.</CenteredMessage>;
 
-  const liveSelected = selected ? (groups.find((g) => g.id === selected.id) ?? selected) : null;
-
-  if (liveSelected) {
-    return (
-      <GroupDetail group={liveSelected} expenses={expenses} onBack={() => setSelected(null)} />
-    );
-  }
+  if (selectedId) return <GroupDetail groupId={selectedId} onBack={() => setSelectedId(null)} />;
 
   const q = search.trim().toLowerCase();
   const rows = groups.filter(
     (g) => !q || g.name.toLowerCase().includes(q) || g.id.toLowerCase().includes(q),
   );
-
-  // derive entry counts per group name from expense data
-  const entriesByGroup = new Map<string, number>();
-  expenses.forEach((e) => {
-    entriesByGroup.set(e.groupName, (entriesByGroup.get(e.groupName) ?? 0) + 1);
-  });
 
   return (
     <div>
@@ -584,14 +523,13 @@ export function Groups() {
       ) : (
         <div style={{ display: "grid", gridTemplateColumns: "repeat(2,1fr)", gap: 16 }}>
           {rows.map((g) => {
-            const entries = entriesByGroup.get(g.name) ?? 0;
             const isJemaw = g.name.toLowerCase() === "jemaw";
 
             return (
               <div
                 key={g.id}
                 className="jx-row"
-                onClick={() => setSelected(g)}
+                onClick={() => setSelectedId(g.id)}
                 style={{
                   background: "#16151F",
                   border: "1px solid rgba(255,255,255,.07)",
@@ -642,27 +580,15 @@ export function Groups() {
                     </div>
                   </div>
 
-                  <span
-                    style={{
-                      fontSize: 11,
-                      fontWeight: 700,
-                      color: "#2DD4A7",
-                      background: "rgba(45,212,167,.12)",
-                      padding: "3px 10px",
-                      borderRadius: 7,
-                      flex: "none",
-                    }}
-                  >
-                    Active
-                  </span>
+                  <span style={{ fontSize: 12, color: "rgba(244,242,251,.45)", flex: "none" }}>{g.defaultCurrency}</span>
                 </div>
 
                 {/* 3-stat mini tiles */}
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 10 }}>
                   {[
                     { value: String(g.memberCount), label: "Members" },
-                    { value: String(entries), label: "Entries" },
-                    { value: fmtVolume(g.volume), label: "Br spend" },
+                    { value: String(g.expenseCount), label: "Expenses" },
+                    { value: fmtCompact(g.volume), label: `${g.defaultCurrency} spent` },
                   ].map(({ value, label }) => (
                     <div
                       key={label}
