@@ -11,6 +11,7 @@ import {
   signInWithPopup,
   GoogleAuthProvider,
   signOut,
+  sendPasswordResetEmail,
   type User,
 } from "firebase/auth";
 import { auth, setRememberDevice } from "./firebase.js";
@@ -21,6 +22,8 @@ interface AuthState {
   signIn: (email: string, password: string, remember: boolean) => Promise<void>;
   signInWithGoogle: (remember: boolean) => Promise<void>;
   logout: () => Promise<void>;
+  /** Email a password reset link to the signed-in account. */
+  sendPasswordReset: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthState | null>(null);
@@ -50,8 +53,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     await signOut(auth);
   }
 
+  async function sendPasswordReset() {
+    if (!auth.currentUser?.email) throw new Error("This account has no email address.");
+    await sendPasswordResetEmail(auth, auth.currentUser.email);
+  }
+
   return (
-    <AuthContext.Provider value={{ user, loading, signIn, signInWithGoogle, logout }}>
+    <AuthContext.Provider value={{ user, loading, signIn, signInWithGoogle, logout, sendPasswordReset }}>
       {children}
     </AuthContext.Provider>
   );

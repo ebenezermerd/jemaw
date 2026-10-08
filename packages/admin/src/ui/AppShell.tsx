@@ -1,7 +1,6 @@
 import type { ReactNode } from "react";
 import { NavLink, useLocation } from "react-router-dom";
-import { useAuth } from "../lib/auth.js";
-import { BotStatusBox } from "./BotStatus.js";
+import { AccountMenu } from "./AccountMenu.js";
 
 // ─── Nav icons ────────────────────────────────────────────────────────────────
 
@@ -184,7 +183,6 @@ function NavItem({
 // ─── Shell ────────────────────────────────────────────────────────────────────
 
 export function AppShell({ children }: { children: ReactNode }) {
-  const { user, logout } = useAuth();
   const location = useLocation();
   // Detail pages (/groups/:id, /users/:id) take their section's title.
   const section = "/" + (location.pathname.split("/")[1] ?? "");
@@ -272,66 +270,7 @@ export function AppShell({ children }: { children: ReactNode }) {
 
         <div style={{ flex: 1 }} />
 
-        <BotStatusBox />
-
-        {/* Admin user */}
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: 10,
-            padding: "8px 8px",
-            borderRadius: 10,
-            cursor: "default",
-          }}
-        >
-          <div
-            style={{
-              width: 32,
-              height: 32,
-              borderRadius: "50%",
-              background: "linear-gradient(140deg,#6E59C7,#A99CE3)",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              fontWeight: 700,
-              fontSize: 13,
-              flex: "none",
-            }}
-          >
-            {(user?.email ?? "A").charAt(0).toUpperCase()}
-          </div>
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <div
-              style={{
-                fontSize: 12.5,
-                fontWeight: 700,
-                lineHeight: 1.2,
-                overflow: "hidden",
-                textOverflow: "ellipsis",
-                whiteSpace: "nowrap",
-              }}
-            >
-              {user?.email ?? "Admin"}
-            </div>
-            <div style={{ fontSize: 10.5, color: "var(--text-faint)" }}>Super admin</div>
-          </div>
-          <button
-            onClick={() => void logout()}
-            title="Sign out"
-            style={{
-              background: "none",
-              border: "none",
-              color: "var(--text-faint)",
-              cursor: "pointer",
-              fontSize: 12,
-              padding: "4px 6px",
-              borderRadius: 6,
-            }}
-          >
-            Exit
-          </button>
-        </div>
+        <AccountMenu />
       </div>
 
       {/* Main */}
