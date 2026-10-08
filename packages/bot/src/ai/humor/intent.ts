@@ -84,6 +84,18 @@ export function classifyJemawIntent(text: string): JemawIntent {
   return "scan";
 }
 
+/** Which flavour of loading line fits a chat message. */
+export function chatLoadingTopic(text: string): "greeting" | "checkin" | "chat" {
+  const t = stripJemawToken(text).toLowerCase();
+  if (/\b(sick|ill|ok|okay|alright|alive|good|fine|tired|how\s+are\s+you|how\s+you\s+doing|you\s+there)\b/.test(t)) {
+    return "checkin";
+  }
+  if (/^(hey|hi|hello|yo|sup|hii+|heya|gm|gn|good\s+(morning|night|evening)|what'?s\s*up|wassup)\b/.test(t)) {
+    return "greeting";
+  }
+  return "chat";
+}
+
 /** Which ledger answer a question wants. Order matters: most specific first. */
 export function classifyLedgerQuestion(text: string): LedgerQuestionKind {
   const t = stripJemawToken(text).toLowerCase();

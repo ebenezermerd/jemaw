@@ -23,6 +23,7 @@ import {
 import {
   classifyJemawIntent,
   classifyLedgerQuestion,
+  chatLoadingTopic,
   ledgerPeriod,
   type LedgerPeriod,
   type LedgerQuestionKind,
@@ -174,7 +175,7 @@ export function createBot(token: string, deps: BotDeps): Bot {
         console.log(`[scan] group ${group.id} not found`);
         return;
       }
-      const loading = await startLoading(api, chatId, { kind: "scan", replyTo });
+      const loading = await startLoading(api, chatId, { topic: "scan", replyTo });
       const res = await scanGroup(
         { db, gemini: gemini!, now: () => Date.now() },
         g,
@@ -227,7 +228,7 @@ export function createBot(token: string, deps: BotDeps): Bot {
     void (async () => {
       const g = await getGroupById(db, groupId);
       if (!g) return;
-      const loading = await startLoading(ctx.api, chatId, { kind: "ledger", replyTo });
+      const loading = await startLoading(ctx.api, chatId, { topic: kind, replyTo });
       await deliverLedgerAnswer({
         db,
         group: g,
@@ -399,7 +400,7 @@ export function createBot(token: string, deps: BotDeps): Bot {
           ).mode;
           if (mode === "off") return;
           const loading = await startLoading(ctx.api, chat.id, {
-            kind: "chat",
+            topic: chatLoadingTopic(text),
             replyTo: ctx.message.message_id,
           });
           const delivered = await maybeDeliverDirectChat({

@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   classifyJemawIntent,
   classifyLedgerQuestion,
+  chatLoadingTopic,
   ledgerPeriod,
   sanitizeAddressedUtterance,
   stripJemawToken,
@@ -81,5 +82,15 @@ describe("sanitizeAddressedUtterance", () => {
     );
     expect(s.length).toBeLessThanOrEqual(80);
     expect(s).not.toMatch(/https?:/);
+  });
+});
+
+describe("chatLoadingTopic", () => {
+  it("spots greetings, check-ins and everything else", () => {
+    expect(chatLoadingTopic("hello jemaw")).toBe("greeting");
+    expect(chatLoadingTopic("yo jemaw")).toBe("greeting");
+    expect(chatLoadingTopic("you sick jemaw ?")).toBe("checkin");
+    expect(chatLoadingTopic("jemaw how are you")).toBe("checkin");
+    expect(chatLoadingTopic("who is this i am talking to? jemaw")).toBe("chat");
   });
 });
