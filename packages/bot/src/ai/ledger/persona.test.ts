@@ -152,13 +152,52 @@ describe("composeLedgerPersonaLine", () => {
     });
   });
 
-  it("falls back to a leaderboard roast template that names both", async () => {
+  it("asks for a chat reply that is the whole answer for leaderboard questions", async () => {
+    let system = "";
+    await composeLedgerPersonaLine({
+      client: { async suggest(i) { system = i.systemPrompt; return { json: { candidates: [] } }; } },
+      mode: "roast",
+      snapshot: snap,
+      query: { kind: "leaderboard", period: "all" },
+    });
+    expect(system).toContain("your reply IS the whole answer");
+  });
+
+  it("falls back to a leaderboard roast that names both with their amounts", async () => {
     const r = await composeLedgerPersonaLine({
       mode: "roast",
       snapshot: snap,
       query: { kind: "leaderboard", period: "all" },
       rng: () => 0,
     });
-    expect(r).toEqual({ text: "Abenezer is clearly the group's sugar daddy. Sami, start saving.", source: "template" });
+    expect(r).toEqual({
+      text: "Abenezer is clearly the group's sugar daddy with 1,200 ETB fronted. Sami, 900 ETB in the hole, start saving.",
+      source: "template",
+    });
+  });
+
+  it("groups the digits of big numbers in a model line", async () => {
+    const big = { ...snap, stats: { ...snap.stats, paidByMember: [{ name: "Abenezer", cents: 4314066 }] } };
+    const r = await composeLedgerPersonaLine({
+      client: client(["Abenezer fronted 43140.66 ETB and Sami still owes 900 ETB."]),
+      mode: "roast",
+      snapshot: big,
+      query: { kind: "leaderboard", period: "all" },
+    });
+    expect(r.text).toBe("Abenezer fronted 43,140.66 ETB and Sami still owes 900 ETB.");
+  });
+
+  it("varies the leaderboard fallback", async () => {
+    const texts = new Set<string>();
+    for (const n of [0, 0.3, 0.6, 0.9]) {
+      const r = await composeLedgerPersonaLine({
+        mode: "roast",
+        snapshot: snap,
+        query: { kind: "leaderboard", period: "all" },
+        rng: () => n,
+      });
+      texts.add(r.text);
+    }
+    expect(texts.size).toBe(4);
   });
 });

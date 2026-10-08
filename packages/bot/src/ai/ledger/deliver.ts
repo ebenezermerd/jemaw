@@ -41,8 +41,11 @@ export async function deliverLedgerAnswer(input: {
             query: input.query,
           })
         : null;
-    const body = input.lead ? `${escapeHtml(input.lead)}\n\n${facts}` : facts;
-    const text = persona ? `${body}\n\n<i>${escapeHtml(persona.text)}</i>` : body;
+    // A brag question is banter: the persona line is the reply, with no table above it.
+    const banter = input.query.kind === "leaderboard" && persona != null;
+    const answer = banter ? escapeHtml(persona.text) : facts;
+    const body = input.lead ? `${escapeHtml(input.lead)}\n\n${answer}` : answer;
+    const text = persona && !banter ? `${body}\n\n<i>${escapeHtml(persona.text)}</i>` : body;
     const messageId = await input.loading.finish(text, { parse_mode: "HTML" });
     console.log(
       `[ledger] answered group=${input.group.id} query=${JSON.stringify(input.query)} persona=${persona?.source ?? "none"}`,
