@@ -2,30 +2,53 @@
  * Personal balance card for Home — pixel-faithful to the Hi-Fi "premium balance
  * card": violet gradient, specular highlight, the bubble-logo watermark, a name
  * pill + gold chip, semantic status pill, the focal net in Bricolage, and a
- * three-column stat row. Net standing is the focal number.
+ * three-column stat row. The focal number follows the pairwise settle plan:
+ * what you still have to pay leads, what you're owed and the net come after,
+ * so Home never says "you're owed" while Settle has a payment waiting.
  */
 import { AnimatedNumber } from "../motion/AnimatedNumber.js";
 import { currencyAffix, formatNumber } from "../lib/money.js";
 import { formatDisplayName } from "../lib/names.js";
-import type { MeSummaryDto } from "@jemaw/shared/types";
+import type { MemberAmountDto, MeSummaryDto } from "@jemaw/shared/types";
 
-export function SummaryCard({ s }: { s: MeSummaryDto }) {
+/** "to Gemechis" for one person, "to 2 people" for several. */
+function whoLabel(list: MemberAmountDto[], prep: string): string {
+  if (list.length === 1) return `${prep} ${formatDisplayName(list[0]!.name)}`;
+  return `${prep} ${list.length} people`;
+}
+
+export function SummaryCard({ s, onOpen }: { s: MeSummaryDto; onOpen?: () => void }) {
+  const owes = Number(s.owes);
+  const owed = Number(s.owed);
   const net = Number(s.net);
   const standing =
-    net > 0 ? "you're owed" : net < 0 ? "you owe" : "you're all square";
-  // Semantic status sub-pill: teal owed, amber owes, neutral even.
+    owes > 0 ? "you owe" : owed > 0 ? "you're owed" : "you're all square";
+  // Semantic status sub-pill: amber owes, teal owed, neutral even.
   const status =
-    net > 0
-      ? { color: "#bff3e2", bg: "rgba(45,212,167,.24)", glyph: "▲", word: "net positive" }
-      : net < 0
-        ? { color: "#fbe0bd", bg: "rgba(240,166,64,.24)", glyph: "▼", word: "net negative" }
+    owes > 0
+      ? { color: "#fbe0bd", bg: "rgba(240,166,64,.24)", glyph: "▼", word: whoLabel(s.owesTo, "to") }
+      : owed > 0
+        ? { color: "#bff3e2", bg: "rgba(45,212,167,.24)", glyph: "▲", word: whoLabel(s.owedBy, "from") }
         : { color: "rgba(255,255,255,.8)", bg: "rgba(255,255,255,.16)", glyph: "•", word: "all square" };
   const { symbol, suffix } = currencyAffix(s.currency);
-  const focal = net > 0 ? `+${formatNumber(s.net)}` : formatNumber(s.net);
+  const focal =
+    owes > 0 ? formatNumber(s.owes) : owed > 0 ? `+${formatNumber(s.owed)}` : formatNumber("0");
+  const signedNet = net > 0 ? `+${formatNumber(s.net)}` : formatNumber(s.net);
 
   return (
     <div
+      role={onOpen ? "button" : undefined}
+      tabIndex={onOpen ? 0 : undefined}
+      onClick={onOpen}
+      onKeyDown={
+        onOpen
+          ? (e) => {
+              if (e.key === "Enter" || e.key === " ") onOpen();
+            }
+          : undefined
+      }
       style={{
+        cursor: onOpen ? "pointer" : undefined,
         position: "relative",
         borderRadius: 26,
         padding: 15,
@@ -152,6 +175,21 @@ export function SummaryCard({ s }: { s: MeSummaryDto }) {
           )}
         </div>
 
+        {/* the other side of the plan, when both directions are open */}
+        {owes > 0 && owed > 0 && (
+          <div
+            style={{
+              fontSize: 12,
+              fontWeight: 600,
+              color: "rgba(255,255,255,.82)",
+              marginTop: 2,
+              fontVariantNumeric: "tabular-nums",
+            }}
+          >
+            You're owed {formatNumber(s.owed)} {whoLabel(s.owedBy, "by")} · net {signedNet}
+          </div>
+        )}
+
         {/* divider */}
         <div
           style={{ height: 1, background: "rgba(255,255,255,.2)", margin: "11px 0 10px" }}
@@ -165,8 +203,8 @@ export function SummaryCard({ s }: { s: MeSummaryDto }) {
             fontVariantNumeric: "tabular-nums",
           }}
         >
-          <Stat label="Paid" value={formatNumber(s.totalPaid)} />
-          <Stat label="Your share" value={formatNumber(s.totalShare)} />
+          <Stat label="Lifetime paid" value={formatNumber(s.totalPaid)} />
+          <Stat label="Lifetime share" value={formatNumber(s.totalShare)} />
           <Stat label="Entries" value={String(s.expenseCount)} />
         </div>
       </div>
