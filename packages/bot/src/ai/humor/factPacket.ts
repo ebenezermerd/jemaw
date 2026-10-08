@@ -1,7 +1,8 @@
 /**
  * Build public-safe fact packets for humor composition.
- * Grounded in authorized group DB rows (pending drafts, consented names).
- * Never includes private balances, hardship detail, or cross-group data.
+ * Grounded in authorized group DB rows (pending drafts, member names, and
+ * group-visible ledger highlights when ledgerBanter is on). Never includes
+ * hardship detail or cross-group data.
  */
 import type {
   HumorTriggerEvent,
@@ -11,6 +12,8 @@ import type {
   GroupVibeV1,
   ConversationFlowV1,
   ConversationThreadTurn,
+  LedgerHighlights,
+  LedgerHighlightAmount,
 } from "@jemaw/shared/humor";
 
 export interface ScanHumorFacts {
@@ -160,6 +163,10 @@ export function buildDirectChatPacket(input: {
   addressedUtterance: string;
   conversationFlow?: ConversationFlowV1;
   threadTurns?: ConversationThreadTurn[];
+  /** Display name of whoever addressed Jemaw. */
+  addressedBy?: string;
+  /** Real ledger figures for bragging and roasting (ledgerBanter on). */
+  ledger?: LedgerHighlights;
 }): PublicSafeFactPacket {
   const pending = Math.max(0, Math.floor(input.pendingCount));
   const labels = (input.draftLabels ?? [])
@@ -220,24 +227,59 @@ export function buildDirectChatPacket(input: {
     allowed_claims: claims,
     forbidden_claims: [
       "any amount not listed in drafts or public_facts counts",
-      "any individual balance or net-owe figure",
+      input.ledger
+        ? "any balance or amount not listed in ledger_highlights"
+        : "any individual balance or net-owe figure",
       "any information unavailable to the audience",
       "any motive or diagnosis not explicitly supported",
       "names of members not in allowed_target_names",
       "private hardship, wealth ranking, or relationship drama",
       "pretending a fresh scan just ran unless new_written > 0",
     ],
-    allowed_target_names: input.allowedTargetNames ?? [],
+    allowed_target_names: [
+      ...new Set([
+        ...(input.allowedTargetNames ?? []),
+        ...(input.addressedBy ? [input.addressedBy] : []),
+        ...highlightNames(input.ledger),
+      ]),
+    ],
     allowed_target_member_ids: input.allowedTargetMemberIds ?? [],
     allowed_placeholders: ["suggestion_count", "pending_count", "currency"],
-    allowed_number_tokens,
+    allowed_number_tokens: [
+      ...new Set([...allowed_number_tokens, ...highlightAmounts(input.ledger)]),
+    ],
     vibe_summary: input.vibe ? summarizeVibe(input.vibe) : undefined,
     language_hint: input.languageHint,
     reply_style_hint: "direct_chat",
+    addressed_by: input.addressedBy,
+    ledger_highlights: input.ledger,
     addressed_utterance: input.addressedUtterance.slice(0, 160),
     conversation_flow: input.conversationFlow,
     thread_turns: input.threadTurns?.length ? input.threadTurns : undefined,
   };
+}
+
+function highlightEntries(h?: LedgerHighlights): LedgerHighlightAmount[] {
+  if (!h) return [];
+  return [
+    ...(h.asker_owes ?? []),
+    ...(h.asker_owed_by ?? []),
+    ...(h.top_spender_this_month ? [h.top_spender_this_month] : []),
+    ...(h.biggest_debtor ? [h.biggest_debtor] : []),
+    ...(h.top_creditor ? [h.top_creditor] : []),
+  ];
+}
+
+function highlightNames(h?: LedgerHighlights): string[] {
+  return highlightEntries(h).map((e) => e.name);
+}
+
+function highlightAmounts(h?: LedgerHighlights): string[] {
+  const amounts = [
+    ...highlightEntries(h).map((e) => e.amount),
+    ...(h?.spent_this_week ? [h.spent_this_week] : []),
+  ];
+  return amounts.flatMap((a) => [a, normalizeAmountToken(a)].filter(Boolean) as string[]);
 }
 
 /** @deprecated use buildScanOutcomePacket */

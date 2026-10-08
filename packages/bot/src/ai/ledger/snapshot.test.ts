@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   computeLedgerSnapshot,
+  ledgerHighlights,
   formatCents,
   ledgerNames,
   ledgerNumberTokens,
@@ -136,5 +137,31 @@ describe("ledger allowlists", () => {
     const nums = ledgerNumberTokens(snap);
     expect(nums).toEqual(expect.arrayContaining(["1200", "300", "900", "150", "5000"]));
     expect(ledgerNames(snap)).toEqual(expect.arrayContaining(["Abenezer", "Sami", "Hana"]));
+  });
+});
+
+describe("ledgerHighlights", () => {
+  it("picks the asker's debts, the top spender, the biggest debtor and the top creditor", () => {
+    const snap = computeLedgerSnapshot({ ...base, askerTelegramId: 2n });
+    expect(ledgerHighlights(snap)).toEqual({
+      currency: "ETB",
+      asker_owes: [{ name: "Abenezer", amount: "900" }],
+      asker_owed_by: [{ name: "Hana", amount: "150" }],
+      top_spender_this_month: { name: "Abenezer", amount: "1200" },
+      biggest_debtor: { name: "Hana", amount: "900" },
+      top_creditor: { name: "Abenezer", amount: "1200" },
+      spent_this_week: "1500",
+    });
+  });
+
+  it("leaves out what does not exist", () => {
+    const snap = computeLedgerSnapshot({
+      ...base,
+      liveExpenses: [],
+      nets: [],
+      transfers: [],
+      askerTelegramId: null,
+    });
+    expect(ledgerHighlights(snap)).toEqual({ currency: "ETB", spent_this_week: "0" });
   });
 });

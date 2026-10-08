@@ -6,6 +6,7 @@
  */
 import type { Db } from "../../db.js";
 import type { Group, Member, Suggestion } from "@jemaw/shared/schema";
+import type { LedgerHighlights } from "@jemaw/shared/humor";
 import { centsToDecimal, decimalToCents } from "@jemaw/shared/types";
 import { loadLedger } from "../../domain/ledger.js";
 import type { MemberNet } from "../../domain/balances.js";
@@ -211,4 +212,27 @@ export function ledgerNames(s: LedgerSnapshot): string[] {
   const names = new Set<string>(s.balances.map((b) => b.name));
   if (s.asker) names.add(s.asker.name);
   return [...names];
+}
+
+/** Plain decimal without separators or trailing ".00": the verifier's token form. */
+export function plainAmount(cents: number): string {
+  return centsToDecimal(Math.abs(cents)).replace(/\.00$/, "");
+}
+
+/** The few real figures chat banter may brag or roast with. */
+export function ledgerHighlights(s: LedgerSnapshot): LedgerHighlights {
+  const named = (name: string, cents: number) => ({ name, amount: plainAmount(cents) });
+  const debtor = [...s.balances].sort((a, b) => a.netCents - b.netCents)[0];
+  const creditor = s.balances[0];
+  return {
+    currency: s.currency,
+    ...(s.asker?.owes.length ? { asker_owes: s.asker.owes.map((o) => named(o.name, o.cents)) } : {}),
+    ...(s.asker?.owedBy.length ? { asker_owed_by: s.asker.owedBy.map((o) => named(o.name, o.cents)) } : {}),
+    ...(s.stats.topSpenderMonth
+      ? { top_spender_this_month: named(s.stats.topSpenderMonth.name, s.stats.topSpenderMonth.cents) }
+      : {}),
+    ...(debtor && debtor.netCents < 0 ? { biggest_debtor: named(debtor.name, debtor.netCents) } : {}),
+    ...(creditor && creditor.netCents > 0 ? { top_creditor: named(creditor.name, creditor.netCents) } : {}),
+    spent_this_week: plainAmount(s.stats.weekCents),
+  };
 }

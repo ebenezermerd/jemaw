@@ -1,4 +1,5 @@
 import { describe, it, expect } from "vitest";
+import { verifyCandidate } from "./verifier.js";
 import {
   buildDirectChatPacket,
   buildScanOutcomePacket,
@@ -92,5 +93,43 @@ describe("collectAllowedNumberTokens", () => {
       drafts: [{ label: "x", amount: "99" }],
     });
     expect(tokens).toEqual(expect.arrayContaining(["1", "2", "99"]));
+  });
+});
+
+describe("buildDirectChatPacket with the asker and ledger highlights", () => {
+  const packet = buildDirectChatPacket({
+    pendingCount: 0,
+    currency: "ETB",
+    addressedUtterance: "hello jemaw",
+    addressedBy: "Sami",
+    ledger: {
+      currency: "ETB",
+      asker_owes: [{ name: "Abenezer", amount: "900" }],
+      top_spender_this_month: { name: "Abenezer", amount: "1200" },
+      biggest_debtor: { name: "Hana", amount: "900" },
+      spent_this_week: "1500",
+    },
+  });
+
+  it("carries who is talking and the highlights", () => {
+    expect(packet.addressed_by).toBe("Sami");
+    expect(packet.ledger_highlights?.biggest_debtor).toEqual({ name: "Hana", amount: "900" });
+    expect(packet.forbidden_claims).not.toContain("any individual balance or net-owe figure");
+  });
+
+  it("lets replies use real ledger names and amounts", () => {
+    expect(
+      verifyCandidate("Sami, you still owe Abenezer 900 while Hana sits on 900 of debt too.", packet),
+    ).toEqual({ ok: true });
+  });
+
+  it("still blocks invented amounts and names", () => {
+    expect(verifyCandidate("Sami owes Abenezer 4000 now.", packet).ok).toBe(false);
+    expect(verifyCandidate("Ask Dawit, he owes 900.", packet).ok).toBe(false);
+  });
+
+  it("keeps balances forbidden when there are no highlights", () => {
+    const plain = buildDirectChatPacket({ pendingCount: 0, addressedUtterance: "hi" });
+    expect(plain.forbidden_claims).toContain("any individual balance or net-owe figure");
   });
 });

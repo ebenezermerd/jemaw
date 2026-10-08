@@ -185,6 +185,23 @@ export type PublicSafeFactPacket = {
    * Sanitized short lines only — not full chat dump.
    */
   thread_turns?: ConversationThreadTurn[];
+  /** Display name of the member who addressed Jemaw, when known. */
+  addressed_by?: string;
+  /** Real ledger figures Jemaw may brag or roast with (ledgerBanter on). */
+  ledger_highlights?: LedgerHighlights;
+};
+
+export type LedgerHighlightAmount = { name: string; amount: string };
+
+/** Amounts are plain decimals without separators, e.g. "900" or "12.50". */
+export type LedgerHighlights = {
+  currency: string;
+  asker_owes?: LedgerHighlightAmount[];
+  asker_owed_by?: LedgerHighlightAmount[];
+  top_spender_this_month?: LedgerHighlightAmount;
+  biggest_debtor?: LedgerHighlightAmount;
+  top_creditor?: LedgerHighlightAmount;
+  spent_this_week?: string;
 };
 
 /** One turn in the recent jemaw conversation thread. */
