@@ -149,3 +149,18 @@ describe("parseLedgerQuery", () => {
     });
   });
 });
+
+describe("leaderboard questions", () => {
+  it("routes rich and broke questions to the leaderboard", () => {
+    expect(classifyJemawIntent("Who is the rich guy in this group? Jemaw")).toBe("ledger");
+    expect(parseLedgerQuery("Who is the rich guy in this group? Jemaw").kind).toBe("leaderboard");
+    expect(parseLedgerQuery("jemaw who is the broke one").kind).toBe("leaderboard");
+    expect(parseLedgerQuery("jemaw who's the biggest spender here").kind).toBe("leaderboard");
+    expect(parseLedgerQuery("jemaw who owes the most").kind).toBe("leaderboard");
+    expect(parseLedgerQuery("jemaw who is the cheapest").kind).toBe("leaderboard");
+  });
+
+  it("keeps plain spending totals as totals", () => {
+    expect(parseLedgerQuery("who spent the most this month").kind).toBe("totals");
+  });
+});
