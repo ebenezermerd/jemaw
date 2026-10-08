@@ -70,6 +70,21 @@ export const paymentMethod = pgEnum("payment_method", [
 
 export const memberRole = pgEnum("member_role", ["admin", "member"]);
 
+// Admin console enums.
+export const announcementAudience = pgEnum("announcement_audience", [
+  "all_groups",
+  "group",
+  "user",
+]);
+
+export const announcementStatus = pgEnum("announcement_status", [
+  "draft",
+  "queued",
+  "sending",
+  "sent",
+  "failed",
+]);
+
 // ─── groups ───────────────────────────────────────────────────────────
 export const groups = pgTable("groups", {
   id: uuid("id").primaryKey().defaultRandom(),
@@ -376,6 +391,54 @@ export const humorMemberPreferences = pgTable(
   (t) => [unique().on(t.groupId, t.memberId)],
 );
 
+// ─── admin_audit_log ──────────────────────────────────────────────────
+// One row per admin-console write. Independent of the bot's tables; the bot
+// never writes here. `actorUid` is the Firebase UID of the acting admin.
+export const adminAuditLog = pgTable("admin_audit_log", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  actorUid: text("actor_uid").notNull(),
+  actorEmail: text("actor_email"),
+  action: text("action").notNull(), // e.g. "user.suspend", "expense.void"
+  targetType: text("target_type"), // "user" | "group" | "expense" | ...
+  targetId: text("target_id"),
+  detail: jsonb("detail").notNull().default({}),
+  createdAt: timestamp("created_at", { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+});
+
+// ─── announcements ────────────────────────────────────────────────────
+// Broadcasts composed in the admin console. The api queues a row; the bot's
+// sender (additive module) polls `queued`, delivers via Telegram, and marks
+// the row `sent`/`failed`. `targetId` is a group id or telegram user id
+// depending on `audience` (null for all_groups).
+export const announcements = pgTable("announcements", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  title: text("title").notNull(),
+  body: text("body").notNull(),
+  audience: announcementAudience("audience").notNull(),
+  targetId: text("target_id"),
+  status: announcementStatus("status").notNull().default("draft"),
+  createdByUid: text("created_by_uid").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+  sentAt: timestamp("sent_at", { withTimezone: true }),
+  stats: jsonb("stats").notNull().default({}), // { delivered, failed }
+});
+
+// ─── app_config ───────────────────────────────────────────────────────
+// Key/value settings for the bot + console: the admin allowlist (`admins`),
+// feature flags, and tunables. The bot may read these additively.
+export const appConfig = pgTable("app_config", {
+  key: text("key").primaryKey(),
+  value: jsonb("value").notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+  updatedByUid: text("updated_by_uid"),
+});
+
 // ─── Inferred row types ───────────────────────────────────────────────
 export type Group = typeof groups.$inferSelect;
 export type NewGroup = typeof groups.$inferInsert;
@@ -399,3 +462,9 @@ export type BotReply = typeof botReplies.$inferSelect;
 export type NewBotReply = typeof botReplies.$inferInsert;
 export type BotReplyFeedback = typeof botReplyFeedback.$inferSelect;
 export type HumorMemberPreference = typeof humorMemberPreferences.$inferSelect;
+export type AdminAuditLog = typeof adminAuditLog.$inferSelect;
+export type NewAdminAuditLog = typeof adminAuditLog.$inferInsert;
+export type Announcement = typeof announcements.$inferSelect;
+export type NewAnnouncement = typeof announcements.$inferInsert;
+export type AppConfig = typeof appConfig.$inferSelect;
+export type NewAppConfig = typeof appConfig.$inferInsert;

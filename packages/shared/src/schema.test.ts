@@ -12,6 +12,9 @@ import {
   botReplies,
   botReplyFeedback,
   humorMemberPreferences,
+  adminAuditLog,
+  announcements,
+  appConfig,
 } from "./schema.js";
 import { getTableName } from "drizzle-orm";
 
@@ -46,6 +49,11 @@ describe("schema", () => {
       "bot_reply_feedback",
       "humor_member_preferences",
     ]);
+  });
+
+  it("defines the admin console tables", () => {
+    const names = [adminAuditLog, announcements, appConfig].map(getTableName);
+    expect(names).toEqual(["admin_audit_log", "announcements", "app_config"]);
   });
 
   it("uses bigint mode for telegram ids (precision-safe)", () => {

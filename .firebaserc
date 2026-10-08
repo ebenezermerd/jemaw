@@ -1,5 +1,13 @@
 {
   "projects": {
     "default": "jemaw-498106"
+  },
+  "targets": {
+    "jemaw-498106": {
+      "hosting": {
+        "app": ["jemaw-498106"],
+        "admin": ["jemaw-admin"]
+      }
+    }
   }
 }

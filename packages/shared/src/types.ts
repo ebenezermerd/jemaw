@@ -404,3 +404,159 @@ export interface HistoryDayGroup {
 export interface HistoryResponse {
   days: HistoryDayGroup[];
 }
+
+// ─── Admin console DTOs ───────────────────────────────────────────────
+export interface AdminHealthResponse {
+  ok: true;
+  service: "jemaw-api";
+}
+
+/** Unauthenticated headline counts for the login brand panel. */
+export interface AdminPublicStatsDto {
+  totalUsers: number;
+  activeGroups: number;
+  /** decimal string — sum of all live expenses */
+  expensesTracked: string;
+}
+
+export interface AdminMeDto {
+  uid: string;
+  email: string | null;
+  role: "super" | "admin";
+}
+
+/** A user aggregated across all their group memberships, keyed by telegram id. */
+export interface AdminUserDto {
+  telegramUserId: TelegramIdString;
+  displayName: string;
+  username: string | null;
+  groupCount: number;
+  /** active if any of their member rows is active */
+  isActive: boolean;
+  /** ISO of most recent activity (expense/settlement) or null */
+  lastActiveAt: string | null;
+  status: "active" | "idle" | "new" | "suspended";
+}
+
+export interface AdminGroupDto {
+  id: string;
+  name: string;
+  defaultCurrency: string;
+  memberCount: number;
+  /** decimal string — sum of live expenses */
+  volume: string;
+  createdAt: string; // ISO
+}
+
+export interface AdminKpiDto {
+  totalUsers: number;
+  activeGroups: number;
+  /** decimal string — sum of all live expenses */
+  expensesTracked: string;
+  settlementsPerWeek: number;
+  /** percentage deltas vs prior period, signed numbers */
+  deltas: {
+    users: number;
+    groups: number;
+    expenses: number;
+    settlements: number;
+  };
+}
+
+export interface AdminActivityPointDto {
+  /** YYYY-MM-DD */
+  date: string;
+  expenses: number;
+  settlements: number;
+}
+
+export interface AdminStatusBucketDto {
+  status: "active" | "idle" | "new" | "suspended";
+  count: number;
+}
+
+export interface AdminRecentActivityDto {
+  id: string;
+  kind: "expense" | "settlement" | "group_new" | "flag" | "loan";
+  text: string;
+  at: string; // ISO
+}
+
+export interface AdminTopGroupDto {
+  id: string;
+  name: string;
+  /** decimal string */
+  volume: string;
+}
+
+export interface AdminOverviewDto {
+  kpis: AdminKpiDto;
+  activity: AdminActivityPointDto[];
+  statusBreakdown: AdminStatusBucketDto[];
+  recent: AdminRecentActivityDto[];
+  topGroups: AdminTopGroupDto[];
+}
+
+export type AdminAuditEntryDto = {
+  id: string;
+  actorEmail: string | null;
+  action: string;
+  targetType: string | null;
+  targetId: string | null;
+  detail: Record<string, unknown>;
+  createdAt: string; // ISO
+};
+
+export type AnnouncementAudience = "all_groups" | "group" | "user";
+export type AnnouncementStatus =
+  | "draft"
+  | "queued"
+  | "sending"
+  | "sent"
+  | "failed";
+
+export interface AnnouncementDto {
+  id: string;
+  title: string;
+  body: string;
+  audience: AnnouncementAudience;
+  targetId: string | null;
+  status: AnnouncementStatus;
+  createdAt: string; // ISO
+  sentAt: string | null;
+  stats: Record<string, unknown>;
+}
+
+export interface CreateAnnouncementInput {
+  title: string;
+  body: string;
+  audience: AnnouncementAudience;
+  targetId?: string;
+  /** queue immediately, or save as draft */
+  queue?: boolean;
+}
+
+export interface AdminExpenseDto {
+  id: string;
+  description: string;
+  /** decimal string */
+  amount: string;
+  currency: string;
+  kind: ExpenseKind;
+  source: string;
+  groupName: string;
+  payerName: string;
+  occurredAt: string; // ISO
+  voided: boolean;
+}
+
+export interface AppConfigDto {
+  key: string;
+  value: unknown;
+  updatedAt: string; // ISO
+}
+
+export interface UpdateConfigInput {
+  key: string;
+  value: unknown;
+}
