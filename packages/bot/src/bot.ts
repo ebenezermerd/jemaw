@@ -14,13 +14,22 @@ import { badgeEvidence } from "./telegram/reactions.js";
 import { sendDigestNow } from "./telegram/weeklyJob.js";
 import type { GeminiClient } from "./ai/geminiClient.js";
 import type { ScanRateLimiter } from "./ai/rateLimit.js";
-import { scanGroup } from "./ai/scan.js";
+import { scanGroup, type ScanResult } from "./ai/scan.js";
 import {
   maybeDeliverDirectChat,
   maybeDeliverScanHumor,
   type HumorRuntime,
 } from "./ai/humor/deliver.js";
-import { classifyJemawIntent } from "./ai/humor/intent.js";
+import {
+  classifyJemawIntent,
+  classifyLedgerQuestion,
+  ledgerPeriod,
+  type LedgerPeriod,
+  type LedgerQuestionKind,
+} from "./ai/humor/intent.js";
+import { parseHumorSettings } from "@jemaw/shared/humor";
+import { deliverLedgerAnswer } from "./ai/ledger/deliver.js";
+import { startLoading } from "./telegram/loading.js";
 
 /** Word-boundary, case-insensitive "jemaw" trigger (plan §10). */
 const JEMAW_RE = /(?<![a-z0-9])jemaw(?![a-z0-9])/i;
@@ -44,14 +53,35 @@ export function helpText(): string {
     "Jemaw — commands",
     "",
     "/jemaw — refresh and scan the recent chat",
+    "/balance — who owes whom right now",
+    "/history — the latest expenses",
     "/digest — post the weekly summary now",
-    "/balance — show everyone's net position",
-    "/settle — open the settle-up plan",
-    "/add — add an expense manually",
-    "/history — open the history",
     "/help — this message",
+    "",
+    "Or just ask: \"jemaw how much do I owe?\", \"jemaw list this week's expenses\", \"jemaw who spent the most?\"",
   ].join("\n");
 }
+
+/** Plain scan outcome, used when humor is off or has nothing to add. */
+export function scanResultLine(res: ScanResult): string {
+  if (res.status === "api_error" || res.status === "parse_error") {
+    return "🫠 My scanner tripped over something. Try again in a bit.";
+  }
+  const s = (n: number) => (n === 1 ? "" : "s");
+  if (res.written > 0) {
+    return `Found ${res.written} new draft${s(res.written)}. ${res.pendingCount} waiting for review in the app.`;
+  }
+  if (res.pendingCount > 0) {
+    return `Nothing new. ${res.pendingCount} draft${s(res.pendingCount)} still waiting for review.`;
+  }
+  return "Nothing new to record.";
+}
+
+const RATE_LIMITED_LINES = [
+  "Easy. I literally just checked. Give me 10 seconds.",
+  "I'm still blinking from the last scan. Ten seconds, please.",
+  "Patience. Even ghosts need a breather between scans.",
+];
 
 export interface BotDeps {
   db: Db;
@@ -116,13 +146,25 @@ export function createBot(token: string, deps: BotDeps): Bot {
     group: { id: string; telegramChatId: bigint },
     triggeredByMemberId: string | null,
     triggerType: "keyword" | "command",
+    replyTo?: number,
   ): void {
+    const chatId = Number(group.telegramChatId);
     if (!gemini) {
       console.log(`[scan] skipped: GEMINI_API_KEY not configured`);
       return;
     }
     if (!scanLimiter.tryAcquire(group.id)) {
       console.log(`[scan] rate-limited for group ${group.id}`);
+      const line = RATE_LIMITED_LINES[Math.floor(Math.random() * RATE_LIMITED_LINES.length)]!;
+      void api
+        .sendMessage(
+          chatId,
+          line,
+          replyTo != null
+            ? { reply_parameters: { message_id: replyTo, allow_sending_without_reply: true } }
+            : {},
+        )
+        .catch(() => {});
       return;
     }
     console.log(`[scan] triggered (${triggerType}) for group ${group.id}`);
@@ -132,6 +174,7 @@ export function createBot(token: string, deps: BotDeps): Bot {
         console.log(`[scan] group ${group.id} not found`);
         return;
       }
+      const loading = await startLoading(api, chatId, { kind: "scan", replyTo });
       const res = await scanGroup(
         { db, gemini: gemini!, now: () => Date.now() },
         g,
@@ -148,8 +191,8 @@ export function createBot(token: string, deps: BotDeps): Bot {
         res.evidenceMessageIds,
       );
       await refreshPinned(api, group.id, Number(group.telegramChatId));
-      // Phase 1–2 interactive humor (no-op when mode is off).
-      await maybeDeliverScanHumor({
+      // Humor edits the placeholder; when it stays quiet, say the plain outcome.
+      const delivered = await maybeDeliverScanHumor({
         db,
         api,
         group: g,
@@ -160,11 +203,42 @@ export function createBot(token: string, deps: BotDeps): Bot {
           triggerType === "keyword" || triggerType === "command",
         currency: g.defaultCurrency,
         humor: humor ?? {},
-      }).catch((err) =>
-        console.warn(`[humor] after scan failed:`, err?.message ?? err),
-      );
+        loading,
+      }).catch((err) => {
+        console.warn(`[humor] after scan failed:`, err?.message ?? err);
+        return false;
+      });
+      if (!delivered) await loading.finish(scanResultLine(res));
     })().catch((err) =>
       console.error(`[scan] failed:`, err?.message ?? err),
+    );
+  }
+
+  /** Answer a ledger question with exact figures behind a funny placeholder. */
+  function answerLedger(
+    ctx: Context,
+    groupId: string,
+    kind: LedgerQuestionKind,
+    period: LedgerPeriod,
+  ): void {
+    const chatId = ctx.chat!.id;
+    const replyTo = ctx.message?.message_id;
+    const askerTelegramId = ctx.from ? BigInt(ctx.from.id) : null;
+    void (async () => {
+      const g = await getGroupById(db, groupId);
+      if (!g) return;
+      const loading = await startLoading(ctx.api, chatId, { kind: "ledger", replyTo });
+      await deliverLedgerAnswer({
+        db,
+        group: g,
+        askerTelegramId,
+        kind,
+        period,
+        loading,
+        humor: humor ?? {},
+      });
+    })().catch((err) =>
+      console.warn(`[ledger] answer failed:`, err instanceof Error ? err.message : err),
     );
   }
 
@@ -250,8 +324,23 @@ export function createBot(token: string, deps: BotDeps): Bot {
       { id: groupId, telegramChatId: BigInt(ctx.chat.id) },
       member,
       "command",
+      ctx.message?.message_id,
     );
     await refreshPinned(ctx.api, groupId, ctx.chat.id);
+  });
+
+  // /balance and /history — ledger answers without typing a question.
+  bot.command("balance", async (ctx) => {
+    const groupId = await ensureGroup(ctx);
+    if (!groupId || !ctx.chat) return;
+    if (ctx.from) await registerUser(db, groupId, ctx.from).catch(() => {});
+    answerLedger(ctx, groupId, "who_owes", "all");
+  });
+
+  bot.command("history", async (ctx) => {
+    const groupId = await ensureGroup(ctx);
+    if (!groupId || !ctx.chat) return;
+    answerLedger(ctx, groupId, "expense_list", "all");
   });
 
   // /digest — post the weekly summary on demand and restart its weekly clock.
@@ -296,19 +385,34 @@ export function createBot(token: string, deps: BotDeps): Bot {
 
     if (JEMAW_RE.test(text)) {
       const intent = classifyJemawIntent(text);
+      if (intent === "ledger") {
+        answerLedger(ctx, groupId, classifyLedgerQuestion(text), ledgerPeriod(text));
+        return;
+      }
       if (intent === "chat") {
         // Social banter: skip expense extract; reply from live DB context.
         void (async () => {
           const g = await getGroupById(db, groupId);
           if (!g) return;
-          await maybeDeliverDirectChat({
+          const mode = parseHumorSettings(
+            (g.settings as Record<string, unknown> | null)?.humor,
+          ).mode;
+          if (mode === "off") return;
+          const loading = await startLoading(ctx.api, chat.id, {
+            kind: "chat",
+            replyTo: ctx.message.message_id,
+          });
+          const delivered = await maybeDeliverDirectChat({
             db,
             api: ctx.api,
             group: g,
             userText: text,
             currency: g.defaultCurrency,
             humor: humor ?? {},
+            askerTelegramId: ctx.from ? BigInt(ctx.from.id) : null,
+            loading,
           });
+          if (!delivered) await loading.cancel();
         })().catch((err) =>
           console.warn(
             `[humor] direct chat failed:`,
@@ -325,6 +429,7 @@ export function createBot(token: string, deps: BotDeps): Bot {
         { id: groupId, telegramChatId: BigInt(chat.id) },
         member,
         "keyword",
+        ctx.message.message_id,
       );
     }
   });
