@@ -4,6 +4,7 @@ import {
   parseHumorSettings,
   toHumorSettingsDto,
   HUMOR_MODE_LIMITS,
+  applyHumorPatch,
 } from "./humor.js";
 
 describe("ledgerBanter", () => {
@@ -52,5 +53,38 @@ describe("HUMOR_MODE_LIMITS", () => {
     expect(DEFAULT_HUMOR_SETTINGS.maxPublicRepliesPerDay).toBe(
       HUMOR_MODE_LIMITS.jemaw_dry.maxPublicRepliesPerDay,
     );
+  });
+});
+
+describe("applyHumorPatch", () => {
+  const now = new Date("2026-10-08T10:00:00Z");
+
+  it("rejects an unknown mode", () => {
+    expect(applyHumorPatch(DEFAULT_HUMOR_SETTINGS, { mode: "spicy" }, { now })).toEqual({ error: "invalid mode" });
+  });
+
+  it("switching mode stamps the actor and applies that mode's limits", () => {
+    const next = applyHumorPatch(DEFAULT_HUMOR_SETTINGS, { mode: "chaos" }, { actorMemberId: "m1", now });
+    expect(next).toMatchObject({
+      mode: "chaos",
+      enabledByMemberId: "m1",
+      enabledAt: now.toISOString(),
+      maxPublicRepliesPerDay: HUMOR_MODE_LIMITS.chaos.maxPublicRepliesPerDay,
+    });
+  });
+
+  it("clamps numbers, ignores bad values and handles mute", () => {
+    const next = applyHumorPatch(
+      DEFAULT_HUMOR_SETTINGS,
+      { maxPublicRepliesPerDay: 500, cooldownMinutes: -3, ledgerBanter: "yes", useGroupVibe: false, muteDays: 2 },
+      { now },
+    ) as ReturnType<typeof parseHumorSettings>;
+    expect(next.maxPublicRepliesPerDay).toBe(100);
+    expect(next.cooldownMinutes).toBe(0);
+    expect(next.ledgerBanter).toBe(DEFAULT_HUMOR_SETTINGS.ledgerBanter);
+    expect(next.useGroupVibe).toBe(false);
+    expect(next.mutedUntil).toBe("2026-10-10T10:00:00.000Z");
+    const unmuted = applyHumorPatch(next, { muteDays: 0 }, { now }) as typeof next;
+    expect(unmuted.mutedUntil).toBeUndefined();
   });
 });

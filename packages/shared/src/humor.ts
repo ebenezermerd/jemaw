@@ -399,6 +399,69 @@ export function parseHumorSettings(raw: unknown): HumorSettingsV1 {
   } as HumorSettingsV1;
 }
 
+/**
+ * Apply a partial settings update from an untrusted body (mini app or admin
+ * console). Unknown keys and bad values are ignored; numbers are clamped.
+ * Switching to a new mode stamps who enabled it and applies that mode's limits
+ * unless the body sets them too.
+ */
+export function applyHumorPatch(
+  current: HumorSettingsV1,
+  body: Record<string, unknown>,
+  opts: { actorMemberId?: string; now: Date },
+): HumorSettingsV1 | { error: string } {
+  const modes = ["off", "jemaw_dry", "roast", "chaos"] as const;
+  if (body.mode != null && !modes.includes(body.mode as HumorMode)) {
+    return { error: "invalid mode" };
+  }
+  const next: HumorSettingsV1 = { ...current };
+  if (body.mode != null) next.mode = body.mode as HumorMode;
+  for (const key of [
+    "publicRepliesEnabled",
+    "useModelComposer",
+    "useGroupVibe",
+    "usePreferenceLearning",
+    "ledgerBanter",
+    "publicFinancialRoasting",
+    "hardshipHumor",
+    "latePaymentHumor",
+    "relationshipConflictHumor",
+  ] as const) {
+    if (typeof body[key] === "boolean") next[key] = body[key];
+  }
+  if (typeof body.maxPublicRepliesPerDay === "number") {
+    next.maxPublicRepliesPerDay = Math.max(0, Math.min(100, Math.floor(body.maxPublicRepliesPerDay)));
+  }
+  if (typeof body.cooldownMinutes === "number") {
+    next.cooldownMinutes = Math.max(0, Math.min(24 * 60, Math.floor(body.cooldownMinutes)));
+  }
+  if (["auto", "en", "am", "code_mix"].includes(body.languageMode as string)) {
+    next.languageMode = body.languageMode as HumorLanguageMode;
+  }
+  if (body.callbacks === "off" || body.callbacks === "approved_only") {
+    next.callbacks = body.callbacks;
+  }
+  if (["off", "moderate", "match_group"].includes(body.profanity as string)) {
+    next.profanity = body.profanity as HumorProfanity;
+  }
+  if (body.memberTargeting === "group_only" || body.memberTargeting === "consenting_members") {
+    next.memberTargeting = body.memberTargeting;
+  }
+  if (body.muteDays != null) {
+    const days = Number(body.muteDays);
+    next.mutedUntil =
+      days > 0 ? new Date(opts.now.getTime() + days * 24 * 60 * 60 * 1000).toISOString() : undefined;
+  }
+  if (body.mode && body.mode !== "off" && body.mode !== current.mode) {
+    next.enabledByMemberId = opts.actorMemberId;
+    next.enabledAt = opts.now.toISOString();
+    const lim = HUMOR_MODE_LIMITS[body.mode as Exclude<HumorMode, "off">];
+    if (body.maxPublicRepliesPerDay == null) next.maxPublicRepliesPerDay = lim.maxPublicRepliesPerDay;
+    if (body.cooldownMinutes == null) next.cooldownMinutes = lim.cooldownMinutes;
+  }
+  return next;
+}
+
 export function parseGroupVibe(raw: unknown): GroupVibeV1 {
   if (!raw || typeof raw !== "object") {
     return { ...DEFAULT_GROUP_VIBE, styleWeights: { ...DEFAULT_GROUP_VIBE.styleWeights }, feedbackWeights: { ...DEFAULT_GROUP_VIBE.feedbackWeights }, languages: [...DEFAULT_GROUP_VIBE.languages], preferredStyles: [...DEFAULT_GROUP_VIBE.preferredStyles], approvedCallbacks: [] };
