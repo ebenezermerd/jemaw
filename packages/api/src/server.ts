@@ -21,7 +21,7 @@ export async function buildServer(deps: ServerDeps): Promise<FastifyInstance> {
       "access-control-allow-headers",
       "content-type,authorization",
     );
-    reply.header("access-control-allow-methods", "GET,POST,PATCH,DELETE,OPTIONS");
+    reply.header("access-control-allow-methods", "GET,POST,PUT,PATCH,DELETE,OPTIONS");
     if (req.method === "OPTIONS") {
       await reply.code(204).send();
     }

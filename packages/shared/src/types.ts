@@ -725,3 +725,14 @@ export interface AdminBotStatusDto {
   health: "ok" | "warn" | "down";
   error: string | null;
 }
+
+export interface AdminAccountDto {
+  email: string;
+  role: "super" | "admin";
+}
+
+export interface AdminAccountsDto {
+  admins: AdminAccountDto[];
+  /** only supers can add, remove or change admins */
+  canManage: boolean;
+}

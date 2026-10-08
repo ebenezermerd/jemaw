@@ -29,6 +29,7 @@ import {
   createAnnouncement,
   listConfig,
   setConfig,
+  getAdmins,
   countDistinctUsers,
   countActiveGroups,
   sumLiveExpensesCents,
@@ -69,6 +70,7 @@ import {
   type BotRuntimeConfig,
 } from "@jemaw/shared/runtimeConfig";
 import type {
+  AdminAccountsDto,
   AdminActivityPageDto,
   AdminActivitySeverity,
   AdminActivitySource,
@@ -118,6 +120,11 @@ const updateMemberSchema = z
     displayName: z.string().trim().min(1).max(60).optional(),
   })
   .strict();
+
+const adminAccountSchema = z.object({
+  email: z.string().trim().toLowerCase().email().max(200),
+  role: z.enum(["super", "admin"]),
+});
 
 const deleteGroupSchema = z.object({ confirmName: z.string() });
 
@@ -188,6 +195,55 @@ export async function registerApi(
     const a = req.admin!;
     const res: AdminMeDto = { uid: a.uid, email: a.email, role: a.role };
     return res;
+  });
+
+  // ─── console admins (app_config.admins) ────────────────────────────
+  const accountsDto = async (canManage: boolean): Promise<AdminAccountsDto> => {
+    const a = await getAdmins(db);
+    const supers = new Set(a.supers ?? []);
+    return {
+      canManage,
+      admins: a.emails
+        .map((email) => ({ email, role: supers.has(email) ? ("super" as const) : ("admin" as const) }))
+        .sort((x, y) => Number(y.role === "super") - Number(x.role === "super") || x.email.localeCompare(y.email)),
+    };
+  };
+
+  app.get("/api/admin/admins", { preHandler: auth }, async (req) => accountsDto(req.admin!.role === "super"));
+
+  // Add an admin or change their role. Super only; a super can't demote themselves.
+  app.put("/api/admin/admins", { preHandler: auth }, async (req, reply) => {
+    if (req.admin!.role !== "super") return reply.code(403).send({ error: "only super admins can manage admins" });
+    const parsed = adminAccountSchema.safeParse(req.body ?? {});
+    if (!parsed.success) return reply.code(400).send({ error: "a valid email and role are required" });
+    const { email, role } = parsed.data;
+    if (email === req.admin!.email && role !== "super") {
+      return reply.code(409).send({ error: "you can't remove your own super role" });
+    }
+    const a = await getAdmins(db);
+    const emails = [...new Set([...a.emails, email])];
+    const supers = new Set(a.supers ?? []);
+    if (role === "super") supers.add(email);
+    else supers.delete(email);
+    await setConfig(db, "admins", { emails, supers: [...supers] }, req.admin!.uid);
+    await audit(req, a.emails.includes(email) ? "admin.role" : "admin.add", "admin", email, { role });
+    return accountsDto(true);
+  });
+
+  app.delete("/api/admin/admins/:email", { preHandler: auth }, async (req, reply) => {
+    if (req.admin!.role !== "super") return reply.code(403).send({ error: "only super admins can manage admins" });
+    const email = decodeURIComponent((req.params as { email: string }).email).toLowerCase();
+    if (email === req.admin!.email) return reply.code(409).send({ error: "you can't remove yourself" });
+    const a = await getAdmins(db);
+    if (!a.emails.includes(email)) return reply.code(404).send({ error: "not an admin" });
+    await setConfig(
+      db,
+      "admins",
+      { emails: a.emails.filter((e) => e !== email), supers: (a.supers ?? []).filter((e) => e !== email) },
+      req.admin!.uid,
+    );
+    await audit(req, "admin.remove", "admin", email);
+    return accountsDto(true);
   });
 
   // ─── overview ──────────────────────────────────────────────────────

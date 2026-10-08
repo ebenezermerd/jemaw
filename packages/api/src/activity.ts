@@ -144,6 +144,9 @@ const CONSOLE_VERBS: Record<string, string> = {
   "group.reset": "Reset a group's ledger",
   "group.delete": "Deleted a group",
   "member.update": "Changed a member",
+  "admin.add": "Added a console admin",
+  "admin.role": "Changed a console admin's role",
+  "admin.remove": "Removed a console admin",
 };
 
 const SCAN_TEXT: Record<string, string> = {

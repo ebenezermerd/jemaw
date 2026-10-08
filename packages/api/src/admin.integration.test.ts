@@ -48,7 +48,7 @@ d("admin management routes", () => {
   let memberId: string;
   const chatId = BigInt(-1_000_000_000_000 - Math.floor(Math.random() * 1e6));
 
-  const inject = (method: "GET" | "POST" | "PATCH" | "DELETE", url: string, payload?: unknown) =>
+  const inject = (method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE", url: string, payload?: unknown) =>
     app.inject({ method, url, payload: payload as never, headers: { authorization: "Bearer t" } });
 
   beforeAll(async () => {
@@ -57,8 +57,8 @@ d("admin management routes", () => {
     savedAdmins = row?.value;
     await db
       .insert(appConfig)
-      .values({ key: "admins", value: { emails: [ADMIN] } })
-      .onConflictDoUpdate({ target: appConfig.key, set: { value: { emails: [ADMIN] } } });
+      .values({ key: "admins", value: { emails: [ADMIN], supers: [ADMIN] } })
+      .onConflictDoUpdate({ target: appConfig.key, set: { value: { emails: [ADMIN], supers: [ADMIN] } } });
 
     const [g] = await db
       .insert(groups)
@@ -224,6 +224,18 @@ d("admin management routes", () => {
     expect(failed!.status).toBe("failed");
     const del = await inject("DELETE", `/api/admin/announcements/${toUser.json().id}`);
     expect(del.statusCode).toBe(200);
+  });
+
+  it("lets a super admin add, promote and remove console admins, but not themselves", async () => {
+    const added = await inject("PUT", "/api/admin/admins", { email: "New.Admin@Jemaw.test", role: "admin" });
+    expect(added.statusCode).toBe(200);
+    expect(added.json().admins).toContainEqual({ email: "new.admin@jemaw.test", role: "admin" });
+    const promoted = await inject("PUT", "/api/admin/admins", { email: "new.admin@jemaw.test", role: "super" });
+    expect(promoted.json().admins).toContainEqual({ email: "new.admin@jemaw.test", role: "super" });
+    expect((await inject("DELETE", `/api/admin/admins/${encodeURIComponent(ADMIN)}`)).statusCode).toBe(409);
+    expect((await inject("PUT", "/api/admin/admins", { email: ADMIN, role: "admin" })).statusCode).toBe(409);
+    const removed = await inject("DELETE", "/api/admin/admins/new.admin%40jemaw.test");
+    expect(removed.json().admins.map((a: { email: string }) => a.email)).toEqual([ADMIN]);
   });
 
   it("deletes a group with all its data after the name is confirmed, and leaves the chat", async () => {
