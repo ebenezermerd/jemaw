@@ -6,7 +6,7 @@
  */
 import type { HumorMode } from "@jemaw/shared/humor";
 import type { ScanClient } from "../geminiClient.js";
-import type { LedgerQuestionKind } from "../humor/intent.js";
+import type { LedgerQuery } from "../humor/intent.js";
 import { buildDirectChatPacket } from "../humor/factPacket.js";
 import { verifyCandidate } from "../humor/verifier.js";
 import { cleanReplyPunctuation } from "../humor/punctuation.js";
@@ -51,7 +51,7 @@ export async function composeLedgerPersonaLine(input: {
   client?: ScanClient;
   mode: Exclude<HumorMode, "off">;
   snapshot: LedgerSnapshot;
-  kind: LedgerQuestionKind;
+  query: LedgerQuery;
   rng?: () => number;
 }): Promise<PersonaLine> {
   const s = input.snapshot;
@@ -69,12 +69,13 @@ export async function composeLedgerPersonaLine(input: {
   ];
   // Expense descriptions are capitalized words the verifier must not mistake for names.
   packet.public_facts.draft_labels = [
-    ...s.recentExpenses.map((e) => e.description),
+    ...s.expenses.map((e) => e.description),
     ...(s.stats.biggest ? [s.stats.biggest.description] : []),
     ...s.pending.drafts.map((d) => d.label),
   ];
 
-  if (input.client) {
+  // One retry: Groq occasionally rejects its own JSON ("Failed to validate JSON").
+  for (let attempt = 0; input.client && attempt < 2; attempt++) {
     try {
       const res = await input.client.suggest({
         systemPrompt: systemPrompt(input.mode),
@@ -82,8 +83,8 @@ export async function composeLedgerPersonaLine(input: {
           asker: s.asker?.name ?? null,
           asker_net: s.asker ? plainAmount(s.asker.netCents) : null,
           asker_is: s.asker ? (s.asker.netCents < 0 ? "in_debt" : s.asker.netCents > 0 ? "owed_money" : "square") : null,
-          question: input.kind,
-          focus: focusFor(input.kind, s),
+          question: input.query.kind,
+          focus: focusFor(input.query, s),
           ledger: highlights,
           spent_this_month: plainAmount(s.stats.monthCents),
           pending_drafts: s.pending.count,
@@ -104,18 +105,31 @@ export async function composeLedgerPersonaLine(input: {
         }
       }
       console.log(`[ledger] persona model lines rejected by verifier`);
+      break;
     } catch (err) {
-      console.warn(`[ledger] persona model failed:`, err instanceof Error ? err.message : err);
+      console.warn(
+        `[ledger] persona model failed (attempt ${attempt + 1}):`,
+        err instanceof Error ? err.message : err,
+      );
     }
   }
   return { text: cleanReplyPunctuation(templateLine(s, input.rng ?? Math.random)), source: "template" };
 }
 
 /** The facts behind the answer that was just shown, so the line reacts to it. */
-function focusFor(kind: LedgerQuestionKind, s: LedgerSnapshot): Record<string, unknown> {
+function focusFor(query: LedgerQuery, s: LedgerSnapshot): Record<string, unknown> {
   const amt = (name: string, cents: number) => ({ name, amount: plainAmount(cents) });
   const debts = s.openDebts.slice(0, 3).map((d) => ({ from: d.from, to: d.to, amount: plainAmount(d.cents) }));
-  switch (kind) {
+  const rows = s.expenses.filter((e) =>
+    query.mine === "paid" ? e.askerPaid : query.mine === "involved" ? e.askerPaid || e.askerShared : true,
+  );
+  switch (query.kind) {
+    case "whoami":
+      return {
+        asker: s.asker?.name ?? null,
+        fronted_expenses: s.asker?.paidCount ?? 0,
+        fronted_total: s.asker ? plainAmount(s.asker.paidCents) : "0",
+      };
     case "my_balance":
       return {
         asker_owes: s.asker?.owes.map((o) => amt(o.name, o.cents)) ?? [],
@@ -124,9 +138,10 @@ function focusFor(kind: LedgerQuestionKind, s: LedgerSnapshot): Record<string, u
     case "who_owes":
       return debts.length ? { open_debts: debts } : { all_square: true };
     case "expense_list": {
-      const latest = s.recentExpenses[0];
-      const biggest = [...s.recentExpenses].sort((a, b) => b.cents - a.cents)[0];
+      const latest = rows[0];
+      const biggest = [...rows].sort((a, b) => b.cents - a.cents)[0];
       return {
+        only_askers_expenses: query.mine != null,
         latest: latest ? { what: latest.description, amount: plainAmount(latest.cents), payer: latest.payer } : null,
         biggest_recent: biggest ? { what: biggest.description, amount: plainAmount(biggest.cents), payer: biggest.payer } : null,
       };

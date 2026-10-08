@@ -15,7 +15,6 @@ import { listPendingSuggestions, type ExpenseWithShares } from "../../repo.js";
 import { groupDigits } from "../../telegram/announcements.js";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
-const RECENT_EXPENSES = 10;
 const PENDING_DRAFTS = 5;
 
 export interface NamedAmount {
@@ -30,17 +29,23 @@ export interface LedgerSnapshot {
     netCents: number;
     owes: NamedAmount[];
     owedBy: NamedAmount[];
+    /** Expenses the asker fronted (not loans), all time. */
+    paidCents: number;
+    paidCount: number;
   } | null;
   /** Positive net = owed money. Largest first. */
   balances: { name: string; netCents: number }[];
   openDebts: { from: string; to: string; cents: number }[];
-  recentExpenses: {
+  /** Every live expense, newest first. */
+  expenses: {
     description: string;
     cents: number;
     payer: string;
     occurredAt: Date;
     participants: number;
     isLoan: boolean;
+    askerPaid: boolean;
+    askerShared: boolean;
   }[];
   stats: {
     weekCents: number;
@@ -84,8 +89,15 @@ export function computeLedgerSnapshot(i: LedgerSnapshotInput): LedgerSnapshot {
     i.askerTelegramId == null
       ? undefined
       : i.members.find((m) => m.telegramUserId === i.askerTelegramId);
+  const askerPaid = askerMember
+    ? i.liveExpenses.filter(
+        (e) => e.expense.payerMemberId === askerMember.id && e.expense.kind !== "loan",
+      )
+    : [];
   const asker = askerMember
     ? {
+        paidCents: askerPaid.reduce((acc, e) => acc + decimalToCents(e.expense.amount), 0),
+        paidCount: askerPaid.length,
         name: askerMember.displayName,
         netCents: i.nets.find((n) => n.memberId === askerMember.id)?.netCents ?? 0,
         owes: openDebts
@@ -126,13 +138,15 @@ export function computeLedgerSnapshot(i: LedgerSnapshotInput): LedgerSnapshot {
       .map((n) => ({ name: nameOf(n.memberId), netCents: n.netCents }))
       .sort((a, b) => b.netCents - a.netCents),
     openDebts: openDebts.map(({ from, to, cents }) => ({ from, to, cents })),
-    recentExpenses: i.liveExpenses.slice(0, RECENT_EXPENSES).map((e) => ({
+    expenses: i.liveExpenses.map((e) => ({
       description: e.expense.description,
       cents: decimalToCents(e.expense.amount),
       payer: nameOf(e.expense.payerMemberId),
       occurredAt: e.expense.occurredAt,
       participants: e.shares.length,
       isLoan: e.expense.kind === "loan",
+      askerPaid: askerMember != null && e.expense.payerMemberId === askerMember.id,
+      askerShared: askerMember != null && e.shares.some((sh) => sh.memberId === askerMember.id),
     })),
     stats: {
       weekCents: sumSince(weekStart),
@@ -189,10 +203,10 @@ export function formatCents(cents: number): string {
 /** Every amount in the snapshot, in the plain forms the verifier matches. */
 export function ledgerNumberTokens(s: LedgerSnapshot): string[] {
   const cents: number[] = [
-    ...(s.asker ? [s.asker.netCents, ...s.asker.owes.map((o) => o.cents), ...s.asker.owedBy.map((o) => o.cents)] : []),
+    ...(s.asker ? [s.asker.netCents, s.asker.paidCents, ...s.asker.owes.map((o) => o.cents), ...s.asker.owedBy.map((o) => o.cents)] : []),
     ...s.balances.map((b) => b.netCents),
     ...s.openDebts.map((d) => d.cents),
-    ...s.recentExpenses.map((e) => e.cents),
+    ...s.expenses.map((e) => e.cents),
     s.stats.weekCents,
     s.stats.monthCents,
     s.stats.allTimeCents,
@@ -204,7 +218,8 @@ export function ledgerNumberTokens(s: LedgerSnapshot): string[] {
   const out = new Set<string>([
     String(s.stats.expenseCount),
     String(s.pending.count),
-    String(s.recentExpenses.length),
+    String(s.expenses.length),
+    ...(s.asker ? [String(s.asker.paidCount)] : []),
   ]);
   for (const c of cents) {
     const plain = centsToDecimal(Math.abs(c));

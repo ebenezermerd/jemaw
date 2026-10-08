@@ -1,5 +1,11 @@
 import { describe, it, expect } from "vitest";
-import { startGroupText, helpText, createBot, scanResultLine } from "./bot.js";
+import {
+  startGroupText,
+  helpText,
+  createBot,
+  scanResultLine,
+  understandByRules,
+} from "./bot.js";
 
 describe("bot copy", () => {
   it("start fallback names Jemaw without cute filler", () => {
@@ -55,5 +61,33 @@ describe("createBot", () => {
     });
     expect(bot).toBeDefined();
     expect(bot.token).toBe("123:abc");
+  });
+});
+
+describe("understandByRules", () => {
+  const previous = {
+    text: "list my latest 5 days expenses jemaw",
+    query: { kind: "expense_list" as const, period: "all" as const, days: 5, mine: "paid" as const },
+    at: 0,
+  };
+
+  it("redoes the last question when someone complains, sharpened by the complaint", () => {
+    expect(understandByRules("woo, this is mixed i said what i paid, jemaw", previous)).toEqual({
+      intent: "correction",
+      query: { kind: "expense_list", period: "all", days: 5, mine: "paid" },
+    });
+    expect(
+      understandByRules("where is the expenses i paid latest 5 of them ? jemaw", previous),
+    ).toEqual({ intent: "ledger", query: { kind: "expense_list", period: "all", limit: 5, mine: "paid" } });
+  });
+
+  it("falls back to the previous question when the complaint says nothing new", () => {
+    expect(
+      understandByRules("you crazy? jemaw what did i said and what are you responding ?jemaw", previous),
+    ).toEqual({ intent: "correction", query: previous.query });
+  });
+
+  it("treats a complaint with nothing to correct as chat", () => {
+    expect(understandByRules("you crazy? jemaw what did i said", null)).toEqual({ intent: "chat" });
   });
 });

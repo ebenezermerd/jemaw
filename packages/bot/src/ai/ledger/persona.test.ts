@@ -4,7 +4,7 @@ import type { LedgerSnapshot } from "./snapshot.js";
 
 const snap: LedgerSnapshot = {
   currency: "ETB",
-  asker: { name: "Sami", netCents: -90000, owes: [{ name: "Abenezer", cents: 90000 }], owedBy: [] },
+  asker: { name: "Sami", netCents: -90000, owes: [{ name: "Abenezer", cents: 90000 }], owedBy: [], paidCents: 0, paidCount: 0 },
   balances: [
     { name: "Abenezer", netCents: 120000 },
     { name: "Hana", netCents: -30000 },
@@ -14,7 +14,7 @@ const snap: LedgerSnapshot = {
     { from: "Sami", to: "Abenezer", cents: 90000 },
     { from: "Hana", to: "Abenezer", cents: 30000 },
   ],
-  recentExpenses: [],
+  expenses: [],
   stats: {
     weekCents: 120000,
     monthCents: 120000,
@@ -42,7 +42,7 @@ describe("composeLedgerPersonaLine", () => {
       ]),
       mode: "roast",
       snapshot: snap,
-      kind: "my_balance",
+      query: { kind: "my_balance", period: "all" },
     });
     expect(r).toMatchObject({
       text: "Sami, Abenezer fronted 900 for you. The ledger is judging you quietly.",
@@ -55,7 +55,7 @@ describe("composeLedgerPersonaLine", () => {
       client: { suggest: async () => { throw new Error("down"); } },
       mode: "jemaw_dry",
       snapshot: snap,
-      kind: "my_balance",
+      query: { kind: "my_balance", period: "all" },
       rng: () => 0,
     });
     expect(r.source).toBe("template");
@@ -63,7 +63,7 @@ describe("composeLedgerPersonaLine", () => {
   });
 
   it("falls back to a template with no client at all", async () => {
-    const r = await composeLedgerPersonaLine({ mode: "chaos", snapshot: snap, kind: "totals", rng: () => 0 });
+    const r = await composeLedgerPersonaLine({ mode: "chaos", snapshot: snap, query: { kind: "totals", period: "all" }, rng: () => 0 });
     expect(r.source).toBe("template");
     expect(r.text.length).toBeGreaterThan(0);
   });
@@ -79,7 +79,7 @@ describe("composeLedgerPersonaLine", () => {
       },
       mode: "roast",
       snapshot: snap,
-      kind: "who_owes",
+      query: { kind: "who_owes", period: "all" },
     });
     const facts = JSON.parse(prompt.replace(/^FACTS:/, ""));
     expect(facts.focus).toEqual({
@@ -99,7 +99,7 @@ describe("composeLedgerPersonaLine", () => {
       client: client(["Sami, Hana dropped 5000 on Groceries and you can't cover 900?"]),
       mode: "roast",
       snapshot: withExpense,
-      kind: "totals",
+      query: { kind: "totals", period: "all" },
     });
     expect(r.source).toBe("model");
   });
@@ -109,8 +109,26 @@ describe("composeLedgerPersonaLine", () => {
       client: client(["Sami—our debtor—owes Abenezer 900; the ledger sighs."]),
       mode: "roast",
       snapshot: snap,
-      kind: "my_balance",
+      query: { kind: "my_balance", period: "all" },
     });
     expect(r.text).toBe("Sami, our debtor, owes Abenezer 900, the ledger sighs.");
+  });
+
+  it("retries once when the model call fails", async () => {
+    let calls = 0;
+    const r = await composeLedgerPersonaLine({
+      client: {
+        async suggest() {
+          calls++;
+          if (calls === 1) throw new Error("400 Failed to validate JSON");
+          return { json: { candidates: [{ text: "Sami, Abenezer is still waiting on 900." }] } };
+        },
+      },
+      mode: "roast",
+      snapshot: snap,
+      query: { kind: "my_balance", period: "all" },
+    });
+    expect(calls).toBe(2);
+    expect(r.source).toBe("model");
   });
 });
