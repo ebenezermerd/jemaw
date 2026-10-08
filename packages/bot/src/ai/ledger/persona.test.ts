@@ -21,6 +21,7 @@ const snap: LedgerSnapshot = {
     allTimeCents: 120000,
     expenseCount: 1,
     topSpenderMonth: { name: "Abenezer", cents: 120000 },
+    topSpenderAllTime: { name: "Abenezer", cents: 120000 },
     biggest: null,
   },
   pending: { count: 0, drafts: [] },
@@ -65,5 +66,41 @@ describe("composeLedgerPersonaLine", () => {
     const r = await composeLedgerPersonaLine({ mode: "chaos", snapshot: snap, kind: "totals", rng: () => 0 });
     expect(r.source).toBe("template");
     expect(r.text.length).toBeGreaterThan(0);
+  });
+
+  it("gives the model facts focused on the question that was asked", async () => {
+    let prompt = "";
+    await composeLedgerPersonaLine({
+      client: {
+        async suggest(i) {
+          prompt = i.userPrompt;
+          return { json: { candidates: [] } };
+        },
+      },
+      mode: "roast",
+      snapshot: snap,
+      kind: "who_owes",
+    });
+    const facts = JSON.parse(prompt.replace(/^FACTS:/, ""));
+    expect(facts.focus).toEqual({
+      open_debts: [
+        { from: "Sami", to: "Abenezer", amount: "900" },
+        { from: "Hana", to: "Abenezer", amount: "300" },
+      ],
+    });
+  });
+
+  it("accepts lines that mention real expense names", async () => {
+    const withExpense = {
+      ...snap,
+      stats: { ...snap.stats, biggest: { description: "Groceries", cents: 500000, payer: "Hana" } },
+    };
+    const r = await composeLedgerPersonaLine({
+      client: client(["Sami, Hana dropped 5000 on Groceries and you can't cover 900?"]),
+      mode: "roast",
+      snapshot: withExpense,
+      kind: "totals",
+    });
+    expect(r.source).toBe("model");
   });
 });

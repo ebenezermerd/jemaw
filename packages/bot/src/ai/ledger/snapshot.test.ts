@@ -96,6 +96,7 @@ describe("computeLedgerSnapshot", () => {
     expect(snap.stats.allTimeCents).toBe(650000);
     expect(snap.stats.expenseCount).toBe(3);
     expect(snap.stats.topSpenderMonth).toEqual({ name: "Abenezer", cents: 120000 });
+    expect(snap.stats.topSpenderAllTime).toEqual({ name: "Hana", cents: 500000 });
     expect(snap.stats.biggest).toEqual({ description: "Old trip", cents: 500000, payer: "Hana" });
   });
 

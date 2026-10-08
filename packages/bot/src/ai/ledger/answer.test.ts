@@ -44,6 +44,7 @@ const snap: LedgerSnapshot = {
     allTimeCents: 620000,
     expenseCount: 2,
     topSpenderMonth: { name: "Abenezer", cents: 120000 },
+    topSpenderAllTime: { name: "Abenezer", cents: 120000 },
     biggest: { description: "Old trip", cents: 500000, payer: "Hana" },
   },
   pending: { count: 2, drafts: [{ label: "Coffee", cents: 9000 }, { label: "Snacks", cents: null }] },
