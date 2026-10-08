@@ -146,6 +146,17 @@ export function createBot(token: string, deps: BotDeps): Bot {
     humor,
   } = deps;
 
+  // Error boundary, registered first. A failed Telegram call (say, a user who
+  // blocked the bot) must not fail the webhook: Telegram would retry that
+  // update forever. Logs a short line, never the context, which holds the token.
+  bot.use(async (_ctx, next) => {
+    try {
+      await next();
+    } catch (err) {
+      console.warn(`[bot] update failed:`, err instanceof Error ? err.message : err);
+    }
+  });
+
   /** Refresh the pinned button so it reflects the current suggestion count. */
   async function refreshPinned(
     api: Context["api"],

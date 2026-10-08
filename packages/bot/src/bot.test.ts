@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import {
   startGroupText,
   helpText,
@@ -89,5 +89,37 @@ describe("understandByRules", () => {
 
   it("treats a complaint with nothing to correct as chat", () => {
     expect(understandByRules("you crazy? jemaw what did i said", null)).toEqual({ intent: "chat" });
+  });
+});
+
+describe("createBot error boundary", () => {
+  it("swallows a failed reply so the webhook does not 500 and Telegram stops retrying", async () => {
+    const bot = createBot("123:abc", {
+      db: {} as never,
+      defaultCurrency: "EUR",
+      miniAppUrl: undefined,
+      botUsername: undefined,
+      miniAppShortName: undefined,
+      scanLimiter: { tryAcquire: () => true } as never,
+    });
+    bot.botInfo = { id: 1, is_bot: true, first_name: "Jemaw", username: "jemawsbot" } as never;
+    bot.api.config.use(async () => ({ ok: false, error_code: 403, description: "Forbidden: bot was blocked by the user" }) as never);
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    await expect(
+      bot.handleUpdate({
+        update_id: 1,
+        message: {
+          message_id: 1,
+          date: 0,
+          chat: { id: 42, type: "private", first_name: "A" },
+          from: { id: 42, is_bot: false, first_name: "A" },
+          text: "/help",
+          entities: [{ offset: 0, length: 5, type: "bot_command" }],
+        },
+      }),
+    ).resolves.toBeUndefined();
+    expect(warn.mock.calls[0]?.join(" ")).toContain("bot was blocked by the user");
+    expect(warn.mock.calls[0]?.join(" ")).not.toContain("123:abc");
+    warn.mockRestore();
   });
 });
