@@ -14,6 +14,9 @@ import {
   type PublicSafeFactPacket,
 } from "@jemaw/shared/humor";
 import type { ScanClient } from "../geminiClient.js";
+import type { LoadingHandle } from "../../telegram/loading.js";
+import { cleanReplyPunctuation } from "./punctuation.js";
+import { buildLedgerSnapshot, ledgerHighlights } from "../ledger/snapshot.js";
 import {
   buildDirectChatPacket,
   buildScanOutcomePacket,
@@ -65,21 +68,23 @@ export async function maybeDeliverScanHumor(input: {
   directInvocation: boolean;
   currency: string;
   humor: HumorRuntime;
-}): Promise<void> {
+  /** Placeholder to edit into the reply instead of sending a new message. */
+  loading?: LoadingHandle;
+}): Promise<boolean> {
   const started = Date.now();
   const settingsRaw = input.group.settings as Record<string, unknown> | null;
   const settings = parseHumorSettings(settingsRaw?.humor);
 
   if (settings.mode === "off") {
     console.log(`[humor] suppressed group=${input.group.id} reason=mode_off`);
-    return;
+    return false;
   }
 
   if (input.scanStatus !== "success" && input.scanStatus !== "no_messages") {
     console.log(
       `[humor] suppressed group=${input.group.id} reason=scan_status_${input.scanStatus}`,
     );
-    return;
+    return false;
   }
 
   const ctx = await loadHumorGroupContext({
@@ -121,7 +126,7 @@ export async function maybeDeliverScanHumor(input: {
     conversationFlow: flow,
   });
 
-  await composeAndSend({
+  return composeAndSend({
     started,
     db: input.db,
     api: input.api,
@@ -133,6 +138,7 @@ export async function maybeDeliverScanHumor(input: {
     styleSamples: ctx.styleSamples,
     humor: input.humor,
     prefetched: { publicRepliesToday, recentTexts },
+    loading: input.loading,
   });
 }
 
@@ -148,7 +154,11 @@ export async function maybeDeliverDirectChat(input: {
   userText: string;
   currency: string;
   humor: HumorRuntime;
-}): Promise<void> {
+  /** Telegram id of whoever addressed Jemaw, so the reply knows who it's talking to. */
+  askerTelegramId?: bigint | null;
+  /** Placeholder to edit into the reply instead of sending a new message. */
+  loading?: LoadingHandle;
+}): Promise<boolean> {
   const started = Date.now();
   const settingsRaw = input.group.settings as Record<string, unknown> | null;
   let settings = parseHumorSettings(settingsRaw?.humor);
@@ -157,7 +167,7 @@ export async function maybeDeliverDirectChat(input: {
     console.log(
       `[humor] chat suppressed group=${input.group.id} reason=mode_off`,
     );
-    return;
+    return false;
   }
 
   const utterance = sanitizeAddressedUtterance(input.userText);
@@ -165,7 +175,7 @@ export async function maybeDeliverDirectChat(input: {
     console.log(
       `[humor] chat suppressed group=${input.group.id} reason=empty_utterance`,
     );
-    return;
+    return false;
   }
 
   const ctx = await loadHumorGroupContext({
@@ -202,8 +212,17 @@ export async function maybeDeliverDirectChat(input: {
       riskClass: "green",
       latencyMs: Date.now() - started,
     });
-    return;
+    return false;
   }
+
+  const ledger = await buildLedgerSnapshot(
+    input.db,
+    input.group,
+    input.askerTelegramId ?? null,
+  ).catch((err) => {
+    console.warn(`[humor] ledger snapshot failed:`, err instanceof Error ? err.message : err);
+    return null;
+  });
 
   const dayStart = new Date();
   dayStart.setUTCHours(0, 0, 0, 0);
@@ -263,13 +282,15 @@ export async function maybeDeliverDirectChat(input: {
     addressedUtterance: utterance,
     conversationFlow: flow,
     threadTurns,
+    addressedBy: ledger?.asker?.name,
+    ledger: ledger && settings.ledgerBanter ? ledgerHighlights(ledger) : undefined,
   });
 
   console.log(
     `[humor] chat_flow group=${input.group.id} phase=${flow.phase} money=${flow.money_mention} pokes_1h=${flow.poke_count_1h} thread=${threadTurns.length} sulk_after=${flow.will_sulk_after === true}`,
   );
 
-  await composeAndSend({
+  return composeAndSend({
     started,
     db: input.db,
     api: input.api,
@@ -283,6 +304,7 @@ export async function maybeDeliverDirectChat(input: {
     prefetched: { publicRepliesToday, recentTexts },
     applySulkIfHardNudge: true,
     pendingCountForSulk: ctx.pendingCount,
+    loading: input.loading,
   });
 }
 
@@ -301,7 +323,8 @@ async function composeAndSend(input: {
   /** After hard_nudge send, arm chat sulk so threats have teeth. */
   applySulkIfHardNudge?: boolean;
   pendingCountForSulk?: number;
-}): Promise<void> {
+  loading?: LoadingHandle;
+}): Promise<boolean> {
   const dayStart = new Date();
   dayStart.setUTCHours(0, 0, 0, 0);
   const [publicRepliesToday, lastAt, recentTexts] = await Promise.all([
@@ -344,16 +367,17 @@ async function composeAndSend(input: {
       riskClass: input.packet.risk,
       latencyMs: Date.now() - input.started,
     });
-    return;
+    return false;
   }
 
+  const text = cleanReplyPunctuation(composed.text);
   try {
-    const sent = await input.api.sendMessage(
-      Number(input.group.telegramChatId),
-      composed.text,
-    );
+    const messageId = input.loading
+      ? await input.loading.finish(text)
+      : (await input.api.sendMessage(Number(input.group.telegramChatId), text)).message_id;
+    if (messageId == null) throw new Error("send_failed");
     console.log(
-      `[humor] sent group=${input.group.id} source=${composed.source} event=${input.packet.event} text_len=${composed.text.length}`,
+      `[humor] sent group=${input.group.id} source=${composed.source} event=${input.packet.event} text_len=${text.length}`,
     );
     await insertBotReply(input.db, {
       groupId: input.group.id,
@@ -367,10 +391,10 @@ async function composeAndSend(input: {
       factPacketRedacted: input.packet,
       factHash: hashPacket(input.packet),
       candidateTexts: composed.candidates,
-      selectedText: composed.text,
+      selectedText: text,
       selectedStyle: composed.style,
       riskClass: input.packet.risk,
-      telegramMessageId: BigInt(sent.message_id),
+      telegramMessageId: BigInt(messageId),
       latencyMs: Date.now() - input.started,
       inputTokens: composed.inputTokens ?? null,
       outputTokens: composed.outputTokens ?? null,
@@ -392,6 +416,7 @@ async function composeAndSend(input: {
         `[humor] chat_sulk armed group=${input.group.id} minutes=${CHAT_SULK_MINUTES} pending=${input.pendingCountForSulk}`,
       );
     }
+    return true;
   } catch (err) {
     console.error(
       `[humor] send failed group=${input.group.id}:`,
@@ -404,11 +429,12 @@ async function composeAndSend(input: {
       decision: "failed",
       suppressionReason:
         err instanceof Error ? err.message.slice(0, 200) : "send_failed",
-      selectedText: composed.text,
+      selectedText: text,
       factPacketRedacted: input.packet,
       factHash: hashPacket(input.packet),
       latencyMs: Date.now() - input.started,
     });
+    return false;
   }
 }
 
@@ -478,7 +504,13 @@ async function loadHumorGroupContext(input: {
 
   const allowedTargetNames: string[] = [];
   const allowedTargetMemberIds: string[] = [];
-  if (
+  if (input.settings.ledgerBanter) {
+    // Ledger banter names everyone; the group switch is the only gate.
+    for (const m of members.filter((x) => x.isActive)) {
+      allowedTargetNames.push(m.displayName);
+      allowedTargetMemberIds.push(m.id);
+    }
+  } else if (
     input.settings.memberTargeting === "consenting_members" &&
     (input.settings.mode === "roast" || input.settings.mode === "chaos")
   ) {

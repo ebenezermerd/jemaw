@@ -63,6 +63,8 @@ export function verifyCandidate(
       "anyone",
       "today",
       "again",
+      "birr",
+      "telebirr",
     ]);
     const labelBlob = [
       ...(packet.public_facts.draft_labels ?? []),

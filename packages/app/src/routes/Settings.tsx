@@ -145,6 +145,19 @@ export function Settings() {
                 ]}
               />
             </Row>
+            <Row label="Ledger roasts">
+              <Segmented
+                value={humor.ledgerBanter !== false ? "on" : "off"}
+                onChange={async (v) => {
+                  await updateHumor.mutateAsync({ ledgerBanter: v === "on" });
+                  await humorQ.refetch();
+                }}
+                options={[
+                  { value: "on", label: "On" },
+                  { value: "off", label: "Off" },
+                ]}
+              />
+            </Row>
             <Row label="Group vibe">
               <Segmented
                 value={humor.useGroupVibe !== false ? "on" : "off"}

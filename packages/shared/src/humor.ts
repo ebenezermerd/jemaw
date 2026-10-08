@@ -37,6 +37,8 @@ export type HumorSettingsV1 = {
   useGroupVibe: boolean;
   /** Apply feedback-learned style weights (Phase 4). */
   usePreferenceLearning: boolean;
+  /** Let Jemaw brag about and roast members using real ledger numbers. */
+  ledgerBanter: boolean;
   enabledByMemberId?: string;
   enabledAt?: string;
   mutedUntil?: string;
@@ -107,6 +109,7 @@ export type HumorTriggerEvent =
   | "batch_confirmed"
   | "correction"
   | "direct_mention"
+  | "ledger_question"
   | "weekly_digest";
 
 export type HumorChannel = "group" | "dm" | "ephemeral" | "mini_app";
@@ -182,6 +185,23 @@ export type PublicSafeFactPacket = {
    * Sanitized short lines only — not full chat dump.
    */
   thread_turns?: ConversationThreadTurn[];
+  /** Display name of the member who addressed Jemaw, when known. */
+  addressed_by?: string;
+  /** Real ledger figures Jemaw may brag or roast with (ledgerBanter on). */
+  ledger_highlights?: LedgerHighlights;
+};
+
+export type LedgerHighlightAmount = { name: string; amount: string };
+
+/** Amounts are plain decimals without separators, e.g. "900" or "12.50". */
+export type LedgerHighlights = {
+  currency: string;
+  asker_owes?: LedgerHighlightAmount[];
+  asker_owed_by?: LedgerHighlightAmount[];
+  top_spender_this_month?: LedgerHighlightAmount;
+  biggest_debtor?: LedgerHighlightAmount;
+  top_creditor?: LedgerHighlightAmount;
+  spent_this_week?: string;
 };
 
 /** One turn in the recent jemaw conversation thread. */
@@ -260,6 +280,7 @@ export const DEFAULT_HUMOR_SETTINGS: HumorSettingsV1 = {
   useModelComposer: true,
   useGroupVibe: true,
   usePreferenceLearning: true,
+  ledgerBanter: true,
 };
 
 export const DEFAULT_MEMBER_HUMOR_PREFS: HumorMemberPrefsV1 = {
@@ -316,6 +337,7 @@ export function toHumorSettingsDto(s: HumorSettingsV1) {
     useModelComposer: s.useModelComposer,
     useGroupVibe: s.useGroupVibe,
     usePreferenceLearning: s.usePreferenceLearning,
+    ledgerBanter: s.ledgerBanter,
     callbacks: s.callbacks,
     publicFinancialRoasting: s.publicFinancialRoasting,
     hardshipHumor: s.hardshipHumor,
