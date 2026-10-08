@@ -12,6 +12,7 @@ function row(over: Partial<AdminUserRow>): AdminUserRow {
     groupCount: 2,
     isActive: true,
     lastActiveAt: null,
+    joinedAt: new Date(NOW - 60 * 24 * 60 * 60 * 1000),
     ...over,
   };
 }
@@ -23,8 +24,12 @@ describe("deriveUserStatus", () => {
     );
   });
 
-  it("new when active but never recorded activity", () => {
-    expect(deriveUserStatus(row({ lastActiveAt: null }), NOW)).toBe("new");
+  it("new when they joined lately and have no activity yet", () => {
+    expect(deriveUserStatus(row({ lastActiveAt: null, joinedAt: new Date(NOW - 86_400_000) }), NOW)).toBe("new");
+  });
+
+  it("idle, not new, when they joined long ago and never did anything", () => {
+    expect(deriveUserStatus(row({ lastActiveAt: null }), NOW)).toBe("idle");
   });
 
   it("active when recently active", () => {
@@ -44,5 +49,10 @@ describe("toUserDto", () => {
     expect(dto.telegramUserId).toBe("99999999999");
     expect(dto.lastActiveAt).toBe(new Date(NOW).toISOString());
     expect(dto.status).toBe("active");
+    expect(dto.isManual).toBe(false);
+  });
+
+  it("flags manual members, who have negative synthetic ids", () => {
+    expect(toUserDto(row({ telegramUserId: -814490836n }), NOW).isManual).toBe(true);
   });
 });

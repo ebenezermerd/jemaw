@@ -5,18 +5,14 @@
 import {
   centsToDecimal,
   type AdminUserDto,
-  type AdminGroupDto,
   type AdminAuditEntryDto,
   type AnnouncementDto,
   type AdminTopGroupDto,
-  type AdminExpenseDto,
 } from "@jemaw/shared/types";
 import type { AdminAuditLog, Announcement } from "@jemaw/shared/schema";
 import type {
   AdminUserRow,
-  AdminGroupRow,
   TopGroupRow,
-  AdminExpenseRow,
 } from "./repo.js";
 
 const IDLE_AFTER_DAYS = 14;
@@ -27,10 +23,10 @@ export function deriveUserStatus(
   now: number,
 ): AdminUserDto["status"] {
   if (!row.isActive) return "suspended";
-  if (!row.lastActiveAt) return "new";
-  const ageDays = (now - row.lastActiveAt.getTime()) / (24 * 60 * 60 * 1000);
-  if (ageDays <= NEW_WITHIN_DAYS) return "active";
-  if (ageDays <= IDLE_AFTER_DAYS) return "active";
+  const days = (t: Date) => (now - t.getTime()) / (24 * 60 * 60 * 1000);
+  if (row.lastActiveAt && days(row.lastActiveAt) <= IDLE_AFTER_DAYS) return "active";
+  // Joined lately and not active yet: new. Otherwise they have gone quiet.
+  if (days(row.joinedAt) <= NEW_WITHIN_DAYS) return "new";
   return "idle";
 }
 
@@ -43,37 +39,12 @@ export function toUserDto(row: AdminUserRow, now: number): AdminUserDto {
     isActive: row.isActive,
     lastActiveAt: row.lastActiveAt ? row.lastActiveAt.toISOString() : null,
     status: deriveUserStatus(row, now),
-  };
-}
-
-export function toGroupDto(row: AdminGroupRow): AdminGroupDto {
-  return {
-    id: row.id,
-    name: row.name,
-    defaultCurrency: row.defaultCurrency,
-    memberCount: row.memberCount,
-    volume: centsToDecimal(row.volumeCents),
-    createdAt: row.createdAt.toISOString(),
+    isManual: row.telegramUserId < 0n,
   };
 }
 
 export function toTopGroupDto(row: TopGroupRow): AdminTopGroupDto {
   return { id: row.id, name: row.name, volume: centsToDecimal(row.volumeCents) };
-}
-
-export function toExpenseDto(row: AdminExpenseRow): AdminExpenseDto {
-  return {
-    id: row.id,
-    description: row.description,
-    amount: centsToDecimal(row.amountCents),
-    currency: row.currency,
-    kind: row.kind,
-    source: row.source,
-    groupName: row.groupName,
-    payerName: row.payerName,
-    occurredAt: row.occurredAt.toISOString(),
-    voided: row.voided,
-  };
 }
 
 export function toAuditDto(row: AdminAuditLog): AdminAuditEntryDto {

@@ -13,7 +13,9 @@ import type {
   AdminOverviewDto,
   AdminUserDto,
   AdminGroupDto,
-  AdminExpenseDto,
+  AdminGroupDetailDto,
+  AdminExpensePageDto,
+  AdminUserDetailDto,
   AdminAuditEntryDto,
   AnnouncementDto,
   AppConfigDto,
@@ -21,8 +23,6 @@ import type {
 import {
   listUsers,
   setUserActive,
-  listGroupsWithStats,
-  listRecentExpenses,
   listAudit,
   writeAudit,
   listAnnouncements,
@@ -37,13 +37,21 @@ import {
   recentActivity,
   topGroupsByVolume,
 } from "./repo.js";
+import { groups, members } from "@jemaw/shared/schema";
+import { eq } from "drizzle-orm";
+import {
+  groupDetail,
+  groupSummary,
+  listExpensePage,
+  loadGroupLedger,
+  membershipOf,
+  type GroupLedger,
+} from "./ledger.js";
 import {
   toUserDto,
-  toGroupDto,
   toTopGroupDto,
   toAuditDto,
   toAnnouncementDto,
-  toExpenseDto,
 } from "./mappers.js";
 
 export interface ApiDeps {
@@ -156,6 +164,26 @@ export async function registerApi(
     return res;
   });
 
+  app.get("/api/admin/users/:telegramId", { preHandler: auth }, async (req, reply) => {
+    const { telegramId } = req.params as { telegramId: string };
+    if (!/^-?\d+$/.test(telegramId)) return reply.code(404).send({ error: "user not found" });
+    const user = (await listUsers(db)).find((u) => u.telegramUserId === BigInt(telegramId));
+    if (!user) return reply.code(404).send({ error: "user not found" });
+    const rows = await db.select().from(members).where(eq(members.telegramUserId, BigInt(telegramId)));
+    const memberships = [];
+    for (const m of rows) {
+      const ledger = await loadGroupLedger(db, m.groupId);
+      if (ledger) memberships.push(membershipOf(ledger, m));
+    }
+    const recent = await listExpensePage(db, { memberIds: rows.map((m) => m.id), limit: 30, offset: 0 });
+    const res: AdminUserDetailDto = {
+      user: toUserDto(user, now()),
+      memberships: memberships.sort((a, b) => Number(b.isActive) - Number(a.isActive)),
+      recentExpenses: recent.items,
+    };
+    return res;
+  });
+
   app.post(
     "/api/admin/users/:telegramId/suspend",
     { preHandler: auth },
@@ -196,16 +224,36 @@ export async function registerApi(
 
   // ─── groups ────────────────────────────────────────────────────────
   app.get("/api/admin/groups", { preHandler: auth }, async () => {
-    const rows = await listGroupsWithStats(db);
-    const res: AdminGroupDto[] = rows.map(toGroupDto);
+    const rows = await db.select({ id: groups.id }).from(groups);
+    const ledgers = (await Promise.all(rows.map((g) => loadGroupLedger(db, g.id)))).filter(
+      (l): l is GroupLedger => l !== null,
+    );
+    const res: AdminGroupDto[] = ledgers
+      .map(groupSummary)
+      .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
     return res;
   });
 
-  // ─── expenses (cross-group feed) ───────────────────────────────────
-  app.get("/api/admin/expenses", { preHandler: auth }, async (req) => {
-    const { limit } = req.query as { limit?: string };
-    const rows = await listRecentExpenses(db, Math.min(Number(limit ?? 100), 300));
-    const res: AdminExpenseDto[] = rows.map(toExpenseDto);
+  app.get("/api/admin/groups/:groupId", { preHandler: auth }, async (req, reply) => {
+    const { groupId } = req.params as { groupId: string };
+    if (!UUID_RE.test(groupId)) return reply.code(404).send({ error: "group not found" });
+    const ledger = await loadGroupLedger(db, groupId);
+    if (!ledger) return reply.code(404).send({ error: "group not found" });
+    const res: AdminGroupDetailDto = groupDetail(ledger);
+    return res;
+  });
+
+  // ─── expenses (cross-group feed, or one group's) ────────────────────
+  app.get("/api/admin/expenses", { preHandler: auth }, async (req, reply) => {
+    const q = req.query as { limit?: string; offset?: string; groupId?: string; kind?: string; q?: string };
+    if (q.groupId && !UUID_RE.test(q.groupId)) return reply.code(400).send({ error: "bad groupId" });
+    const res: AdminExpensePageDto = await listExpensePage(db, {
+      groupId: q.groupId,
+      kind: q.kind === "expense" || q.kind === "loan" ? q.kind : undefined,
+      search: q.q?.trim().slice(0, 100) || undefined,
+      limit: clampInt(q.limit, 50, 1, 200),
+      offset: clampInt(q.offset, 0, 0, 1_000_000),
+    });
     return res;
   });
 
@@ -287,4 +335,11 @@ export async function registerApi(
     });
     return { ok: true };
   });
+}
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+function clampInt(raw: string | undefined, fallback: number, min: number, max: number): number {
+  const n = Number(raw ?? fallback);
+  return Number.isFinite(n) ? Math.min(max, Math.max(min, Math.floor(n))) : fallback;
 }
