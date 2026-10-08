@@ -156,12 +156,10 @@ describe("renderLedgerFacts for the asker's own expenses", () => {
 });
 
 describe("leaderboard", () => {
-  it("ranks who carries the group and names who is owed and who owes the most", () => {
-    const html = renderLedgerFacts({ kind: "leaderboard", period: "all" }, snap, now);
-    expect(html).toContain("🥇 <b>Hana</b> fronted 5,000 ETB");
-    expect(html).toContain("🥈 <b>Abenezer</b> fronted 1,200 ETB");
-    expect(html).toContain("Owed the most: <b>Abenezer</b> (+1,200 ETB)");
-    expect(html).toContain("Owes the most: <b>Sami</b> (-750 ETB)");
+  it("says who fronted the most and who owes the most in one plain line", () => {
+    expect(renderLedgerFacts({ kind: "leaderboard", period: "all" }, snap, now)).toBe(
+      "Hana has fronted the most, 5,000 ETB. Sami owes the most, 750 ETB.",
+    );
   });
 
   it("says so when nobody owes anybody", () => {

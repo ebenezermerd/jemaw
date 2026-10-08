@@ -10,10 +10,12 @@ import type { LedgerQuery } from "../humor/intent.js";
 import { buildDirectChatPacket } from "../humor/factPacket.js";
 import { verifyCandidate } from "../humor/verifier.js";
 import { cleanReplyPunctuation } from "../humor/punctuation.js";
+import { groupDigits } from "../../telegram/announcements.js";
 import {
   ledgerHighlights,
   ledgerNames,
   ledgerNumberTokens,
+  formatCents,
   plainAmount,
   type LedgerSnapshot,
 } from "./snapshot.js";
@@ -33,6 +35,24 @@ const MODE_TONE: Record<Exclude<HumorMode, "off">, string> = {
   chaos: "dramatic and absurd, theatrical outrage and over-the-top praise",
 };
 
+/**
+ * "Who is the rich guy" gets no table: the reply itself is the answer, said
+ * the way a friend in the chat would say it.
+ */
+function bragPrompt(mode: Exclude<HumorMode, "off">): string {
+  return [
+    "You are Jemaw, the meddlesome spirit living in a friend group's shared expense ledger, chatting in the group.",
+    "ASKER asked who the rich or broke one is. There is no table or summary: your reply IS the whole answer, so it must read like a chat message, not a report.",
+    `Tone: ${MODE_TONE[mode]}.`,
+    "Crown FOCUS.rich_one as the rich one with how much they fronted, and call out FOCUS.broke_one with how much they owe when present. Never swap in ASKER for either role, though you may tease ASKER for asking.",
+    "Every reply should feel fresh: vary the opening, the metaphor and the order. Do not open with 'Oh' or with ASKER's name, and never say 'leaderboard'. No headings, no lists, no emojis beyond one.",
+    "It is spending, not real wealth, so keep it a joke. Friendly ribbing only: never cruel, never about poverty, worth, family or appearance.",
+    "Never use em dashes, en dashes or semicolons.",
+    "Only use names and numbers that appear in FACTS. Write numbers exactly as given, without thousands separators, followed by the currency.",
+    'Return JSON only: {"candidates":[{"text":"..."},{"text":"..."}]} with 2 candidates, each one or two sentences and at most 40 words.',
+  ].join(" ");
+}
+
 function systemPrompt(mode: Exclude<HumorMode, "off">): string {
   return [
     "You are Jemaw, the meddlesome spirit living in a friend group's shared expense ledger.",
@@ -40,7 +60,6 @@ function systemPrompt(mode: Exclude<HumorMode, "off">): string {
     `Tone: ${MODE_TONE[mode]}.`,
     "Talk to ASKER by name. React to FOCUS, the answer that was just shown, and pick ONE angle: brag about whoever carries the group or playfully guilt-trip whoever owes, including ASKER if they owe.",
     "Do not default to praising ASKER; aim at whoever FOCUS makes interesting. If everyone is square, joke about the peace or the spending instead.",
-    "For a leaderboard question, name FOCUS.rich_one as the group's rich one (they front the most money) and FOCUS.broke_one as the broke one when present, by name. Never swap in ASKER for either role. It is spending, not real wealth, so keep it a joke.",
     "Friendly ribbing only: never cruel, never about poverty, worth, family or appearance.",
     "Never use em dashes, en dashes or semicolons.",
     "Only use names and numbers that appear in FACTS. Write numbers exactly as given, without thousands separators. Do not restate the whole answer.",
@@ -79,11 +98,12 @@ export async function composeLedgerPersonaLine(input: {
   for (let attempt = 0; input.client && attempt < 2; attempt++) {
     try {
       const res = await input.client.suggest({
-        systemPrompt: systemPrompt(input.mode),
+        systemPrompt: input.query.kind === "leaderboard" ? bragPrompt(input.mode) : systemPrompt(input.mode),
         userPrompt: `FACTS:${JSON.stringify({
           asker: s.asker?.name ?? null,
           asker_net: s.asker ? plainAmount(s.asker.netCents) : null,
           asker_is: s.asker ? (s.asker.netCents < 0 ? "in_debt" : s.asker.netCents > 0 ? "owed_money" : "square") : null,
+          currency: s.currency,
           question: input.query.kind,
           focus: focusFor(input.query, s),
           ledger: highlights,
@@ -100,7 +120,7 @@ export async function composeLedgerPersonaLine(input: {
         const text = String(c?.text ?? "").trim();
         if (text && verifyCandidate(text, packet).ok) {
           return {
-            text: cleanReplyPunctuation(text),
+            text: groupNumbers(cleanReplyPunctuation(text)),
             source: "model",
             inputTokens: res.inputTokens,
             outputTokens: res.outputTokens,
@@ -182,27 +202,18 @@ function focusFor(query: LedgerQuery, s: LedgerSnapshot): Record<string, unknown
   }
 }
 
+/** The model writes 43140.66 so the verifier can match it; people read 43,140.66. */
+function groupNumbers(text: string): string {
+  return text.replace(/\b\d{4,}(?:\.\d+)?\b/g, (n) => groupDigits(n));
+}
+
 function pick<T>(list: T[], rng: () => number): T {
   return list[Math.floor(rng() * list.length)] ?? list[0]!;
 }
 
 function templateLine(s: LedgerSnapshot, query: LedgerQuery, rng: () => number): string {
   const asker = s.asker;
-  if (query.kind === "leaderboard") {
-    const rich = s.stats.paidByMember[0]?.name;
-    const broke = [...s.balances].sort((a, z) => a.netCents - z.netCents)[0];
-    const brokeName = broke && broke.netCents < 0 ? broke.name : null;
-    if (rich && brokeName) {
-      return pick(
-        [
-          `${rich} is clearly the group's sugar daddy. ${brokeName}, start saving.`,
-          `${rich} funds the group. ${brokeName} funds the group chat with excuses.`,
-        ],
-        rng,
-      );
-    }
-    if (rich) return `${rich} is the group's walking ATM. Respect the ATM.`;
-  }
+  if (query.kind === "leaderboard") return bragTemplate(s, rng);
   const top = s.stats.topSpenderMonth?.name;
   const debtor = [...s.balances].sort((a, b) => a.netCents - b.netCents)[0];
   if (asker && asker.netCents < 0) {
@@ -237,6 +248,35 @@ function templateLine(s: LedgerSnapshot, query: LedgerQuery, rng: () => number):
   }
   return pick(
     ["Spotless books. Suspiciously spotless.", "Everyone's square. I've never been so bored."],
+    rng,
+  );
+}
+
+/** The fallback answer to "who is the rich one", in the same chat voice. */
+function bragTemplate(s: LedgerSnapshot, rng: () => number): string {
+  const richest = s.stats.paidByMember[0];
+  if (!richest) return "Nobody has paid for anything yet, so you're all equally broke. Beautiful.";
+  const rich = richest.name;
+  const fronted = `${formatCents(richest.cents)} ${s.currency}`;
+  const worst = [...s.balances].sort((a, z) => a.netCents - z.netCents)[0];
+  if (!worst || worst.netCents >= 0) {
+    return pick(
+      [
+        `${rich}, obviously. ${fronted} fronted and the books are still square. Disgustingly responsible.`,
+        `That would be ${rich} with ${fronted} paid. Nobody owes anybody, so I have nobody to roast. Tragic.`,
+      ],
+      rng,
+    );
+  }
+  const broke = worst.name;
+  const owes = `${formatCents(-worst.netCents)} ${s.currency}`;
+  return pick(
+    [
+      `${rich} is clearly the group's sugar daddy with ${fronted} fronted. ${broke}, ${owes} in the hole, start saving.`,
+      `${rich} funds the group, ${fronted} and counting. ${broke} funds the chat with excuses and owes ${owes}.`,
+      `Rich one? ${rich}, ${fronted} paid out like it's nothing. Broke one? ${broke}, still sitting on ${owes} of everyone's money.`,
+      `${rich} has fronted ${fronted}, basically the group's walking ATM. ${broke} is the one tapping the card with ${owes} owed.`,
+    ],
     rng,
   );
 }
