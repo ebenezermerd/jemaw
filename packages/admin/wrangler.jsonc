@@ -1,0 +1,9 @@
+// Admin console on Cloudflare Workers static assets (free). Deploy: scripts/cloudflare-deploy-admin.sh
+{
+  "name": "jemaw-admin",
+  "compatibility_date": "2026-09-01",
+  "assets": {
+    "directory": "./dist",
+    "not_found_handling": "single-page-application"
+  }
+}
