@@ -25,6 +25,8 @@ export function renderLedgerFacts(
   switch (q.kind) {
     case "whoami":
       return whoAmI(s);
+    case "leaderboard":
+      return leaderboard(s);
     case "my_balance":
       return myBalance(s);
     case "who_owes":
@@ -42,6 +44,27 @@ export function renderLedgerFacts(
 
 const NOT_FOUND =
   "I can't find you on the books yet. Say something in the group or open the app once, then ask again.";
+
+const MEDALS = ["🥇", "🥈", "🥉"];
+
+/** "Who's the rich one": a ranking read from spending, not real wealth. */
+function leaderboard(s: LedgerSnapshot): string {
+  const lines = [`<b>Who carries this group</b>`];
+  if (s.stats.paidByMember.length === 0) lines.push("Nobody has fronted anything yet.");
+  s.stats.paidByMember.slice(0, 3).forEach((p, i) => {
+    lines.push(`${MEDALS[i]} ${b(p.name)} fronted ${money(s, p.cents)}`);
+  });
+  const owed = s.balances.find((x) => x.netCents > 0);
+  const owing = [...s.balances].sort((a, z) => a.netCents - z.netCents)[0];
+  if (!owed && !(owing && owing.netCents < 0)) {
+    lines.push("", "Nobody owes anybody right now.");
+    return lines.join("\n");
+  }
+  lines.push("");
+  if (owed) lines.push(`💰 Owed the most: ${b(owed.name)} (+${money(s, owed.netCents)})`);
+  if (owing && owing.netCents < 0) lines.push(`🪫 Owes the most: ${b(owing.name)} (${money(s, owing.netCents)})`);
+  return lines.join("\n");
+}
 
 function whoAmI(s: LedgerSnapshot): string {
   if (!s.asker) return NOT_FOUND;

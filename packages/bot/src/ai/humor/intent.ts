@@ -11,6 +11,7 @@ export type JemawIntent = "scan" | "chat" | "ledger" | "correction";
 
 export type LedgerQuestionKind =
   | "whoami"
+  | "leaderboard"
   | "my_balance"
   | "who_owes"
   | "expense_list"
@@ -35,6 +36,9 @@ export interface LedgerQuery {
 /** Owe words, forgiving the common "own" typo. */
 const OWE_RE = /\b(owe|owes|owed|owing|own|debts?|balances?)\b/i;
 const WHOAMI_RE = /\bwho\s+am\s+i\b/i;
+/** Who is rich, broke, cheap: a ranking read from spending, not real wealth. */
+const LEADERBOARD_RE =
+  /\b(rich|richest|baller|broke|brokest|poor|cheap|cheapest|stingy|generous|freeloader|sugar\s*daddy|(biggest|big|top)\s+spender|who\s+pays?\s+(the\s+)?most|who\s+owes\s+(the\s+)?most|leaderboard|ranking)\b/i;
 const COMPLAINT_RE =
   /\b(wrong|mixed|incorrect|mistake|confus\w*|not\s+what|i\s+said|i\s+asked|what\s+did\s+i\s+say|what\s+did\s+i\s+said|you\s+crazy|are\s+you\s+crazy|that'?s\s+not)\b/i;
 
@@ -42,7 +46,7 @@ const EXPLICIT_SCAN_RE =
   /\b(scan|check|refresh|update|find|search|catch\s*up|look\s*(into|for)|any\s+new\s+(expenses?|drafts?)|any\s+(expenses?|drafts?))\b/i;
 
 const LEDGER_TOPIC_RE =
-  /\b(owe|owes|owed|owing|own|latest|recent|balances?|debts?|pending|drafts?|waiting|expenses?|spent|spend|spending|total|totals|stats|summary|ledger|books?|settle|paid|history|list|biggest|most)\b/i;
+  /\b(rich|richest|baller|broke|poor|cheap|cheapest|stingy|generous|freeloader|spender|leaderboard|owe|owes|owed|owing|own|latest|recent|balances?|debts?|pending|drafts?|waiting|expenses?|spent|spend|spending|total|totals|stats|summary|ledger|books?|settle|paid|history|list|biggest|most)\b/i;
 
 const QUESTION_START_RE =
   /^(are|is|am|do|does|did|can|could|will|what|what'?s|why|when|who|whom|whose|where|how|which|list|show|tell|give|summari[sz]e|any)\b/i;
@@ -126,6 +130,7 @@ export function chatLoadingTopic(text: string): "greeting" | "checkin" | "chat" 
 export function classifyLedgerQuestion(text: string): LedgerQuestionKind {
   const t = stripJemawToken(text).toLowerCase();
   if (WHOAMI_RE.test(t)) return "whoami";
+  if (LEADERBOARD_RE.test(t)) return "leaderboard";
   if (/\b(pending|drafts?|waiting|unconfirmed|review)\b/.test(t)) return "pending";
   if (/\b(hasn'?t\s+paid|not\s+paid|unpaid|settle)\b/.test(t)) return "who_owes";
   if (OWE_RE.test(t)) {

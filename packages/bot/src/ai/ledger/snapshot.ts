@@ -54,6 +54,8 @@ export interface LedgerSnapshot {
     expenseCount: number;
     topSpenderMonth: NamedAmount | null;
     topSpenderAllTime: NamedAmount | null;
+    /** Everyone who fronted expenses (not loans), all time, largest first. */
+    paidByMember: NamedAmount[];
     biggest: { description: string; cents: number; payer: string } | null;
   };
   pending: { count: number; drafts: { label: string; cents: number | null }[] };
@@ -117,16 +119,18 @@ export function computeLedgerSnapshot(i: LedgerSnapshotInput): LedgerSnapshot {
       .filter((e) => e.expense.occurredAt.getTime() >= since)
       .reduce((acc, e) => acc + decimalToCents(e.expense.amount), 0);
 
-  const topPayerSince = (since: number) => {
+  const paidSince = (since: number): NamedAmount[] => {
     const paid = new Map<string, number>();
     for (const e of spending) {
       if (e.expense.occurredAt.getTime() < since) continue;
       const id = e.expense.payerMemberId;
       paid.set(id, (paid.get(id) ?? 0) + decimalToCents(e.expense.amount));
     }
-    const top = [...paid.entries()].sort((a, b) => b[1] - a[1])[0];
-    return top ? { name: nameOf(top[0]), cents: top[1] } : null;
+    return [...paid.entries()]
+      .sort((a, b) => b[1] - a[1])
+      .map(([id, cents]) => ({ name: nameOf(id), cents }));
   };
+  const topPayerSince = (since: number) => paidSince(since)[0] ?? null;
   const biggest = [...spending].sort(
     (a, b) => decimalToCents(b.expense.amount) - decimalToCents(a.expense.amount),
   )[0];
@@ -155,6 +159,7 @@ export function computeLedgerSnapshot(i: LedgerSnapshotInput): LedgerSnapshot {
       expenseCount: spending.length,
       topSpenderMonth: topPayerSince(monthStart),
       topSpenderAllTime: topPayerSince(0),
+      paidByMember: paidSince(0),
       biggest: biggest
         ? {
             description: biggest.expense.description,
@@ -212,6 +217,7 @@ export function ledgerNumberTokens(s: LedgerSnapshot): string[] {
     s.stats.allTimeCents,
     ...(s.stats.topSpenderMonth ? [s.stats.topSpenderMonth.cents] : []),
     ...(s.stats.topSpenderAllTime ? [s.stats.topSpenderAllTime.cents] : []),
+    ...s.stats.paidByMember.map((p) => p.cents),
     ...(s.stats.biggest ? [s.stats.biggest.cents] : []),
     ...s.pending.drafts.flatMap((d) => (d.cents == null ? [] : [d.cents])),
   ];

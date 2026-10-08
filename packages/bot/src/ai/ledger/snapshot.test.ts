@@ -176,3 +176,15 @@ describe("ledgerHighlights", () => {
     expect(ledgerHighlights(snap)).toEqual({ currency: "ETB", spent_this_week: "0" });
   });
 });
+
+describe("paidByMember", () => {
+  it("ranks members by what they fronted, never counting loans", () => {
+    const snap = computeLedgerSnapshot({ ...base, askerTelegramId: null });
+    expect(snap.stats.paidByMember).toEqual([
+      { name: "Hana", cents: 500000 },
+      { name: "Abenezer", cents: 120000 },
+      { name: "Sami", cents: 30000 },
+    ]);
+    expect(ledgerNumberTokens(snap)).toEqual(expect.arrayContaining(["5000", "1200", "300"]));
+  });
+});

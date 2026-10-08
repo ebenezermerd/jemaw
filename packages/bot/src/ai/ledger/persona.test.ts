@@ -22,6 +22,7 @@ const snap: LedgerSnapshot = {
     expenseCount: 1,
     topSpenderMonth: { name: "Abenezer", cents: 120000 },
     topSpenderAllTime: { name: "Abenezer", cents: 120000 },
+    paidByMember: [{ name: "Abenezer", cents: 120000 }],
     biggest: null,
   },
   pending: { count: 0, drafts: [] },
@@ -116,10 +117,12 @@ describe("composeLedgerPersonaLine", () => {
 
   it("retries once when the model call fails", async () => {
     let calls = 0;
+    const temps: (number | undefined)[] = [];
     const r = await composeLedgerPersonaLine({
       client: {
-        async suggest() {
+        async suggest(i) {
           calls++;
+          temps.push(i.temperature);
           if (calls === 1) throw new Error("400 Failed to validate JSON");
           return { json: { candidates: [{ text: "Sami, Abenezer is still waiting on 900." }] } };
         },
@@ -129,6 +132,33 @@ describe("composeLedgerPersonaLine", () => {
       query: { kind: "my_balance", period: "all" },
     });
     expect(calls).toBe(2);
+    expect(temps).toEqual([0.8, 0.4]);
     expect(r.source).toBe("model");
+  });
+
+  it("crowns the rich one and points at the broke one for leaderboard questions", async () => {
+    let prompt = "";
+    await composeLedgerPersonaLine({
+      client: { async suggest(i) { prompt = i.userPrompt; return { json: { candidates: [] } }; } },
+      mode: "roast",
+      snapshot: snap,
+      query: { kind: "leaderboard", period: "all" },
+    });
+    const facts = JSON.parse(prompt.replace(/^FACTS:/, ""));
+    expect(facts.focus).toEqual({
+      rich_one: { name: "Abenezer", fronted: "1200" },
+      broke_one: { name: "Sami", owes: "900" },
+      owed_most: { name: "Abenezer", amount: "1200" },
+    });
+  });
+
+  it("falls back to a leaderboard roast template that names both", async () => {
+    const r = await composeLedgerPersonaLine({
+      mode: "roast",
+      snapshot: snap,
+      query: { kind: "leaderboard", period: "all" },
+      rng: () => 0,
+    });
+    expect(r).toEqual({ text: "Abenezer is clearly the group's sugar daddy. Sami, start saving.", source: "template" });
   });
 });

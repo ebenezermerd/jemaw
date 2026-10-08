@@ -159,3 +159,13 @@ describe("textMentionsMoney", () => {
     expect(textMentionsMoney("Yo I'm here")).toBe(false);
   });
 });
+
+describe("money words in banter", () => {
+  it("counts rich and broke talk as money talk", async () => {
+    const { userAsksAboutMoney } = await import("./conversationFlow.js");
+    expect(userAsksAboutMoney("who is the rich guy here?")).toBe(true);
+    expect(userAsksAboutMoney("Gemechis is broke lol")).toBe(true);
+    expect(userAsksAboutMoney("such a cheap guy")).toBe(true);
+    expect(userAsksAboutMoney("hello there")).toBe(false);
+  });
+});

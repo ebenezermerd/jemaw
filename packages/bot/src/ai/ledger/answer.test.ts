@@ -51,6 +51,10 @@ const snap: LedgerSnapshot = {
     expenseCount: 2,
     topSpenderMonth: { name: "Abenezer", cents: 120000 },
     topSpenderAllTime: { name: "Abenezer", cents: 120000 },
+    paidByMember: [
+      { name: "Hana", cents: 500000 },
+      { name: "Abenezer", cents: 120000 },
+    ],
     biggest: { description: "Old trip", cents: 500000, payer: "Hana" },
   },
   pending: { count: 2, drafts: [{ label: "Coffee", cents: 9000 }, { label: "Snacks", cents: null }] },
@@ -148,5 +152,22 @@ describe("renderLedgerFacts for the asker's own expenses", () => {
   it("totals what the asker paid", () => {
     const html = renderLedgerFacts({ kind: "totals", period: "all", mine: "paid" }, mine, now);
     expect(html).toContain("You paid <b>2,650 ETB</b> so far across 2 expenses.");
+  });
+});
+
+describe("leaderboard", () => {
+  it("ranks who carries the group and names who is owed and who owes the most", () => {
+    const html = renderLedgerFacts({ kind: "leaderboard", period: "all" }, snap, now);
+    expect(html).toContain("🥇 <b>Hana</b> fronted 5,000 ETB");
+    expect(html).toContain("🥈 <b>Abenezer</b> fronted 1,200 ETB");
+    expect(html).toContain("Owed the most: <b>Abenezer</b> (+1,200 ETB)");
+    expect(html).toContain("Owes the most: <b>Sami</b> (-750 ETB)");
+  });
+
+  it("says so when nobody owes anybody", () => {
+    const calm = { ...snap, balances: snap.balances.map((b) => ({ ...b, netCents: 0 })) };
+    expect(renderLedgerFacts({ kind: "leaderboard", period: "all" }, calm, now)).toContain(
+      "Nobody owes anybody right now.",
+    );
   });
 });

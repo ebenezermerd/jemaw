@@ -159,7 +159,7 @@ export function moneyMentionStreak(
 }
 
 export function userAsksAboutMoney(text: string): boolean {
-  return /\b(owe|owes|balance|pending|draft|expense|pay|paid|settle|how\s+much|what'?s\s+left|queue|backlog|lunch|dinner)\b/i.test(
+  return /\b(owe|owes|balance|pending|draft|expense|pay|paid|settle|how\s+much|what'?s\s+left|queue|backlog|lunch|dinner|rich|richest|broke|poor|cheap|stingy|generous|spender|baller|freeloader|money|wallet|birr)\b/i.test(
     text,
   );
 }

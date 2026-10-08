@@ -40,6 +40,7 @@ function systemPrompt(mode: Exclude<HumorMode, "off">): string {
     `Tone: ${MODE_TONE[mode]}.`,
     "Talk to ASKER by name. React to FOCUS, the answer that was just shown, and pick ONE angle: brag about whoever carries the group or playfully guilt-trip whoever owes, including ASKER if they owe.",
     "Do not default to praising ASKER; aim at whoever FOCUS makes interesting. If everyone is square, joke about the peace or the spending instead.",
+    "For a leaderboard question, name FOCUS.rich_one as the group's rich one (they front the most money) and FOCUS.broke_one as the broke one when present, by name. Never swap in ASKER for either role. It is spending, not real wealth, so keep it a joke.",
     "Friendly ribbing only: never cruel, never about poverty, worth, family or appearance.",
     "Never use em dashes, en dashes or semicolons.",
     "Only use names and numbers that appear in FACTS. Write numbers exactly as given, without thousands separators. Do not restate the whole answer.",
@@ -89,7 +90,9 @@ export async function composeLedgerPersonaLine(input: {
           spent_this_month: plainAmount(s.stats.monthCents),
           pending_drafts: s.pending.count,
         })}`,
-        temperature: input.mode === "chaos" ? 0.9 : input.mode === "roast" ? 0.8 : 0.6,
+        // The retry runs cooler: Groq's JSON validator trips more often on hot samples.
+        temperature:
+          attempt > 0 ? 0.4 : input.mode === "chaos" ? 0.9 : input.mode === "roast" ? 0.8 : 0.6,
         maxTokens: PERSONA_MAX_TOKENS,
       });
       const list = (res.json as { candidates?: { text?: unknown }[] })?.candidates ?? [];
@@ -113,7 +116,10 @@ export async function composeLedgerPersonaLine(input: {
       );
     }
   }
-  return { text: cleanReplyPunctuation(templateLine(s, input.rng ?? Math.random)), source: "template" };
+  return {
+    text: cleanReplyPunctuation(templateLine(s, input.query, input.rng ?? Math.random)),
+    source: "template",
+  };
 }
 
 /** The facts behind the answer that was just shown, so the line reacts to it. */
@@ -124,6 +130,16 @@ function focusFor(query: LedgerQuery, s: LedgerSnapshot): Record<string, unknown
     query.mine === "paid" ? e.askerPaid : query.mine === "involved" ? e.askerPaid || e.askerShared : true,
   );
   switch (query.kind) {
+    case "leaderboard": {
+      const rich = s.stats.paidByMember[0];
+      const broke = [...s.balances].sort((a, z) => a.netCents - z.netCents)[0];
+      const owed = s.balances.find((x) => x.netCents > 0);
+      return {
+        rich_one: rich ? { name: rich.name, fronted: plainAmount(rich.cents) } : null,
+        ...(broke && broke.netCents < 0 ? { broke_one: { name: broke.name, owes: plainAmount(broke.netCents) } } : {}),
+        ...(owed ? { owed_most: amt(owed.name, owed.netCents) } : {}),
+      };
+    }
     case "whoami":
       return {
         asker: s.asker?.name ?? null,
@@ -170,8 +186,23 @@ function pick<T>(list: T[], rng: () => number): T {
   return list[Math.floor(rng() * list.length)] ?? list[0]!;
 }
 
-function templateLine(s: LedgerSnapshot, rng: () => number): string {
+function templateLine(s: LedgerSnapshot, query: LedgerQuery, rng: () => number): string {
   const asker = s.asker;
+  if (query.kind === "leaderboard") {
+    const rich = s.stats.paidByMember[0]?.name;
+    const broke = [...s.balances].sort((a, z) => a.netCents - z.netCents)[0];
+    const brokeName = broke && broke.netCents < 0 ? broke.name : null;
+    if (rich && brokeName) {
+      return pick(
+        [
+          `${rich} is clearly the group's sugar daddy. ${brokeName}, start saving.`,
+          `${rich} funds the group. ${brokeName} funds the group chat with excuses.`,
+        ],
+        rng,
+      );
+    }
+    if (rich) return `${rich} is the group's walking ATM. Respect the ATM.`;
+  }
   const top = s.stats.topSpenderMonth?.name;
   const debtor = [...s.balances].sort((a, b) => a.netCents - b.netCents)[0];
   if (asker && asker.netCents < 0) {
