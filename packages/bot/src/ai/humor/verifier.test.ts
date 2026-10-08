@@ -15,6 +15,19 @@ describe("verifyCandidate", () => {
     expect(r.ok).toBe(false);
   });
 
+  it("accepts ordinary capitalized words that start a sentence", () => {
+    const r = verifyCandidate(
+      "Just the ledger ghost. You said hello already. Don't forget me again.",
+      packet,
+    );
+    expect(r).toEqual({ ok: true });
+  });
+
+  it("still rejects invented names mid-sentence", () => {
+    const r = verifyCandidate("Pay it back to Dawit before lunch.", packet);
+    expect(r).toEqual({ ok: false, reason: "unapproved_name:Dawit" });
+  });
+
   it("accepts draft amounts from the fact packet", () => {
     const rich = buildScanOutcomePacket({
       written: 0,
