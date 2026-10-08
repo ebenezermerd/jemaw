@@ -326,9 +326,15 @@ d("Phase 2 pairwise settle plan", () => {
         headers: h(carolTg),
       })
     ).json() as SettlePlanResponse;
-    expect(plan.transfers).toEqual([
-      { fromMemberId: carolId, toMemberId: aliceId, amount: "30.00" },
-      { fromMemberId: carolId, toMemberId: bobId, amount: "30.00" },
-    ]);
+    // Each debtor pays whoever fronted their share: Bob's lunch share goes to
+    // Alice even though Bob is owed 30 by Carol.
+    expect(plan.transfers).toHaveLength(3);
+    expect(plan.transfers).toEqual(
+      expect.arrayContaining([
+        { fromMemberId: carolId, toMemberId: aliceId, amount: "30.00" },
+        { fromMemberId: bobId, toMemberId: aliceId, amount: "30.00" },
+        { fromMemberId: carolId, toMemberId: bobId, amount: "30.00" },
+      ]),
+    );
   });
 });
