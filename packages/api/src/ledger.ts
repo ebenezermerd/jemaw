@@ -4,6 +4,7 @@
  * members see in the mini app.
  */
 import { and, count, desc, eq, ilike, inArray, isNull, or, type SQL } from "drizzle-orm";
+import { parseHumorSettings, toHumorSettingsDto } from "@jemaw/shared/humor";
 import type { Db } from "./db.js";
 import {
   groups,
@@ -55,6 +56,8 @@ export interface GroupLedger {
   nets: Map<string, number>;
   coveredExpenseIds: Set<string>;
   transfers: { fromMemberId: string; toMemberId: string; amountCents: number }[];
+  /** any expense ever, voided included: the bot locks the currency on this */
+  hasAnyExpense: boolean;
 }
 
 export async function loadGroupLedger(db: Db, groupId: string): Promise<GroupLedger | null> {
@@ -66,6 +69,9 @@ export async function loadGroupLedger(db: Db, groupId: string): Promise<GroupLed
     .from(expenses)
     .where(and(eq(expenses.groupId, groupId), isNull(expenses.voidedAt)));
   const ids = expenseRows.map((e) => e.id);
+  const anyExpense = ids.length
+    ? [ids[0]]
+    : await db.select({ id: expenses.id }).from(expenses).where(eq(expenses.groupId, groupId)).limit(1);
   const shareRows = ids.length
     ? await db.select().from(expenseShares).where(inArray(expenseShares.expenseId, ids))
     : [];
@@ -127,6 +133,7 @@ export async function loadGroupLedger(db: Db, groupId: string): Promise<GroupLed
       forDebt.filter((e) => isExpenseCovered(e, allocations)).map((e) => e.expenseId),
     ),
     transfers: computePairwiseTransfers(deriveExpenseDebts(forDebt, allocations)),
+    hasAnyExpense: anyExpense.length > 0,
   };
 }
 
@@ -201,6 +208,13 @@ export function groupDetail(ledger: GroupLedger): AdminGroupDetailDto {
   const settledExpenses = ledger.expenses.filter((e) => ledger.coveredExpenseIds.has(e.id)).length;
   return {
     group: groupSummary(ledger),
+    settings: {
+      humor: toHumorSettingsDto(
+        parseHumorSettings((ledger.group.settings as Record<string, unknown> | null)?.humor),
+      ),
+      currencyLocked: ledger.hasAnyExpense,
+      telegramChatId: telegramIdToString(ledger.group.telegramChatId),
+    },
     members: memberDtos,
     transfers: ledger.transfers.map((t) => ({
       fromMemberId: t.fromMemberId,

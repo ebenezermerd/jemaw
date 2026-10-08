@@ -496,6 +496,8 @@ export interface AdminSettlementDto {
 
 export interface AdminGroupDetailDto {
   group: AdminGroupDto;
+  /** bot and AI settings for the group, plus its Telegram chat id */
+  settings: AdminGroupBotDto;
   members: AdminGroupMemberDto[];
   /** the open settle plan: who should pay whom */
   transfers: AdminTransferDto[];
@@ -652,4 +654,74 @@ export interface AppConfigDto {
 export interface UpdateConfigInput {
   key: string;
   value: unknown;
+}
+
+// ─── Admin console: management, activity, bot ─────────────────────────
+export interface UpdateGroupInput {
+  name?: string;
+  defaultCurrency?: string;
+}
+
+export interface UpdateGroupResultDto {
+  group: AdminGroupDto;
+  /** null when the name didn't change; false when Telegram refused the rename */
+  telegramSynced: boolean | null;
+}
+
+export interface UpdateMemberInput {
+  role?: "admin" | "member";
+  isActive?: boolean;
+  displayName?: string;
+}
+
+export interface DeleteGroupResultDto {
+  deleted: Record<string, number>;
+  /** whether the bot left the Telegram chat */
+  leftChat: boolean;
+}
+
+export interface AdminGroupBotDto {
+  humor: HumorSettingsDto;
+  /** the group has live expenses, so its currency is locked */
+  currencyLocked: boolean;
+  telegramChatId: string;
+}
+
+export type AdminActivitySource = "console" | "scan" | "reply" | "draft" | "settlement";
+export type AdminActivitySeverity = "info" | "warn" | "error";
+
+export interface AdminActivityItemDto {
+  id: string;
+  source: AdminActivitySource;
+  severity: AdminActivitySeverity;
+  groupId: string | null;
+  groupName: string | null;
+  /** who did it: an admin email, a member name, or "Jemaw" */
+  actor: string | null;
+  /** short machine-ish verb, e.g. "scan.success", "reply.suppressed" */
+  action: string;
+  /** one human sentence */
+  summary: string;
+  detail: Record<string, unknown>;
+  at: string; // ISO
+}
+
+export interface AdminActivityPageDto {
+  items: AdminActivityItemDto[];
+  total: number;
+}
+
+export interface AdminBotStatusDto {
+  configured: boolean;
+  username: string | null;
+  webhook: {
+    url: string | null;
+    pendingUpdates: number;
+    lastErrorAt: string | null;
+    lastErrorMessage: string | null;
+  } | null;
+  heartbeat: { at: string; version: string | null } | null;
+  /** ok: reachable and beating; warn: reachable but stale or erroring; down: unreachable */
+  health: "ok" | "warn" | "down";
+  error: string | null;
 }

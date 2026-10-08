@@ -22,6 +22,8 @@ const schema = z.object({
   ADMIN_ORIGIN: z.string().url().optional(),
   /** Set in Cloud Run to connect to Cloud SQL over the mounted Unix socket. */
   INSTANCE_CONNECTION_NAME: z.string().optional(),
+  /** The bot's token: sends announcements, renames or leaves chats, checks health. */
+  TELEGRAM_BOT_TOKEN: z.string().optional(),
 });
 
 export type Env = z.infer<typeof schema>;

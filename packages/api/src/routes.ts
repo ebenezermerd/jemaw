@@ -48,6 +48,35 @@ import {
   type GroupLedger,
 } from "./ledger.js";
 import {
+  deleteGroupCascade,
+  getGroup,
+  groupHasAnyExpense,
+  patchGroupHumor,
+  resetGroupLedger,
+  updateGroupFields,
+  updateGroupMember,
+} from "./groupAdmin.js";
+import { ACTIVITY_SEVERITIES, ACTIVITY_SOURCES, listActivity } from "./activity.js";
+import { deliverAnnouncement } from "./announce.js";
+import { botStatus } from "./botStatus.js";
+import type { TelegramClient } from "./telegram.js";
+import { announcements } from "@jemaw/shared/schema";
+import { and, inArray } from "drizzle-orm";
+import {
+  BOT_RUNTIME_KEYS,
+  parseRuntimeValue,
+  runtimeConfigFromRows,
+  type BotRuntimeConfig,
+} from "@jemaw/shared/runtimeConfig";
+import type {
+  AdminActivityPageDto,
+  AdminActivitySeverity,
+  AdminActivitySource,
+  AdminBotStatusDto,
+  DeleteGroupResultDto,
+  UpdateGroupResultDto,
+} from "@jemaw/shared/types";
+import {
   toUserDto,
   toTopGroupDto,
   toAuditDto,
@@ -58,6 +87,8 @@ export interface ApiDeps {
   db: Db;
   verifier: import("./auth/firebase.js").TokenVerifier;
   now: () => number;
+  /** Bot API client for announcements, chat renames and leaving chats. */
+  telegram: TelegramClient;
 }
 
 const createAnnouncementSchema = z.object({
@@ -68,6 +99,40 @@ const createAnnouncementSchema = z.object({
   queue: z.boolean().optional().default(false),
 });
 
+const updateGroupSchema = z
+  .object({
+    name: z.string().trim().min(1).max(80).optional(),
+    defaultCurrency: z
+      .string()
+      .trim()
+      .regex(/^[A-Za-z]{3}$/, "three-letter currency code")
+      .transform((c) => c.toUpperCase())
+      .optional(),
+  })
+  .strict();
+
+const updateMemberSchema = z
+  .object({
+    role: z.enum(["admin", "member"]).optional(),
+    isActive: z.boolean().optional(),
+    displayName: z.string().trim().min(1).max(60).optional(),
+  })
+  .strict();
+
+const deleteGroupSchema = z.object({ confirmName: z.string() });
+
+const botConfigSchema = z
+  .object({
+    scanEnabled: z.boolean(),
+    chatEnabled: z.boolean(),
+    model: z.string().max(120).nullable(),
+    scanCooldownSeconds: z.number().int().min(5).max(600),
+    weeklyDigestEnabled: z.boolean(),
+    maintenanceMessage: z.string().max(500).nullable(),
+  })
+  .partial()
+  .strict();
+
 const updateConfigSchema = z.object({
   key: z.string().min(1).max(120),
   value: z.unknown(),
@@ -77,7 +142,27 @@ export async function registerApi(
   app: FastifyInstance,
   deps: ApiDeps,
 ): Promise<void> {
-  const { db, now } = deps;
+  const { db, now, telegram } = deps;
+  const audit = (
+    req: { admin?: { uid: string; email: string | null } },
+    action: string,
+    targetType: string,
+    targetId: string,
+    detail: Record<string, unknown> = {},
+  ) =>
+    writeAudit(db, {
+      actorUid: req.admin!.uid,
+      actorEmail: req.admin!.email,
+      action,
+      targetType,
+      targetId,
+      detail,
+    });
+  /** Send in the background; the row's status tells the console how it went. */
+  const sendInBackground = (id: string) =>
+    void deliverAnnouncement(db, telegram, id).catch((err) =>
+      console.warn(`[announce] ${id} failed:`, err instanceof Error ? err.message : err),
+    );
   const authDeps: AuthDeps = { db, verifier: deps.verifier };
   const auth = makeAuthHook(authDeps);
 
@@ -243,6 +328,89 @@ export async function registerApi(
     return res;
   });
 
+  app.patch("/api/admin/groups/:groupId", { preHandler: auth }, async (req, reply) => {
+    const { groupId } = req.params as { groupId: string };
+    const group = UUID_RE.test(groupId) ? await getGroup(db, groupId) : null;
+    if (!group) return reply.code(404).send({ error: "group not found" });
+    const parsed = updateGroupSchema.safeParse(req.body ?? {});
+    if (!parsed.success) return reply.code(400).send({ error: parsed.error.issues[0]?.message ?? "invalid body" });
+    const patch: { name?: string; defaultCurrency?: string } = {};
+    if (parsed.data.name && parsed.data.name !== group.name) patch.name = parsed.data.name;
+    if (parsed.data.defaultCurrency && parsed.data.defaultCurrency !== group.defaultCurrency) {
+      // Same rule as the mini app: amounts would change meaning under a new currency.
+      if (await groupHasAnyExpense(db, groupId)) {
+        return reply.code(409).send({ error: "currency is locked because the group has expenses" });
+      }
+      patch.defaultCurrency = parsed.data.defaultCurrency;
+    }
+    await updateGroupFields(db, groupId, patch);
+    let telegramSynced: boolean | null = null;
+    if (patch.name) {
+      const res = await telegram.call("setChatTitle", {
+        chat_id: group.telegramChatId.toString(),
+        title: patch.name,
+      });
+      telegramSynced = res.ok;
+    }
+    await audit(req, "group.update", "group", groupId, { ...patch, telegramSynced });
+    const ledger = await loadGroupLedger(db, groupId);
+    const res: UpdateGroupResultDto = { group: groupSummary(ledger!), telegramSynced };
+    return res;
+  });
+
+  app.patch("/api/admin/groups/:groupId/humor", { preHandler: auth }, async (req, reply) => {
+    const { groupId } = req.params as { groupId: string };
+    const group = UUID_RE.test(groupId) ? await getGroup(db, groupId) : null;
+    if (!group) return reply.code(404).send({ error: "group not found" });
+    const body = (req.body ?? {}) as Record<string, unknown>;
+    if (typeof body !== "object" || Array.isArray(body)) return reply.code(400).send({ error: "invalid body" });
+    const res = await patchGroupHumor(db, group, body, new Date(now()));
+    if ("error" in res) return reply.code(400).send(res);
+    await audit(req, "group.humor", "group", groupId, body);
+    return res;
+  });
+
+  app.patch("/api/admin/groups/:groupId/members/:memberId", { preHandler: auth }, async (req, reply) => {
+    const { groupId, memberId } = req.params as { groupId: string; memberId: string };
+    if (!UUID_RE.test(groupId) || !UUID_RE.test(memberId)) return reply.code(404).send({ error: "member not found" });
+    const parsed = updateMemberSchema.safeParse(req.body ?? {});
+    if (!parsed.success) return reply.code(400).send({ error: parsed.error.issues[0]?.message ?? "invalid body" });
+    const res = await updateGroupMember(db, groupId, memberId, parsed.data);
+    if (!res.ok) return reply.code(res.status).send({ error: res.error });
+    await audit(req, "member.update", "group", groupId, { memberId, ...parsed.data });
+    return { ok: true };
+  });
+
+  app.post("/api/admin/groups/:groupId/reset", { preHandler: auth }, async (req, reply) => {
+    const { groupId } = req.params as { groupId: string };
+    const group = UUID_RE.test(groupId) ? await getGroup(db, groupId) : null;
+    if (!group) return reply.code(404).send({ error: "group not found" });
+    const deleted = await resetGroupLedger(db, groupId);
+    await audit(req, "group.reset", "group", groupId, { name: group.name, deleted });
+    return { deleted };
+  });
+
+  app.delete("/api/admin/groups/:groupId", { preHandler: auth }, async (req, reply) => {
+    const { groupId } = req.params as { groupId: string };
+    const group = UUID_RE.test(groupId) ? await getGroup(db, groupId) : null;
+    if (!group) return reply.code(404).send({ error: "group not found" });
+    const parsed = deleteGroupSchema.safeParse(req.body ?? {});
+    if (!parsed.success || parsed.data.confirmName.trim() !== group.name.trim()) {
+      return reply.code(400).send({ error: "type the group's name to confirm" });
+    }
+    const deleted = await deleteGroupCascade(db, groupId);
+    // Leave the chat, or the next message there would recreate the group.
+    const left = await telegram.call("leaveChat", { chat_id: group.telegramChatId.toString() });
+    await audit(req, "group.delete", "group", groupId, {
+      name: group.name,
+      telegramChatId: group.telegramChatId.toString(),
+      deleted,
+      leftChat: left.ok,
+    });
+    const res: DeleteGroupResultDto = { deleted, leftChat: left.ok };
+    return res;
+  });
+
   // ─── expenses (cross-group feed, or one group's) ────────────────────
   app.get("/api/admin/expenses", { preHandler: auth }, async (req, reply) => {
     const q = req.query as { limit?: string; offset?: string; groupId?: string; kind?: string; q?: string };
@@ -269,6 +437,43 @@ export async function registerApi(
     return res;
   });
 
+  app.get("/api/admin/activity", { preHandler: auth }, async (req, reply) => {
+    const q = req.query as { source?: string; severity?: string; groupId?: string; limit?: string; offset?: string };
+    if (q.groupId && !UUID_RE.test(q.groupId)) return reply.code(400).send({ error: "bad groupId" });
+    const res: AdminActivityPageDto = await listActivity(db, {
+      source: ACTIVITY_SOURCES.includes(q.source as AdminActivitySource) ? (q.source as AdminActivitySource) : undefined,
+      severity: ACTIVITY_SEVERITIES.includes(q.severity as AdminActivitySeverity)
+        ? (q.severity as AdminActivitySeverity)
+        : undefined,
+      groupId: q.groupId,
+      limit: clampInt(q.limit, 30, 1, 200),
+      offset: clampInt(q.offset, 0, 0, 1_000_000),
+    });
+    return res;
+  });
+
+  // ─── bot health & runtime switches ─────────────────────────────────
+  app.get("/api/admin/bot/status", { preHandler: auth }, async () => {
+    const res: AdminBotStatusDto = await botStatus(db, telegram, now());
+    return res;
+  });
+
+  app.get("/api/admin/bot/config", { preHandler: auth }, async () => {
+    const res: BotRuntimeConfig = runtimeConfigFromRows(await listConfig(db));
+    return res;
+  });
+
+  app.patch("/api/admin/bot/config", { preHandler: auth }, async (req, reply) => {
+    const parsed = botConfigSchema.safeParse(req.body ?? {});
+    if (!parsed.success) return reply.code(400).send({ error: parsed.error.issues[0]?.message ?? "invalid body" });
+    for (const [field, raw] of Object.entries(parsed.data) as [keyof BotRuntimeConfig, unknown][]) {
+      await setConfig(db, BOT_RUNTIME_KEYS[field], parseRuntimeValue(field, raw), req.admin!.uid);
+    }
+    await audit(req, "bot.config", "config", "bot", parsed.data);
+    const res: BotRuntimeConfig = runtimeConfigFromRows(await listConfig(db));
+    return res;
+  });
+
   // ─── announcements ─────────────────────────────────────────────────
   app.get("/api/admin/announcements", { preHandler: auth }, async () => {
     const rows = await listAnnouncements(db);
@@ -288,6 +493,15 @@ export async function registerApi(
       if (audience !== "all_groups" && !targetId) {
         return reply.code(400).send({ error: "targetId required for this audience" });
       }
+      if (audience === "group" && !UUID_RE.test(targetId!)) {
+        return reply.code(400).send({ error: "targetId must be a group id" });
+      }
+      if (audience === "user" && !/^\d+$/.test(targetId!)) {
+        return reply.code(400).send({ error: "targetId must be a Telegram user id" });
+      }
+      if (queue && !telegram.configured) {
+        return reply.code(503).send({ error: "sending is not set up: TELEGRAM_BOT_TOKEN is missing on the API" });
+      }
       const row = await createAnnouncement(db, {
         title,
         body,
@@ -304,9 +518,39 @@ export async function registerApi(
         targetId: row.id,
         detail: { audience, targetId: targetId ?? null },
       });
+      if (queue) sendInBackground(row.id);
       return reply.code(201).send(toAnnouncementDto(row));
     },
   );
+
+  app.post("/api/admin/announcements/:id/send", { preHandler: auth }, async (req, reply) => {
+    const { id } = req.params as { id: string };
+    if (!UUID_RE.test(id)) return reply.code(404).send({ error: "announcement not found" });
+    if (!telegram.configured) {
+      return reply.code(503).send({ error: "sending is not set up: TELEGRAM_BOT_TOKEN is missing on the API" });
+    }
+    const [row] = await db
+      .update(announcements)
+      .set({ status: "queued" })
+      .where(and(eq(announcements.id, id), inArray(announcements.status, ["draft", "failed"])))
+      .returning();
+    if (!row) return reply.code(409).send({ error: "only drafts or failed announcements can be sent" });
+    await audit(req, "announcement.send", "announcement", id);
+    sendInBackground(id);
+    return toAnnouncementDto(row);
+  });
+
+  app.delete("/api/admin/announcements/:id", { preHandler: auth }, async (req, reply) => {
+    const { id } = req.params as { id: string };
+    if (!UUID_RE.test(id)) return reply.code(404).send({ error: "announcement not found" });
+    const gone = await db
+      .delete(announcements)
+      .where(and(eq(announcements.id, id), inArray(announcements.status, ["draft", "failed"])))
+      .returning({ id: announcements.id });
+    if (gone.length === 0) return reply.code(409).send({ error: "only drafts or failed announcements can be deleted" });
+    await audit(req, "announcement.delete", "announcement", id);
+    return { ok: true };
+  });
 
   // ─── bot & settings (app_config) ───────────────────────────────────
   app.get("/api/admin/config", { preHandler: auth }, async () => {
