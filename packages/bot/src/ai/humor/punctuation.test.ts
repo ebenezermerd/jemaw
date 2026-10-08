@@ -30,3 +30,11 @@ describe("cleanReplyPunctuation", () => {
     );
   });
 });
+
+describe("cleanReplyPunctuation with numbers", () => {
+  it("keeps thousands separators intact", () => {
+    expect(cleanReplyPunctuation("Hana fronted 1,200 ETB; Sami owes 43,140.66")).toBe(
+      "Hana fronted 1,200 ETB, Sami owes 43,140.66",
+    );
+  });
+});
