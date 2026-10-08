@@ -71,8 +71,11 @@ export function verifyCandidate(
       .join(" ")
       .toLowerCase();
 
-    const tokens = trimmed.match(/\b[A-Z][a-z]{2,}\b/g) ?? [];
-    for (const t of tokens) {
+    for (const m of trimmed.matchAll(/\b[A-Z][a-z]{2,}\b/g)) {
+      const t = m[0];
+      // Sentence-initial words are capitalized by grammar, not because they name someone.
+      const before = trimmed.slice(0, m.index).replace(/["'“‘(\s]+$/, "");
+      if (before === "" || /[.!?…:;—–-]$/.test(before)) continue;
       const low = t.toLowerCase();
       if (stop.has(low)) continue;
       if (allowed.has(low)) continue;
