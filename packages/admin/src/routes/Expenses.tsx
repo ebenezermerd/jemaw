@@ -3,6 +3,8 @@ import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { api } from "../lib/api.js";
 import type { AdminExpenseDto, AdminExpensePageDto, AdminGroupDto } from "@jemaw/shared/types";
 import { fmtMoney } from "../lib/format.js";
+import { Busy, SkeletonRows } from "../ui/Loader.js";
+import { DEFAULT_PAGE_SIZE, TableFooter } from "../ui/Pager.js";
 import { CenteredMessage } from "../ui/primitives.js";
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
@@ -363,14 +365,14 @@ const KIND_FILTERS: { key: KindFilter; label: string }[] = [
   { key: "expense", label: "Expense" },
   { key: "loan", label: "Loan" },
 ];
-const PAGE_SIZE = 50;
 
 export function Expenses() {
   const [search, setSearch] = useState("");
   const [kindFilter, setKindFilter] = useState<KindFilter>("all");
   const [groupId, setGroupId] = useState<string | null>(null);
   const [selected, setSelected] = useState<AdminExpenseDto | null>(null);
-  const [page, setPage] = useState(0);
+  const [offset, setOffset] = useState(0);
+  const [limit, setLimit] = useState(DEFAULT_PAGE_SIZE);
   const [debounced, setDebounced] = useState("");
 
   useEffect(() => {
@@ -378,28 +380,27 @@ export function Expenses() {
     return () => clearTimeout(t);
   }, [search]);
   // Any filter change starts again from the first page.
-  useEffect(() => setPage(0), [debounced, kindFilter, groupId]);
+  useEffect(() => setOffset(0), [debounced, kindFilter, groupId, limit]);
 
-  const params = new URLSearchParams({ limit: String(PAGE_SIZE), offset: String(page * PAGE_SIZE) });
+  const params = new URLSearchParams({ limit: String(limit), offset: String(offset) });
   if (groupId) params.set("groupId", groupId);
   if (kindFilter !== "all") params.set("kind", kindFilter);
   if (debounced) params.set("q", debounced);
 
-  const { data, isLoading, error } = useQuery({
+  const { data, isLoading, isFetching, isPlaceholderData, error } = useQuery({
     queryKey: ["expenses", params.toString()],
     queryFn: () => api.get<AdminExpensePageDto>(`/api/admin/expenses?${params}`),
     placeholderData: keepPreviousData,
   });
   const rows = data?.items ?? [];
   const total = data?.total ?? 0;
-  const pages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+  const busy = isFetching && isPlaceholderData;
 
   const { data: groups = [] } = useQuery({
     queryKey: ["groups"],
     queryFn: () => api.get<AdminGroupDto[]>("/api/admin/groups"),
   });
 
-  if (isLoading) return <CenteredMessage>Loading expenses…</CenteredMessage>;
   if (error) return <CenteredMessage>Could not load expenses.</CenteredMessage>;
 
   if (selected) {
@@ -416,7 +417,7 @@ export function Expenses() {
         <div style={{
           background: "#16151F", border: "1px solid rgba(255,255,255,.08)",
           borderRadius: 11, padding: "10px 13px",
-          display: "flex", alignItems: "center", gap: 10, maxWidth: 340, flex: 1,
+          display: "flex", alignItems: "center", gap: 10, maxWidth: 510, flex: "1 1 320px",
         }}>
           <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="rgba(244,242,251,.4)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <circle cx="11" cy="11" r="7" /><path d="M21 21l-4-4" />
@@ -436,7 +437,8 @@ export function Expenses() {
           )}
         </div>
 
-        {/* kind filters */}
+        {/* filters, on the right */}
+        <div style={{ display: "flex", alignItems: "center", gap: 10, marginLeft: "auto", flexWrap: "wrap" }}>
         <div style={{ display: "flex", gap: 7 }}>
           {KIND_FILTERS.map(({ key, label }) => {
             const active = kindFilter === key;
@@ -460,12 +462,7 @@ export function Expenses() {
 
         {/* group dropdown */}
         <GroupDropdown groups={groups} value={groupId} onChange={setGroupId} />
-
-        <div style={{ flex: 1 }} />
-
-        <span style={{ fontSize: 13, color: "rgba(244,242,251,.45)" }}>
-          {total === 0 ? "0" : `${page * PAGE_SIZE + 1}–${page * PAGE_SIZE + rows.length}`} of {total.toLocaleString()}
-        </span>
+        </div>
       </div>
 
       {/* table */}
@@ -488,7 +485,10 @@ export function Expenses() {
           <span>Status</span>
         </div>
 
-        {rows.length === 0 ? (
+        <Busy busy={busy}>
+        {isLoading ? (
+          <SkeletonRows cols={COLS} count={10} />
+        ) : rows.length === 0 ? (
           <CenteredMessage>
             {q || kindFilter !== "all" || groupId ? "No expenses match." : "No expenses yet."}
           </CenteredMessage>
@@ -547,31 +547,11 @@ export function Expenses() {
             );
           })
         )}
+        </Busy>
+        {!isLoading && (
+          <TableFooter offset={offset} limit={limit} total={total} onPage={setOffset} onLimit={setLimit} busy={busy} />
+        )}
       </div>
-
-      {pages > 1 && (
-        <div style={{ display: "flex", justifyContent: "flex-end", alignItems: "center", gap: 10, marginTop: 14 }}>
-          {[
-            { label: "Previous", to: page - 1, disabled: page === 0 },
-            { label: "Next", to: page + 1, disabled: page >= pages - 1 },
-          ].map(({ label, to, disabled }) => (
-            <button
-              key={label}
-              disabled={disabled}
-              onClick={() => setPage(to)}
-              style={{
-                fontSize: 13, fontWeight: 600, padding: "8px 14px", borderRadius: 9,
-                color: disabled ? "rgba(244,242,251,.3)" : "rgba(244,242,251,.8)",
-                background: "transparent", border: "1px solid rgba(255,255,255,.1)",
-                cursor: disabled ? "default" : "pointer",
-              }}
-            >
-              {label}
-            </button>
-          ))}
-          <span style={{ fontSize: 13, color: "rgba(244,242,251,.45)" }}>Page {page + 1} of {pages}</span>
-        </div>
-      )}
     </div>
   );
 }

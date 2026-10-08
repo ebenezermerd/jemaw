@@ -1,9 +1,14 @@
 import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { keepPreviousData, useQuery } from "@tanstack/react-query";
+import { useNavigate, useParams } from "react-router-dom";
 import { api } from "../lib/api.js";
 import type { AdminExpensePageDto, AdminGroupDetailDto, AdminGroupDto } from "@jemaw/shared/types";
-import { fmtCompact, fmtMoney, fmtNet } from "../lib/format.js";
+import { fmtCompact, fmtMoney, fmtNet, scrollAfter, titleCase } from "../lib/format.js";
+import { BackLink, fromState, useBackTo } from "../ui/BackLink.js";
+import { Busy, Skeleton, SkeletonList, SkeletonRows } from "../ui/Loader.js";
+import { DEFAULT_PAGE_SIZE, TableFooter, pageSlice } from "../ui/Pager.js";
 import { CenteredMessage } from "../ui/primitives.js";
+import { DangerZone, EditGroupDialog, GroupBotCard, MemberActions } from "./GroupManage.js";
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
 
@@ -102,7 +107,7 @@ function GroupAvatar({ name, size }: { name: string; size: number }) {
 
 // ─── GROUP DETAIL PAGE ────────────────────────────────────────────────────────
 
-const MEM_COLS = "2fr 0.9fr 1.1fr 1.1fr 1.2fr 0.6fr";
+const MEM_COLS = "2fr 0.9fr 1.1fr 1.1fr 1.2fr 0.6fr 32px";
 const card = {
   background: "#16151F",
   border: "1px solid rgba(255,255,255,.07)",
@@ -160,46 +165,48 @@ function MemberAvatar({ name }: { name: string }) {
   );
 }
 
-function GroupDetail({ groupId, onBack }: { groupId: string; onBack: () => void }) {
+const MEMBER_ROW_H = 61;
+const LIST_ROW_H = 57;
+
+/** /groups/:groupId */
+export function GroupDetailPage() {
+  const { groupId = "" } = useParams();
+  const navigate = useNavigate();
+  const back = useBackTo({ path: "/groups", label: "All groups" });
+  const [editing, setEditing] = useState(false);
+  const [memOffset, setMemOffset] = useState(0);
+  const [memLimit, setMemLimit] = useState(DEFAULT_PAGE_SIZE);
+  const [expOffset, setExpOffset] = useState(0);
+  const [expLimit, setExpLimit] = useState(DEFAULT_PAGE_SIZE);
+
   const { data, isLoading, error } = useQuery({
     queryKey: ["group", groupId],
     queryFn: () => api.get<AdminGroupDetailDto>(`/api/admin/groups/${groupId}`),
   });
-  const { data: recent } = useQuery({
-    queryKey: ["expenses", { groupId }],
-    queryFn: () => api.get<AdminExpensePageDto>(`/api/admin/expenses?groupId=${groupId}&limit=15`),
+  const recentQuery = useQuery({
+    queryKey: ["expenses", { groupId, offset: expOffset, limit: expLimit }],
+    queryFn: () =>
+      api.get<AdminExpensePageDto>(`/api/admin/expenses?groupId=${groupId}&limit=${expLimit}&offset=${expOffset}`),
+    placeholderData: keepPreviousData,
   });
+  const recent = recentQuery.data;
+  const recentBusy = recentQuery.isFetching && recentQuery.isPlaceholderData;
 
-  const back = (
-    <button
-      onClick={onBack}
-      style={{
-        display: "inline-flex",
-        alignItems: "center",
-        gap: 7,
-        fontSize: 13,
-        fontWeight: 600,
-        color: "#A99CE3",
-        background: "none",
-        border: "none",
-        cursor: "pointer",
-        padding: 0,
-        marginBottom: 16,
-      }}
-    >
-      <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-        <path d="M15 18l-6-6 6-6" />
-      </svg>
-      All groups
-    </button>
-  );
-
-  if (isLoading) return <div>{back}<CenteredMessage>Loading group…</CenteredMessage></div>;
-  if (error || !data) return <div>{back}<CenteredMessage>Could not load this group.</CenteredMessage></div>;
+  if (isLoading) {
+    return (
+      <div>
+        <BackLink to={back} />
+        <GroupDetailSkeleton />
+      </div>
+    );
+  }
+  if (error || !data) return <div><BackLink to={back} /><CenteredMessage>Could not load this group.</CenteredMessage></div>;
 
   const { group, members, transfers, stats } = data;
   const cur = group.defaultCurrency;
   const isJemaw = group.name.toLowerCase() === "jemaw";
+  const pageMembers = pageSlice(members, memOffset < members.length ? memOffset : 0, memLimit);
+  const here = fromState(`/groups/${group.id}`, group.name);
 
   function exportData() {
     const cols = ["Name", "Username", "Role", "Status", `Paid (${cur})`, `Share (${cur})`, `Net (${cur})`, "Expenses paid"];
@@ -229,12 +236,13 @@ function GroupDetail({ groupId, onBack }: { groupId: string; onBack: () => void 
 
   return (
     <div>
-      {back}
+      <BackLink to={back} />
+      {editing && <EditGroupDialog detail={data} onClose={() => setEditing(false)} />}
 
       {/* header card */}
-      <div style={{ ...card, padding: 22, display: "flex", alignItems: "center", gap: 18, marginBottom: 18, overflow: "visible" }}>
+      <div style={{ ...card, padding: 22, display: "flex", alignItems: "center", gap: 18, marginBottom: 18, overflow: "visible", flexWrap: "wrap" }}>
         <GroupAvatar name={group.name} size={64} />
-        <div style={{ flex: 1 }}>
+        <div style={{ flex: 1, minWidth: 220 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
             <h2 style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 26, letterSpacing: "-.02em", margin: 0 }}>
               {group.name}
@@ -244,26 +252,17 @@ function GroupDetail({ groupId, onBack }: { groupId: string; onBack: () => void 
             )}
           </div>
           <div style={{ fontSize: 13, color: "rgba(244,242,251,.45)", marginTop: 3, fontVariantNumeric: "tabular-nums" }}>
-            {group.id.slice(0, 8).toUpperCase()} · {cur} · created {fmtDate(group.createdAt)}
+            {group.id.slice(0, 8).toUpperCase()} · chat {data.settings.telegramChatId} · {cur} · created {fmtDate(group.createdAt)}
           </div>
         </div>
-        <button
-          onClick={exportData}
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: 7,
-            fontSize: 13,
-            fontWeight: 700,
-            color: "#fff",
-            background: "#6E59C7",
-            border: "none",
-            padding: "9px 14px",
-            borderRadius: 9,
-            cursor: "pointer",
-            boxShadow: "0 8px 20px -8px rgba(110,89,199,.6)",
-          }}
-        >
+        <button onClick={() => setEditing(true)} style={headerBtn}>
+          <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M12 20h9" />
+            <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z" />
+          </svg>
+          Edit group
+        </button>
+        <button onClick={exportData} style={{ ...headerBtn, background: "#6E59C7", border: "none", boxShadow: "0 8px 20px -8px rgba(110,89,199,.6)" }}>
           <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <path d="M12 3v12" />
             <path d="M7 10l5 5 5-5" />
@@ -295,8 +294,11 @@ function GroupDetail({ groupId, onBack }: { groupId: string; onBack: () => void 
       </div>
 
       {/* members & balances */}
-      <div style={{ ...card, marginBottom: 18 }}>
-        <div style={cardHead}>Members &amp; balances</div>
+      <div style={{ ...card, marginBottom: 18, overflow: "visible" }}>
+        <div style={cardHead}>
+          Members &amp; balances
+          <span style={{ fontWeight: 500, fontSize: 12, color: "rgba(244,242,251,.45)" }}> · {members.length}</span>
+        </div>
         <div style={{ ...colHead, gridTemplateColumns: MEM_COLS }}>
           <span>Member</span>
           <span>Role</span>
@@ -304,160 +306,235 @@ function GroupDetail({ groupId, onBack }: { groupId: string; onBack: () => void 
           <span>Share</span>
           <span>Net balance</span>
           <span>Paid for</span>
+          <span />
         </div>
         {members.length === 0 ? (
           <CenteredMessage>No members yet.</CenteredMessage>
         ) : (
-          members.map((m, i) => {
-            const net = Number(m.net);
-            return (
-              <div
-                key={m.memberId}
-                className="jx-row"
-                style={{
-                  display: "grid",
-                  gridTemplateColumns: MEM_COLS,
-                  gap: 12,
-                  padding: "13px 20px",
-                  borderBottom: i < members.length - 1 ? "1px solid rgba(255,255,255,.04)" : "none",
-                  alignItems: "center",
-                  opacity: m.isActive ? 1 : 0.5,
-                }}
-              >
-                <div style={{ display: "flex", alignItems: "center", gap: 11, minWidth: 0 }}>
-                  <MemberAvatar name={m.displayName} />
-                  <div style={{ minWidth: 0 }}>
-                    <div style={{ fontSize: 14, fontWeight: 600, display: "flex", gap: 6, alignItems: "center" }}>
-                      {m.displayName}
-                      {!m.isActive && <Pill text="Removed" color="#F2685F" bg="rgba(242,104,95,.12)" />}
-                    </div>
-                    <div style={{ fontSize: 12, color: "rgba(244,242,251,.45)" }}>
-                      {m.isManual ? "added by hand" : m.username ? `@${m.username}` : `id ${m.telegramUserId}`}
-                      {!m.isPrimary && m.isActive ? " · not in default splits" : ""}
-                    </div>
-                  </div>
-                </div>
-                <span>
-                  {m.role === "admin" ? (
-                    <Pill text="Admin" color="#A99CE3" bg="rgba(110,89,199,.16)" />
-                  ) : (
-                    <Pill text="Member" color="rgba(244,242,251,.55)" bg="rgba(255,255,255,.06)" />
-                  )}
-                </span>
-                <span style={{ fontSize: 13, fontVariantNumeric: "tabular-nums" }}>{fmtMoney(m.paid, cur)}</span>
-                <span style={{ fontSize: 13, fontVariantNumeric: "tabular-nums" }}>{fmtMoney(m.share, cur)}</span>
-                <span
+          <div className="jx-scroll" data-testid="group-members" style={{ maxHeight: scrollAfter(8, MEMBER_ROW_H), overflowY: "auto" }}>
+            {pageMembers.map((m, i) => {
+              const net = Number(m.net);
+              return (
+                <div
+                  key={m.memberId}
+                  className="jx-row"
+                  role="link"
+                  onClick={() => navigate(`/users/${m.telegramUserId}`, here)}
                   style={{
-                    fontSize: 14,
-                    fontWeight: 700,
-                    fontVariantNumeric: "tabular-nums",
-                    color: net > 0 ? "#2DD4A7" : net < 0 ? "#F0A640" : "rgba(244,242,251,.55)",
+                    display: "grid",
+                    gridTemplateColumns: MEM_COLS,
+                    gap: 12,
+                    padding: "13px 20px",
+                    borderBottom: i < pageMembers.length - 1 ? "1px solid rgba(255,255,255,.04)" : "none",
+                    alignItems: "center",
+                    opacity: m.isActive ? 1 : 0.5,
+                    cursor: "pointer",
                   }}
                 >
-                  {fmtNet(m.net, cur)}
-                </span>
-                <span style={{ fontSize: 13, fontVariantNumeric: "tabular-nums" }}>{m.expenseCount}</span>
-              </div>
-            );
-          })
+                  <div style={{ display: "flex", alignItems: "center", gap: 11, minWidth: 0 }}>
+                    <MemberAvatar name={m.displayName} />
+                    <div style={{ minWidth: 0 }}>
+                      <div style={{ fontSize: 14, fontWeight: 600, display: "flex", gap: 6, alignItems: "center" }}>
+                        {titleCase(m.displayName)}
+                        {!m.isActive && <Pill text="Removed" color="#F2685F" bg="rgba(242,104,95,.12)" />}
+                      </div>
+                      <div style={{ fontSize: 12, color: "rgba(244,242,251,.45)" }}>
+                        {m.isManual ? "added by hand" : m.username ? `@${m.username}` : `id ${m.telegramUserId}`}
+                        {!m.isPrimary && m.isActive ? " · not in default splits" : ""}
+                      </div>
+                    </div>
+                  </div>
+                  <span>
+                    {m.role === "admin" ? (
+                      <Pill text="Admin" color="#A99CE3" bg="rgba(110,89,199,.16)" />
+                    ) : (
+                      <Pill text="Member" color="rgba(244,242,251,.55)" bg="rgba(255,255,255,.06)" />
+                    )}
+                  </span>
+                  <span style={{ fontSize: 13, fontVariantNumeric: "tabular-nums" }}>{fmtMoney(m.paid, cur)}</span>
+                  <span style={{ fontSize: 13, fontVariantNumeric: "tabular-nums" }}>{fmtMoney(m.share, cur)}</span>
+                  <span
+                    style={{
+                      fontSize: 14,
+                      fontWeight: 700,
+                      fontVariantNumeric: "tabular-nums",
+                      color: net > 0 ? "#2DD4A7" : net < 0 ? "#F0A640" : "rgba(244,242,251,.55)",
+                    }}
+                  >
+                    {fmtNet(m.net, cur)}
+                  </span>
+                  <span style={{ fontSize: 13, fontVariantNumeric: "tabular-nums" }}>{m.expenseCount}</span>
+                  <MemberActions groupId={group.id} member={m} />
+                </div>
+              );
+            })}
+          </div>
+        )}
+        {members.length > 0 && (
+          <TableFooter
+            offset={memOffset < members.length ? memOffset : 0}
+            limit={memLimit}
+            total={members.length}
+            onPage={setMemOffset}
+            onLimit={(n) => {
+              setMemLimit(n);
+              setMemOffset(0);
+            }}
+            noun="members"
+          />
         )}
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1.4fr", gap: 18 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1.4fr", gap: 18, marginBottom: 18 }}>
         {/* settle plan */}
         <div style={card}>
-          <div style={cardHead}>Who pays whom</div>
+          <div style={cardHead}>
+            Who pays whom
+            {transfers.length > 0 && (
+              <span style={{ fontWeight: 500, fontSize: 12, color: "rgba(244,242,251,.45)" }}> · {transfers.length}</span>
+            )}
+          </div>
           {transfers.length === 0 ? (
             <CenteredMessage>Everyone is settled up.</CenteredMessage>
           ) : (
-            transfers.map((t, i) => (
-              <div
-                key={`${t.fromMemberId}-${t.toMemberId}`}
-                style={{
-                  display: "flex",
-                  justifyContent: "space-between",
-                  padding: "12px 20px",
-                  borderBottom: i < transfers.length - 1 ? "1px solid rgba(255,255,255,.04)" : "none",
-                  fontSize: 13,
-                }}
-              >
-                <span>
-                  <b>{t.fromName}</b> <span style={{ color: "rgba(244,242,251,.45)" }}>→</span> <b>{t.toName}</b>
-                </span>
-                <span style={{ fontWeight: 700, fontVariantNumeric: "tabular-nums", color: "#F0A640" }}>
-                  {fmtMoney(t.amount, cur)}
-                </span>
-              </div>
-            ))
+            <div className="jx-scroll" style={{ maxHeight: scrollAfter(8, 45), overflowY: "auto" }}>
+              {transfers.map((t, i) => (
+                <div
+                  key={`${t.fromMemberId}-${t.toMemberId}`}
+                  style={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    padding: "12px 20px",
+                    borderBottom: i < transfers.length - 1 ? "1px solid rgba(255,255,255,.04)" : "none",
+                    fontSize: 13,
+                  }}
+                >
+                  <span>
+                    <b>{titleCase(t.fromName)}</b> <span style={{ color: "rgba(244,242,251,.45)" }}>→</span> <b>{titleCase(t.toName)}</b>
+                  </span>
+                  <span style={{ fontWeight: 700, fontVariantNumeric: "tabular-nums", color: "#F0A640" }}>
+                    {fmtMoney(t.amount, cur)}
+                  </span>
+                </div>
+              ))}
+            </div>
           )}
         </div>
 
         {/* recent expenses */}
         <div style={card}>
-          <div style={cardHead}>
-            Recent expenses
-            {recent && (
-              <span style={{ fontWeight: 500, fontSize: 12, color: "rgba(244,242,251,.45)" }}>
-                {" "}· {recent.items.length} of {recent.total}
-              </span>
-            )}
-          </div>
+          <div style={cardHead}>Expenses</div>
           {!recent ? (
-            <CenteredMessage>Loading…</CenteredMessage>
-          ) : recent.items.length === 0 ? (
+            <SkeletonList count={5} height={40} />
+          ) : recent.items.length === 0 && recent.total === 0 ? (
             <CenteredMessage>No expenses yet.</CenteredMessage>
           ) : (
-            recent.items.map((e, i) => (
-              <div
-                key={e.id}
-                style={{
-                  display: "grid",
-                  gridTemplateColumns: "1fr auto",
-                  gap: 10,
-                  padding: "11px 20px",
-                  borderBottom: i < recent.items.length - 1 ? "1px solid rgba(255,255,255,.04)" : "none",
-                  fontSize: 13,
-                  opacity: e.voided ? 0.45 : 1,
+            <>
+              <Busy busy={recentBusy}>
+                <div className="jx-scroll" data-testid="group-expenses" style={{ maxHeight: scrollAfter(8, LIST_ROW_H), overflowY: "auto" }}>
+                  {recent.items.map((e, i) => (
+                    <div
+                      key={e.id}
+                      style={{
+                        display: "grid",
+                        gridTemplateColumns: "1fr auto",
+                        gap: 10,
+                        padding: "11px 20px",
+                        borderBottom: i < recent.items.length - 1 ? "1px solid rgba(255,255,255,.04)" : "none",
+                        fontSize: 13,
+                        opacity: e.voided ? 0.45 : 1,
+                      }}
+                    >
+                      <div style={{ minWidth: 0 }}>
+                        <div style={{ fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                          {e.kind === "loan" ? "Loan: " : ""}{e.description}
+                        </div>
+                        <div style={{ fontSize: 12, color: "rgba(244,242,251,.45)" }}>
+                          {titleCase(e.payerName)} paid · split with {e.shares.length} · {fmtDate(e.occurredAt)}
+                        </div>
+                      </div>
+                      <div style={{ textAlign: "right" }}>
+                        <div style={{ fontWeight: 700, fontVariantNumeric: "tabular-nums" }}>{fmtMoney(e.amount, e.currency)}</div>
+                        <div style={{ fontSize: 11, color: e.status === "open" ? "#F0A640" : e.status === "settled" ? "#2DD4A7" : "#F2685F" }}>
+                          {e.status === "open" ? "Open" : e.status === "settled" ? "Settled" : "Voided"}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </Busy>
+              <TableFooter
+                offset={expOffset}
+                limit={expLimit}
+                total={recent.total}
+                onPage={setExpOffset}
+                onLimit={(n) => {
+                  setExpLimit(n);
+                  setExpOffset(0);
                 }}
-              >
-                <div style={{ minWidth: 0 }}>
-                  <div style={{ fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                    {e.kind === "loan" ? "Loan: " : ""}{e.description}
-                  </div>
-                  <div style={{ fontSize: 12, color: "rgba(244,242,251,.45)" }}>
-                    {e.payerName} paid · split with {e.shares.length} · {fmtDate(e.occurredAt)}
-                  </div>
-                </div>
-                <div style={{ textAlign: "right" }}>
-                  <div style={{ fontWeight: 700, fontVariantNumeric: "tabular-nums" }}>{fmtMoney(e.amount, e.currency)}</div>
-                  <div style={{ fontSize: 11, color: e.status === "open" ? "#F0A640" : e.status === "settled" ? "#2DD4A7" : "#F2685F" }}>
-                    {e.status === "open" ? "Open" : e.status === "settled" ? "Settled" : "Voided"}
-                  </div>
-                </div>
-              </div>
-            ))
+                busy={recentBusy}
+              />
+            </>
           )}
         </div>
+      </div>
+
+      <div style={{ display: "grid", gridTemplateColumns: "1.5fr 1fr", gap: 18, alignItems: "start" }}>
+        <GroupBotCard detail={data} />
+        <DangerZone detail={data} />
       </div>
     </div>
   );
 }
 
+function GroupDetailSkeleton() {
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
+      <div style={{ ...card, padding: 22, display: "flex", alignItems: "center", gap: 18 }}>
+        <Skeleton height={64} width={64} radius={18} />
+        <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 8 }}>
+          <Skeleton height={24} width="30%" />
+          <Skeleton height={12} width="45%" />
+        </div>
+      </div>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 16 }}>
+        {[0, 1, 2, 3].map((i) => (
+          <Skeleton key={i} height={74} radius={16} />
+        ))}
+      </div>
+      <div style={card}>
+        <SkeletonRows cols={MEM_COLS} count={6} />
+      </div>
+    </div>
+  );
+}
+
+const headerBtn = {
+  display: "flex",
+  alignItems: "center",
+  gap: 7,
+  fontSize: 13,
+  fontWeight: 700,
+  color: "#fff",
+  background: "transparent",
+  border: "1px solid rgba(255,255,255,.14)",
+  padding: "9px 14px",
+  borderRadius: 9,
+  cursor: "pointer",
+} as const;
+
 // ─── GROUPS LIST ──────────────────────────────────────────────────────────────
 
 export function Groups() {
   const [search, setSearch] = useState("");
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const navigate = useNavigate();
 
   const { data: groups = [], isLoading, error } = useQuery({
     queryKey: ["groups"],
     queryFn: () => api.get<AdminGroupDto[]>("/api/admin/groups"),
   });
 
-  if (isLoading) return <CenteredMessage>Loading groups…</CenteredMessage>;
   if (error) return <CenteredMessage>Could not load groups.</CenteredMessage>;
-
-  if (selectedId) return <GroupDetail groupId={selectedId} onBack={() => setSelectedId(null)} />;
 
   const q = search.trim().toLowerCase();
   const rows = groups.filter(
@@ -478,7 +555,7 @@ export function Groups() {
             display: "flex",
             alignItems: "center",
             gap: 10,
-            maxWidth: 340,
+            maxWidth: 510,
           }}
         >
           <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="rgba(244,242,251,.4)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -518,7 +595,13 @@ export function Groups() {
         </span>
       </div>
 
-      {rows.length === 0 ? (
+      {isLoading ? (
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(2,1fr)", gap: 16 }} role="status" aria-label="Loading">
+          {[0, 1, 2, 3].map((i) => (
+            <Skeleton key={i} height={150} radius={16} />
+          ))}
+        </div>
+      ) : rows.length === 0 ? (
         <CenteredMessage>{q ? "No groups match." : "No groups yet."}</CenteredMessage>
       ) : (
         <div style={{ display: "grid", gridTemplateColumns: "repeat(2,1fr)", gap: 16 }}>
@@ -529,7 +612,7 @@ export function Groups() {
               <div
                 key={g.id}
                 className="jx-row"
-                onClick={() => setSelectedId(g.id)}
+                onClick={() => navigate(`/groups/${g.id}`)}
                 style={{
                   background: "#16151F",
                   border: "1px solid rgba(255,255,255,.07)",
