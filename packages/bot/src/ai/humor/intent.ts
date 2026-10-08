@@ -7,9 +7,10 @@
  * I owe?") read the ledger. Greetings and banter use DB-grounded chat.
  */
 
-export type JemawIntent = "scan" | "chat" | "ledger";
+export type JemawIntent = "scan" | "chat" | "ledger" | "correction";
 
 export type LedgerQuestionKind =
+  | "whoami"
   | "my_balance"
   | "who_owes"
   | "expense_list"
@@ -19,11 +20,29 @@ export type LedgerQuestionKind =
 
 export type LedgerPeriod = "week" | "month" | "all";
 
+/** A ledger question, fully resolved: what to answer, for whom, over what span. */
+export interface LedgerQuery {
+  kind: LedgerQuestionKind;
+  period: LedgerPeriod;
+  /** Last N days; overrides period when set. */
+  days?: number;
+  /** At most N rows. */
+  limit?: number;
+  /** Only the asker's expenses: ones they paid, or ones they paid or shared. */
+  mine?: "paid" | "involved";
+}
+
+/** Owe words, forgiving the common "own" typo. */
+const OWE_RE = /\b(owe|owes|owed|owing|own|debts?|balances?)\b/i;
+const WHOAMI_RE = /\bwho\s+am\s+i\b/i;
+const COMPLAINT_RE =
+  /\b(wrong|mixed|incorrect|mistake|confus\w*|not\s+what|i\s+said|i\s+asked|what\s+did\s+i\s+say|what\s+did\s+i\s+said|you\s+crazy|are\s+you\s+crazy|that'?s\s+not)\b/i;
+
 const EXPLICIT_SCAN_RE =
   /\b(scan|check|refresh|update|find|search|catch\s*up|look\s*(into|for)|any\s+new\s+(expenses?|drafts?)|any\s+(expenses?|drafts?))\b/i;
 
 const LEDGER_TOPIC_RE =
-  /\b(owe|owes|owed|owing|balances?|debts?|pending|drafts?|waiting|expenses?|spent|spend|spending|total|totals|stats|summary|ledger|books?|settle|paid|history|list|biggest|most)\b/i;
+  /\b(owe|owes|owed|owing|own|latest|recent|balances?|debts?|pending|drafts?|waiting|expenses?|spent|spend|spending|total|totals|stats|summary|ledger|books?|settle|paid|history|list|biggest|most)\b/i;
 
 const QUESTION_START_RE =
   /^(are|is|am|do|does|did|can|could|will|what|what'?s|why|when|who|whom|whose|where|how|which|list|show|tell|give|summari[sz]e|any)\b/i;
@@ -47,7 +66,10 @@ export function stripJemawToken(text: string): string {
     .trim();
 }
 
-export function classifyJemawIntent(text: string): JemawIntent {
+export function classifyJemawIntent(
+  text: string,
+  opts: { hasPrevious?: boolean } = {},
+): JemawIntent {
   const raw = text.trim();
   const without = stripJemawToken(raw);
 
@@ -55,6 +77,10 @@ export function classifyJemawIntent(text: string): JemawIntent {
   if (!without || without.replace(/[!?.,…]+/g, "").trim().length === 0) {
     return "scan";
   }
+
+  // "That's wrong / I said what I paid" right after an answer → redo it.
+  if (opts.hasPrevious && COMPLAINT_RE.test(without)) return "correction";
+  if (WHOAMI_RE.test(without)) return "ledger";
 
   if (EXPLICIT_SCAN_RE.test(without)) return "scan";
 
@@ -99,17 +125,39 @@ export function chatLoadingTopic(text: string): "greeting" | "checkin" | "chat" 
 /** Which ledger answer a question wants. Order matters: most specific first. */
 export function classifyLedgerQuestion(text: string): LedgerQuestionKind {
   const t = stripJemawToken(text).toLowerCase();
+  if (WHOAMI_RE.test(t)) return "whoami";
   if (/\b(pending|drafts?|waiting|unconfirmed|review)\b/.test(t)) return "pending";
-  const aboutMe = /\b(i|me|my|mine)\b/.test(t);
-  if (aboutMe && /\b(owe|owes|owed|owing|balance|debts?|pay|paid)\b/.test(t)) {
-    return "my_balance";
-  }
-  if (/\b(owe|owes|owed|owing|debts?|hasn'?t\s+paid|not\s+paid|unpaid|settle|balances?)\b/.test(t)) {
-    return "who_owes";
+  if (/\b(hasn'?t\s+paid|not\s+paid|unpaid|settle)\b/.test(t)) return "who_owes";
+  if (OWE_RE.test(t)) {
+    const aboutMe = /\b(i|me|my|mine)\b/.test(t.replace(/\b(show|tell|give|let)\s+me\b/g, ""));
+    return aboutMe ? "my_balance" : "who_owes";
   }
   if (/\b(total|totals|how\s+much|stats|most|biggest|top)\b/.test(t)) return "totals";
-  if (/\b(list|history|expenses?|recent|spent\s+on|bought)\b/.test(t)) return "expense_list";
+  if (/\b(list|latest|recent|history|expenses?|purchases?|spent\s+on|bought|paid)\b/.test(t)) {
+    return "expense_list";
+  }
   return "overview";
+}
+
+/** Full query from a question: kind, period, day window, count and "mine". */
+export function parseLedgerQuery(text: string): LedgerQuery {
+  const t = stripJemawToken(text).toLowerCase();
+  const kind = classifyLedgerQuestion(text);
+  const q: LedgerQuery = { kind, period: ledgerPeriod(t) };
+  const days = /\b(\d{1,3})\s*days?\b/.exec(t);
+  if (days) q.days = Number(days[1]);
+  else if (/\btoday\b/.test(t)) q.days = 1;
+  if (!days) {
+    const limit =
+      /\b(?:latest|last|recent|top|first)\s+(\d{1,3})\b/.exec(t) ??
+      /\b(\d{1,3})\s+(?:of\s+them|expenses?|items?|entries)\b/.exec(t);
+    if (limit) q.limit = Number(limit[1]);
+  }
+  if (kind === "expense_list" || kind === "totals") {
+    if (/\b(my\s+share|i\s+was\s+(in|part)|included|involved)\b/.test(t)) q.mine = "involved";
+    else if (/\b(my|mine|i\s+(paid|spent|spend|bought)|did\s+i\s+(pay|spend))\b/.test(t)) q.mine = "paid";
+  }
+  return q;
 }
 
 export function ledgerPeriod(text: string): LedgerPeriod {

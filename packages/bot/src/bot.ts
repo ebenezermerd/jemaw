@@ -22,15 +22,21 @@ import {
 } from "./ai/humor/deliver.js";
 import {
   classifyJemawIntent,
-  classifyLedgerQuestion,
   chatLoadingTopic,
-  ledgerPeriod,
-  type LedgerPeriod,
-  type LedgerQuestionKind,
+  parseLedgerQuery,
+  type JemawIntent,
+  type LedgerQuery,
 } from "./ai/humor/intent.js";
 import { parseHumorSettings } from "@jemaw/shared/humor";
 import { deliverLedgerAnswer } from "./ai/ledger/deliver.js";
-import { startLoading } from "./telegram/loading.js";
+import { understandMessage, type Understanding } from "./ai/ledger/understand.js";
+import {
+  CORRECTION_LINES,
+  recallLedgerQuestion,
+  rememberLedgerQuestion,
+  type RememberedQuestion,
+} from "./ai/ledger/memory.js";
+import { startLoading, type LoadingHandle, type LoadingTopic } from "./telegram/loading.js";
 
 /** Word-boundary, case-insensitive "jemaw" trigger (plan §10). */
 const JEMAW_RE = /(?<![a-z0-9])jemaw(?![a-z0-9])/i;
@@ -76,6 +82,33 @@ export function scanResultLine(res: ScanResult): string {
     return `Nothing new. ${res.pendingCount} draft${s(res.pendingCount)} still waiting for review.`;
   }
   return "Nothing new to record.";
+}
+
+/**
+ * Keyword fallback for when the model can't be asked. A complaint is redone
+ * as the previous question, sharpened by anything new in the complaint.
+ */
+export function understandByRules(
+  text: string,
+  previous: RememberedQuestion | null,
+): Understanding {
+  const intent: JemawIntent = classifyJemawIntent(text, { hasPrevious: previous != null });
+  if (intent === "ledger") return { intent, query: parseLedgerQuery(text) };
+  if (intent === "correction" && previous) {
+    const q = parseLedgerQuery(text);
+    if (q.kind === "overview") return { intent, query: previous.query };
+    return {
+      intent,
+      query: {
+        ...previous.query,
+        kind: q.kind,
+        mine: q.mine ?? previous.query.mine,
+        ...(q.days ? { days: q.days, limit: undefined } : {}),
+        ...(q.limit ? { limit: q.limit, days: undefined } : {}),
+      },
+    };
+  }
+  return { intent: intent === "correction" ? "chat" : intent };
 }
 
 const RATE_LIMITED_LINES = [
@@ -148,15 +181,21 @@ export function createBot(token: string, deps: BotDeps): Bot {
     triggeredByMemberId: string | null,
     triggerType: "keyword" | "command",
     replyTo?: number,
+    existingLoading?: LoadingHandle,
   ): void {
     const chatId = Number(group.telegramChatId);
     if (!gemini) {
       console.log(`[scan] skipped: GEMINI_API_KEY not configured`);
+      void existingLoading?.cancel();
       return;
     }
     if (!scanLimiter.tryAcquire(group.id)) {
       console.log(`[scan] rate-limited for group ${group.id}`);
       const line = RATE_LIMITED_LINES[Math.floor(Math.random() * RATE_LIMITED_LINES.length)]!;
+      if (existingLoading) {
+        void existingLoading.finish(line);
+        return;
+      }
       void api
         .sendMessage(
           chatId,
@@ -175,7 +214,8 @@ export function createBot(token: string, deps: BotDeps): Bot {
         console.log(`[scan] group ${group.id} not found`);
         return;
       }
-      const loading = await startLoading(api, chatId, { topic: "scan", replyTo });
+      const loading =
+        existingLoading ?? (await startLoading(api, chatId, { topic: "scan", replyTo }));
       const res = await scanGroup(
         { db, gemini: gemini!, now: () => Date.now() },
         g,
@@ -219,24 +259,31 @@ export function createBot(token: string, deps: BotDeps): Bot {
   function answerLedger(
     ctx: Context,
     groupId: string,
-    kind: LedgerQuestionKind,
-    period: LedgerPeriod,
+    query: LedgerQuery,
+    opts: { loading?: LoadingHandle; lead?: string; questionText?: string } = {},
   ): void {
     const chatId = ctx.chat!.id;
     const replyTo = ctx.message?.message_id;
     const askerTelegramId = ctx.from ? BigInt(ctx.from.id) : null;
     void (async () => {
       const g = await getGroupById(db, groupId);
-      if (!g) return;
-      const loading = await startLoading(ctx.api, chatId, { topic: kind, replyTo });
+      if (!g) {
+        await opts.loading?.cancel();
+        return;
+      }
+      if (opts.questionText) {
+        rememberLedgerQuestion(groupId, askerTelegramId, opts.questionText, query);
+      }
+      const loading =
+        opts.loading ?? (await startLoading(ctx.api, chatId, { topic: query.kind, replyTo }));
       await deliverLedgerAnswer({
         db,
         group: g,
         askerTelegramId,
-        kind,
-        period,
+        query,
         loading,
         humor: humor ?? {},
+        lead: opts.lead,
       });
     })().catch((err) =>
       console.warn(`[ledger] answer failed:`, err instanceof Error ? err.message : err),
@@ -335,13 +382,13 @@ export function createBot(token: string, deps: BotDeps): Bot {
     const groupId = await ensureGroup(ctx);
     if (!groupId || !ctx.chat) return;
     if (ctx.from) await registerUser(db, groupId, ctx.from).catch(() => {});
-    answerLedger(ctx, groupId, "who_owes", "all");
+    answerLedger(ctx, groupId, { kind: "who_owes", period: "all" });
   });
 
   bot.command("history", async (ctx) => {
     const groupId = await ensureGroup(ctx);
     if (!groupId || !ctx.chat) return;
-    answerLedger(ctx, groupId, "expense_list", "all");
+    answerLedger(ctx, groupId, { kind: "expense_list", period: "all" });
   });
 
   // /digest — post the weekly summary on demand and restart its weekly clock.
@@ -385,52 +432,81 @@ export function createBot(token: string, deps: BotDeps): Bot {
     ).catch(() => {});
 
     if (JEMAW_RE.test(text)) {
-      const intent = classifyJemawIntent(text);
-      if (intent === "ledger") {
-        answerLedger(ctx, groupId, classifyLedgerQuestion(text), ledgerPeriod(text));
-        return;
-      }
-      if (intent === "chat") {
-        // Social banter: skip expense extract; reply from live DB context.
-        void (async () => {
-          const g = await getGroupById(db, groupId);
-          if (!g) return;
-          const mode = parseHumorSettings(
-            (g.settings as Record<string, unknown> | null)?.humor,
-          ).mode;
-          if (mode === "off") return;
-          const loading = await startLoading(ctx.api, chat.id, {
-            topic: chatLoadingTopic(text),
-            replyTo: ctx.message.message_id,
-          });
-          const delivered = await maybeDeliverDirectChat({
-            db,
-            api: ctx.api,
-            group: g,
-            userText: text,
-            currency: g.defaultCurrency,
-            humor: humor ?? {},
-            askerTelegramId: ctx.from ? BigInt(ctx.from.id) : null,
-            loading,
-          });
-          if (!delivered) await loading.cancel();
-        })().catch((err) =>
-          console.warn(
-            `[humor] direct chat failed:`,
-            err instanceof Error ? err.message : err,
-          ),
+      const askerTelegramId = ctx.from ? BigInt(ctx.from.id) : null;
+      const replyTo = ctx.message.message_id;
+      void (async () => {
+        const g = await getGroupById(db, groupId);
+        if (!g) return;
+        const previous = recallLedgerQuestion(groupId, askerTelegramId);
+        const byRules = understandByRules(text, previous);
+        const mode = parseHumorSettings(
+          (g.settings as Record<string, unknown> | null)?.humor,
+        ).mode;
+        // Humor off and plainly social: stay quiet, as before.
+        if (byRules.intent === "chat" && mode === "off") return;
+
+        // Placeholder first, from the fast rules; the model refines the route.
+        const topic: LoadingTopic =
+          byRules.query?.kind ?? (byRules.intent === "chat" ? chatLoadingTopic(text) : "scan");
+        const loading = await startLoading(ctx.api, chat.id, { topic, replyTo });
+
+        const understander = humor?.client ?? gemini;
+        const byModel = understander
+          ? await understandMessage({
+              client: understander,
+              text,
+              previous: previous ? { text: previous.text, kind: previous.query.kind } : undefined,
+            })
+          : null;
+        const u = byModel ?? byRules;
+        console.log(
+          `[understand] group=${groupId} intent=${u.intent} source=${byModel ? "model" : "rules"} query=${JSON.stringify(u.query ?? null)}`,
         );
-        return;
-      }
-      const member = ctx.from
-        ? await findScanMember(db, groupId, ctx.from.id)
-        : null;
-      maybeScan(
-        ctx.api,
-        { id: groupId, telegramChatId: BigInt(chat.id) },
-        member,
-        "keyword",
-        ctx.message.message_id,
+
+        if ((u.intent === "ledger" || u.intent === "correction") && u.query) {
+          const correcting = u.intent === "correction" && previous != null;
+          answerLedger(ctx, groupId, u.query, {
+            loading,
+            questionText: correcting && previous ? previous.text : text,
+            lead: correcting
+              ? CORRECTION_LINES[Math.floor(Math.random() * CORRECTION_LINES.length)]
+              : undefined,
+          });
+          return;
+        }
+        if (u.intent === "scan") {
+          const member = ctx.from ? await findScanMember(db, groupId, ctx.from.id) : null;
+          maybeScan(
+            ctx.api,
+            { id: groupId, telegramChatId: BigInt(chat.id) },
+            member,
+            "keyword",
+            replyTo,
+            loading,
+          );
+          return;
+        }
+        // Social banter: reply from live DB context.
+        if (mode === "off") {
+          await loading.cancel();
+          return;
+        }
+        const delivered = await maybeDeliverDirectChat({
+          db,
+          api: ctx.api,
+          group: g,
+          userText: text,
+          currency: g.defaultCurrency,
+          humor: humor ?? {},
+          askerTelegramId,
+          loading,
+        });
+        if (!delivered) await loading.cancel();
+      })().catch((err) =>
+        console.warn(
+          `[jemaw] reply failed:`,
+          err instanceof Error ? err.message : err,
+        ),
       );
     }
   });

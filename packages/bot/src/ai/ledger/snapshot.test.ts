@@ -76,6 +76,8 @@ describe("computeLedgerSnapshot", () => {
       netCents: -30000,
       owes: [{ name: "Abenezer", cents: 90000 }],
       owedBy: [{ name: "Hana", cents: 15000 }],
+      paidCents: 30000,
+      paidCount: 1,
     });
   });
 
@@ -102,14 +104,22 @@ describe("computeLedgerSnapshot", () => {
 
   it("lists recent expenses newest first with payer and participants", () => {
     const snap = computeLedgerSnapshot({ ...base, askerTelegramId: null });
-    expect(snap.recentExpenses[0]).toMatchObject({
+    expect(snap.expenses[0]).toMatchObject({
       description: "Dinner",
       cents: 120000,
       payer: "Abenezer",
       participants: 3,
       isLoan: false,
     });
-    expect(snap.recentExpenses).toHaveLength(4);
+    expect(snap.expenses).toHaveLength(4);
+  });
+
+  it("flags which expenses the asker paid or shared", () => {
+    const snap = computeLedgerSnapshot({ ...base, askerTelegramId: 2n });
+    const byName = Object.fromEntries(snap.expenses.map((e) => [e.description, e]));
+    expect(byName["Taxi"]).toMatchObject({ askerPaid: true, askerShared: true });
+    expect(byName["Dinner"]).toMatchObject({ askerPaid: false, askerShared: true });
+    expect(byName["Old trip"]).toMatchObject({ askerPaid: false, askerShared: true });
   });
 
   it("summarises pending drafts", () => {

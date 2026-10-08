@@ -18,16 +18,14 @@ const base: MeSummaryDto = {
 };
 
 describe("SummaryCard", () => {
-  it("leads with what you still have to pay, even when your net is positive", () => {
+  it("shows what you still have to pay as a negative figure, with no extra text", () => {
     const { container } = render(<SummaryCard s={base} />);
     const text = container.textContent!;
     expect(text).toContain("you owe");
-    expect(text).toContain("312");
+    expect(text).toContain("-312");
     expect(text).toContain("to Gemechis");
-    expect(text).toContain("You're owed 336");
-    expect(text).toContain("by Ayenew");
-    expect(text).toContain("net +24");
-    expect(text).not.toContain("you're owed");
+    expect(text).not.toContain("You're owed");
+    expect(text).not.toContain("net");
   });
 
   it("shows what you're owed when you owe nothing", () => {

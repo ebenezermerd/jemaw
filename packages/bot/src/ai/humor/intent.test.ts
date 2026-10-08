@@ -3,6 +3,7 @@ import {
   classifyJemawIntent,
   classifyLedgerQuestion,
   chatLoadingTopic,
+  parseLedgerQuery,
   ledgerPeriod,
   sanitizeAddressedUtterance,
   stripJemawToken,
@@ -92,5 +93,59 @@ describe("chatLoadingTopic", () => {
     expect(chatLoadingTopic("you sick jemaw ?")).toBe("checkin");
     expect(chatLoadingTopic("jemaw how are you")).toBe("checkin");
     expect(chatLoadingTopic("who is this i am talking to? jemaw")).toBe("chat");
+  });
+});
+
+describe("the conversation that went wrong", () => {
+  it("routes each message the way it was meant", () => {
+    expect(classifyJemawIntent("who am i ? jemaw")).toBe("ledger");
+    expect(classifyJemawIntent("do i own anything on the ledger? jemaw")).toBe("ledger");
+    expect(classifyJemawIntent("list my latest 5 days expenses jemaw")).toBe("ledger");
+    expect(classifyJemawIntent("where is the expenses i paid latest 5 of them ? jemaw")).toBe("ledger");
+  });
+
+  it("treats complaints as corrections only when there is something to correct", () => {
+    const prev = { hasPrevious: true };
+    expect(classifyJemawIntent("woo, this is mixed i said what i paid, jemaw", prev)).toBe("correction");
+    expect(classifyJemawIntent("you crazy? jemaw what did i said and what are you responding ?jemaw", prev)).toBe("correction");
+    expect(classifyJemawIntent("woo, this is mixed i said what i paid, jemaw")).not.toBe("correction");
+  });
+});
+
+describe("parseLedgerQuery", () => {
+  it("answers who am i plainly", () => {
+    expect(parseLedgerQuery("who am i ? jemaw").kind).toBe("whoami");
+  });
+
+  it("forgives owe typos", () => {
+    expect(parseLedgerQuery("do i own anything on the ledger?").kind).toBe("my_balance");
+  });
+
+  it("reads 'my', a day window and a count", () => {
+    expect(parseLedgerQuery("list my latest 5 days expenses")).toEqual({
+      kind: "expense_list",
+      period: "all",
+      days: 5,
+      mine: "paid",
+    });
+    expect(parseLedgerQuery("where is the expenses i paid latest 5 of them ?")).toEqual({
+      kind: "expense_list",
+      period: "all",
+      limit: 5,
+      mine: "paid",
+    });
+  });
+
+  it("keeps owing questions about expenses as balance questions", () => {
+    expect(parseLedgerQuery("how much do I owe for the expenses?").kind).toBe("my_balance");
+    expect(parseLedgerQuery("who hasn't paid?").kind).toBe("who_owes");
+  });
+
+  it("totals what I paid", () => {
+    expect(parseLedgerQuery("how much did i spend this month")).toEqual({
+      kind: "totals",
+      period: "month",
+      mine: "paid",
+    });
   });
 });

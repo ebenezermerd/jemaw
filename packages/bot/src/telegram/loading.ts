@@ -11,6 +11,11 @@ export type LoadingTopic = LedgerQuestionKind | "greeting" | "checkin" | "chat" 
 
 /** First frame: matches what was asked. */
 export const OPENERS: Record<LoadingTopic, string[]> = {
+  whoami: [
+    "🪪 Checking your ID…",
+    "🪞 Holding up a mirror…",
+    "📇 Pulling your file from the cabinet…",
+  ],
   my_balance: [
     "🧾 Checking how deep in debt you are…",
     "🔎 Looking you up in the book of debts…",
