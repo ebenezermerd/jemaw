@@ -3,8 +3,8 @@
  * card": violet gradient, specular highlight, the bubble-logo watermark, a name
  * pill + gold chip, semantic status pill, the focal net in Bricolage, and a
  * three-column stat row. The focal number follows the pairwise settle plan:
- * what you still have to pay leads, what you're owed and the net come after,
- * so Home never says "you're owed" while Settle has a payment waiting.
+ * minus what you still have to pay, else plus what you're owed, so Home never
+ * says "you're owed" while Settle has a payment waiting.
  */
 import { AnimatedNumber } from "../motion/AnimatedNumber.js";
 import { currencyAffix, formatNumber } from "../lib/money.js";
@@ -20,7 +20,6 @@ function whoLabel(list: MemberAmountDto[], prep: string): string {
 export function SummaryCard({ s, onOpen }: { s: MeSummaryDto; onOpen?: () => void }) {
   const owes = Number(s.owes);
   const owed = Number(s.owed);
-  const net = Number(s.net);
   const standing =
     owes > 0 ? "you owe" : owed > 0 ? "you're owed" : "you're all square";
   // Semantic status sub-pill: amber owes, teal owed, neutral even.
@@ -32,8 +31,7 @@ export function SummaryCard({ s, onOpen }: { s: MeSummaryDto; onOpen?: () => voi
         : { color: "rgba(255,255,255,.8)", bg: "rgba(255,255,255,.16)", glyph: "•", word: "all square" };
   const { symbol, suffix } = currencyAffix(s.currency);
   const focal =
-    owes > 0 ? formatNumber(s.owes) : owed > 0 ? `+${formatNumber(s.owed)}` : formatNumber("0");
-  const signedNet = net > 0 ? `+${formatNumber(s.net)}` : formatNumber(s.net);
+    owes > 0 ? `-${formatNumber(s.owes)}` : owed > 0 ? `+${formatNumber(s.owed)}` : formatNumber("0");
 
   return (
     <div
@@ -174,21 +172,6 @@ export function SummaryCard({ s, onOpen }: { s: MeSummaryDto; onOpen?: () => voi
             <span style={{ fontSize: 21, opacity: 0.7 }}>&nbsp;{symbol}</span>
           )}
         </div>
-
-        {/* the other side of the plan, when both directions are open */}
-        {owes > 0 && owed > 0 && (
-          <div
-            style={{
-              fontSize: 12,
-              fontWeight: 600,
-              color: "rgba(255,255,255,.82)",
-              marginTop: 2,
-              fontVariantNumeric: "tabular-nums",
-            }}
-          >
-            You're owed {formatNumber(s.owed)} {whoLabel(s.owedBy, "by")} · net {signedNet}
-          </div>
-        )}
 
         {/* divider */}
         <div
