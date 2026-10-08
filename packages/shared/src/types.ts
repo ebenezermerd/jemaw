@@ -186,6 +186,21 @@ export interface MeSummaryDto {
   /** number of live expense or loan entries they're involved in */
   expenseCount: number;
   currency: string;
+  /** total this member still has to pay, per the pairwise settle plan (decimal) */
+  owes: string;
+  /** total still owed to this member, per the pairwise settle plan (decimal) */
+  owed: string;
+  /** who this member pays, largest first */
+  owesTo: MemberAmountDto[];
+  /** who pays this member, largest first */
+  owedBy: MemberAmountDto[];
+}
+
+export interface MemberAmountDto {
+  memberId: string;
+  name: string;
+  /** decimal */
+  amount: string;
 }
 
 export interface UpdateGroupInput {

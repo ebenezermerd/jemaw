@@ -319,8 +319,25 @@ export async function registerApi(
     { preHandler: auth },
     async (req) => {
       const { group, member } = req.jemaw!;
-      const { nets } = await loadLedger(db, group.id);
+      const { members, nets, transfers } = await loadLedger(db, group.id);
       const net = nets.find((n) => n.memberId === member.id)?.netCents ?? 0;
+      // Owes / owed follow the pairwise settle plan, so Home matches Settle.
+      const nameOf = (id: string) =>
+        members.find((m) => m.id === id)?.displayName ?? "Member";
+      const toDto = (memberId: string, cents: number) => ({
+        memberId,
+        name: nameOf(memberId),
+        amount: centsToDecimal(cents),
+      });
+      const mine = [...transfers].sort((a, b) => b.amountCents - a.amountCents);
+      const owesTo = mine
+        .filter((t) => t.fromMemberId === member.id)
+        .map((t) => toDto(t.toMemberId, t.amountCents));
+      const owedBy = mine
+        .filter((t) => t.toMemberId === member.id)
+        .map((t) => toDto(t.fromMemberId, t.amountCents));
+      const sum = (list: { amount: string }[]) =>
+        centsToDecimal(list.reduce((acc, x) => acc + decimalToCents(x.amount), 0));
 
       const expenses = await listLiveExpenses(db, group.id);
       let paidCents = 0;
@@ -342,6 +359,10 @@ export async function registerApi(
         totalShare: centsToDecimal(shareCents),
         expenseCount: count,
         currency: group.defaultCurrency,
+        owes: sum(owesTo),
+        owed: sum(owedBy),
+        owesTo,
+        owedBy,
       };
       return res;
     },

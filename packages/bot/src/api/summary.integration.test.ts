@@ -102,6 +102,36 @@ d("me/summary + currency PATCH", () => {
     expect(s.expenseCount).toBe(1);
   });
 
+  it("reports what you owe and are owed separately, like the settle plan", async () => {
+    // Tom owes Sara 15 (dinner above); Ana pays 40 split with Sara → Sara owes Ana 20.
+    const anaTg = saraTg - 10n;
+    const anaId = (await upsertMember(db, groupId, anaTg, "Ana", null)).id;
+    await app.inject({
+      method: "POST",
+      url: `/api/groups/${groupId}/expenses`,
+      headers: h(anaTg),
+      payload: {
+        description: "Taxi",
+        amount: "40.00",
+        payerMemberId: anaId,
+        splitType: "equal",
+        splitWith: [anaId, saraId],
+      },
+    });
+    const s = (
+      await app.inject({
+        method: "GET",
+        url: `/api/groups/${groupId}/me/summary`,
+        headers: h(saraTg),
+      })
+    ).json() as MeSummaryDto;
+    expect(s.net).toBe("-5.00");
+    expect(s.owes).toBe("20.00");
+    expect(s.owed).toBe("15.00");
+    expect(s.owesTo).toEqual([{ memberId: anaId, name: "Ana", amount: "20.00" }]);
+    expect(s.owedBy).toEqual([{ memberId: tomId, name: "Tom", amount: "15.00" }]);
+  });
+
   it("rejects currency change once expenses exist (409)", async () => {
     const res = await app.inject({
       method: "PATCH",

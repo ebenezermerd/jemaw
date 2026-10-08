@@ -99,7 +99,7 @@ export function Home() {
         {summary.isLoading || !summary.data ? (
           <Skeleton height={170} radius="var(--r-xl)" />
         ) : (
-          <SummaryCard s={summary.data} />
+          <SummaryCard s={summary.data} onOpen={() => nav("/settle")} />
         )}
       </div>
 
