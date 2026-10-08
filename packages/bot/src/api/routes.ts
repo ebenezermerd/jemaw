@@ -205,6 +205,8 @@ export interface ApiDeps {
   botApi?: import("grammy").Api;
   /** Phase 1–2 humor runtime (optional). */
   humor?: import("../ai/humor/deliver.js").HumorRuntime;
+  /** Admin-console switches; scans are refused while they are paused. */
+  runtime?: import("../runtimeConfig.js").RuntimeConfigStore;
 }
 
 export async function registerApi(
@@ -258,7 +260,7 @@ export async function registerApi(
       const { group, member } = req.jemaw!;
       const members = await listMembers(db, group.id);
       const hasExpenses = await groupHasExpenses(db, group.id);
-      const canScan = deps.gemini
+      const canScan = deps.gemini && deps.runtime?.current().scanEnabled !== false
         ? await groupHasNewMessages(db, group.id)
         : false;
       return toGroupDto(group, members, hasExpenses, canScan, member);
@@ -291,7 +293,7 @@ export async function registerApi(
       }
       const members = await listMembers(db, group.id);
       const hasExpenses = await groupHasExpenses(db, group.id);
-      const canScan = deps.gemini
+      const canScan = deps.gemini && deps.runtime?.current().scanEnabled !== false
         ? await groupHasNewMessages(db, group.id)
         : false;
       return toGroupDto(group, members, hasExpenses, canScan, member);
@@ -1256,6 +1258,9 @@ export async function registerApi(
       if (!deps.gemini) {
         console.warn(`[scan] manual skipped: AI scanning is not configured for group ${group.id}`);
         return reply.code(503).send({ error: "AI scanning is not configured" });
+      }
+      if (deps.runtime && !deps.runtime.current().scanEnabled) {
+        return reply.code(503).send({ error: "AI scanning is paused by the Jemaw team" });
       }
       if (!deps.scanLimiter.tryAcquire(group.id)) {
         console.log(`[scan] manual rate-limited for group ${group.id}`);

@@ -35,6 +35,8 @@ export interface WeeklyJobDeps {
   db: Db;
   api: Api;
   gemini?: ScanClient;
+  /** Admin switch; the sweep skips every group while digests are off. */
+  runtime?: import("../runtimeConfig.js").RuntimeConfigStore;
 }
 
 const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
@@ -150,6 +152,7 @@ function lastSentAt(group: Group): number | null {
 
 /** One sweep over all groups; exported for tests and the /digest command. */
 export async function runWeeklyDigestSweep(deps: WeeklyJobDeps): Promise<void> {
+  if (deps.runtime && !deps.runtime.current().weeklyDigestEnabled) return;
   const groups = await listAllGroups(deps.db);
   for (const group of groups) {
     try {

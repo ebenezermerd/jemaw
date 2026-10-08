@@ -78,14 +78,20 @@ export function createGeminiClient(apiKey: string, model?: string): ScanClient {
  * Groq backend via its OpenAI-compatible API. JSON mode at temperature 0 for
  * stable extraction. Default model is overridable with GROQ_MODEL.
  */
-export function createGroqClient(apiKey: string, model?: string): ScanClient {
+export function createGroqClient(
+  apiKey: string,
+  model?: string | (() => string | null | undefined),
+): ScanClient {
   const client = new OpenAI({
     apiKey,
     baseURL: "https://api.groq.com/openai/v1",
   });
-  const modelName = model?.trim() || DEFAULT_GROQ_MODEL;
+  // Resolved per call so an admin override takes effect without a restart.
+  const resolveModel = () =>
+    (typeof model === "function" ? model() : model)?.trim() || DEFAULT_GROQ_MODEL;
   return {
     async suggest({ systemPrompt, userPrompt, temperature, maxTokens }) {
+      const modelName = resolveModel();
       const res = await client.chat.completions.create({
         model: modelName,
         temperature: temperature ?? 0,

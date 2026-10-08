@@ -11,6 +11,7 @@ import {
 } from "./ai/geminiClient.js";
 import { ScanRateLimiter } from "./ai/rateLimit.js";
 import { startWeeklyDigestScheduler } from "./telegram/weeklyJob.js";
+import { createRuntimeConfigStore, startHeartbeat } from "./runtimeConfig.js";
 
 async function main(): Promise<void> {
   const env = loadEnv();
@@ -18,6 +19,10 @@ async function main(): Promise<void> {
     databaseUrl: env.DATABASE_URL,
     instanceConnectionName: env.INSTANCE_CONNECTION_NAME,
   });
+
+  // Switches the admin console controls (app_config bot.* keys).
+  const runtime = createRuntimeConfigStore(db);
+  await runtime.refresh();
 
   // Default currency for groups created in Phase 1 (per-group currency picker
   // arrives with onboarding UI; EUR is the v1 default).
@@ -27,7 +32,7 @@ async function main(): Promise<void> {
   // Model ids come from env (with safe defaults) so provider deprecations do not
   // require a code change — only an env / Secrets Manager update + redeploy.
   const groq = env.GROQ_API_KEY
-    ? createGroqClient(env.GROQ_API_KEY, env.GROQ_MODEL)
+    ? createGroqClient(env.GROQ_API_KEY, () => runtime.current().model ?? env.GROQ_MODEL)
     : undefined;
   const geminiOnly = env.GEMINI_API_KEY
     ? createGeminiClient(env.GEMINI_API_KEY, env.GEMINI_MODEL)
@@ -49,12 +54,12 @@ async function main(): Promise<void> {
   } else {
     console.log(`[scan] no AI key configured — scans disabled`);
   }
-  const scanLimiter = new ScanRateLimiter();
+  const scanLimiter = new ScanRateLimiter(() => runtime.current().scanCooldownSeconds * 1000);
 
   // Humor Phase 2: reuse scan providers; optional HUMOR_MODEL overrides generation model.
   const humorModel = env.HUMOR_MODEL ?? env.GROQ_MODEL;
   const humorClient: ScanClient | undefined = env.GROQ_API_KEY
-    ? createGroqClient(env.GROQ_API_KEY, humorModel)
+    ? createGroqClient(env.GROQ_API_KEY, () => runtime.current().model ?? humorModel)
     : geminiOnly
       ? createGeminiClient(env.GEMINI_API_KEY!, env.GEMINI_MODEL)
       : undefined;
@@ -81,6 +86,7 @@ async function main(): Promise<void> {
     gemini,
     scanLimiter,
     humor,
+    runtime,
   });
 
   const app = await buildServer({
@@ -92,6 +98,7 @@ async function main(): Promise<void> {
       scanLimiter,
       botApi: bot.api,
       humor,
+      runtime,
     },
     corsOrigin: [
       ...(env.MINI_APP_URL ? [env.MINI_APP_URL] : []),
@@ -123,11 +130,13 @@ async function main(): Promise<void> {
   }
 
   // Hourly sweep that posts each group's weekly summary when it's due.
-  const stopDigest = startWeeklyDigestScheduler({ db, api: bot.api, gemini });
+  const stopDigest = startWeeklyDigestScheduler({ db, api: bot.api, gemini, runtime });
+  const stopHeartbeat = startHeartbeat(db, process.env.RENDER_GIT_COMMIT?.slice(0, 7) ?? null);
   app.log.info("Weekly digest scheduler started");
 
   const shutdown = async () => {
     stopDigest();
+    stopHeartbeat();
     await bot.stop();
     await app.close();
     process.exit(0);
