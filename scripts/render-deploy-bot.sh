@@ -43,7 +43,7 @@ env_flags=(
   --env-var "REGISTER_TELEGRAM_WEBHOOK=true"
   --env-var "BOT_USERNAME=${BOT_USERNAME:-jemawsbot}"
   --env-var "MINI_APP_SHORT_NAME=${MINI_APP_SHORT_NAME:-app}"
-  --env-var "GROQ_MODEL=${GROQ_MODEL:-llama-3.3-70b-versatile}"
+  --env-var "GROQ_MODEL=${GROQ_MODEL:-openai/gpt-oss-120b}"
   --env-var "MINI_APP_URL=${MINI_APP_URL:-https://jemaw-app.ebenezermerd.workers.dev}"
 )
 [[ -n "${GROQ_API_KEY:-}" ]]   && env_flags+=(--env-var "GROQ_API_KEY=${GROQ_API_KEY}")

@@ -32,11 +32,21 @@ export type GeminiClient = ScanClient;
 /**
  * Defaults are models verified working with the current production keys.
  * Override with GEMINI_MODEL / GROQ_MODEL so production can change without a code push.
- * Note: openai/gpt-oss-* is blocked on the Jemaw Groq org; gemini-2.0-flash is
+ * Note: Groq retired llama-3.3-70b-versatile in Oct 2026; gemini-2.0-flash is
  * quota-exhausted and gemini-2.5-flash-lite is unavailable for this API key.
  */
 export const DEFAULT_GEMINI_MODEL = "gemini-2.5-flash";
-export const DEFAULT_GROQ_MODEL = "llama-3.3-70b-versatile";
+export const DEFAULT_GROQ_MODEL = "openai/gpt-oss-120b";
+
+/**
+ * gpt-oss models reason before answering and the reasoning counts against
+ * max_tokens; at the default effort it can exhaust the budget mid-JSON.
+ */
+export function groqReasoningOptions(
+  model: string,
+): { reasoning_effort?: "low" } {
+  return model.startsWith("openai/gpt-oss") ? { reasoning_effort: "low" } : {};
+}
 
 /** Gemini backend (JSON mode, temperature 0). Model id is configurable. */
 export function createGeminiClient(apiKey: string, model?: string): ScanClient {
@@ -80,6 +90,7 @@ export function createGroqClient(apiKey: string, model?: string): ScanClient {
         model: modelName,
         temperature: temperature ?? 0,
         ...(maxTokens != null ? { max_tokens: maxTokens } : {}),
+        ...groqReasoningOptions(modelName),
         response_format: { type: "json_object" },
         messages: [
           { role: "system", content: systemPrompt },
