@@ -10,3 +10,15 @@ packages/*/dist-types/
 .gcp-secrets.env
 .firebase/
 backups/
+work/
+
+# Terraform / AWS deployment state
+*.tfstate
+*.tfstate.*
+.terraform/
+tfplan
+infra/aws/terraform.tfvars
+
+# DB dumps from migration (scripts/migrate-db-to-neon.sh)
+*.dump
+jemaw-rds.dump

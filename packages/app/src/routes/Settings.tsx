@@ -8,8 +8,20 @@ import {
   useSetMemberPrimary,
   useUpdateGroup,
   useResetGroup,
+  useTelegramCandidates,
+  useAssignMemberTelegram,
+  useMemberSummary,
+  useRemoveMember,
+  useMeSummary,
+  useHumorSettings,
+  useUpdateHumorSettings,
+  useUpdateMyHumorPrefs,
+  useResetHumorVibe,
+  useAddHumorCallback,
+  useRemoveHumorCallback,
 } from "../lib/hooks.js";
-import type { MemberDto } from "@jemaw/shared/types";
+import type { AssignTelegramInput, MemberDto } from "@jemaw/shared/types";
+import { formatMoney } from "../lib/money.js";
 import { Button } from "../ui/primitives.js";
 import { MemberAvatar } from "../ui/MemberAvatar.js";
 import { PageHeader } from "../ui/PageHeader.js";
@@ -17,6 +29,8 @@ import { PageLoader } from "../motion/Loader.js";
 import { Modal } from "../motion/Modal.js";
 import { Centered } from "./Balances.js";
 import { getThemePref, setThemePref, type ThemePref } from "../lib/theme.js";
+import { useToast } from "../ui/Toast.js";
+import { formatDisplayName } from "../lib/names.js";
 
 const CURRENCIES = ["EUR", "USD", "GBP", "ETB", "JPY", "CHF", "CAD", "AUD"];
 
@@ -33,11 +47,24 @@ export function Settings() {
   const [theme, setTheme] = useState<ThemePref>(getThemePref());
   const [confirmReset, setConfirmReset] = useState(false);
   const [editMemberId, setEditMemberId] = useState<string | null>(null);
+  const [removeMemberId, setRemoveMemberId] = useState<string | null>(null);
+  const me = useMeSummary();
+  const humorQ = useHumorSettings();
+  const updateHumor = useUpdateHumorSettings();
+  const updateMyPrefs = useUpdateMyHumorPrefs();
+  const resetVibe = useResetHumorVibe();
+  const addCallback = useAddHumorCallback();
+  const removeCallback = useRemoveHumorCallback();
+  const [callbackText, setCallbackText] = useState("");
 
   if (group.isLoading) return <PageLoader />;
   const g = group.data;
   if (!g) return <Centered>Couldn't load settings.</Centered>;
   const isAdmin = g.isAdmin;
+  const humor = humorQ.data?.humor ?? g.humor;
+  const vibe = humorQ.data?.vibe;
+  const myPrefs = humorQ.data?.myPrefs;
+  const activeMembers = g.members.filter((m) => m.isActive);
   const editMember = editMemberId
     ? g.members.find((m) => m.id === editMemberId) ?? null
     : null;
@@ -72,6 +99,241 @@ export function Settings() {
         </Row>
       </Section>
 
+      {/* Interactive humor Phases 1–4 */}
+      <Section title="Jemaw voice">
+        <p className="t-caption" style={{ color: "var(--text-faint)", margin: "0 0 8px" }}>
+          Every jemaw mention runs a scan and a short reply when mode is on. Replies use draft
+          outcomes (new vs still pending), group vibe when ready, and your consent prefs.
+          Money facts stay exact. Default is off.
+        </p>
+        <Row label="Mode">
+          {isAdmin ? (
+            <Segmented
+              value={humor?.mode ?? "off"}
+              onChange={async (mode) => {
+                await updateHumor.mutateAsync({
+                  mode: mode as "off" | "jemaw_dry" | "roast" | "chaos",
+                });
+                await humorQ.refetch();
+                await group.refetch();
+              }}
+              options={[
+                { value: "off", label: "Off" },
+                { value: "jemaw_dry", label: "Dry" },
+                { value: "roast", label: "Roast" },
+                { value: "chaos", label: "Chaos" },
+              ]}
+            />
+          ) : (
+            <span className="t-body" style={{ color: "var(--text-muted)" }}>
+              {humor?.mode ?? "off"}
+            </span>
+          )}
+        </Row>
+        {isAdmin && humor && humor.mode !== "off" && (
+          <>
+            <Row label="Model lines">
+              <Segmented
+                value={humor.useModelComposer ? "on" : "off"}
+                onChange={async (v) => {
+                  await updateHumor.mutateAsync({ useModelComposer: v === "on" });
+                  await humorQ.refetch();
+                }}
+                options={[
+                  { value: "on", label: "On" },
+                  { value: "off", label: "Templates" },
+                ]}
+              />
+            </Row>
+            <Row label="Ledger roasts">
+              <Segmented
+                value={humor.ledgerBanter !== false ? "on" : "off"}
+                onChange={async (v) => {
+                  await updateHumor.mutateAsync({ ledgerBanter: v === "on" });
+                  await humorQ.refetch();
+                }}
+                options={[
+                  { value: "on", label: "On" },
+                  { value: "off", label: "Off" },
+                ]}
+              />
+            </Row>
+            <Row label="Group vibe">
+              <Segmented
+                value={humor.useGroupVibe !== false ? "on" : "off"}
+                onChange={async (v) => {
+                  await updateHumor.mutateAsync({ useGroupVibe: v === "on" });
+                  await humorQ.refetch();
+                }}
+                options={[
+                  { value: "on", label: "On" },
+                  { value: "off", label: "Off" },
+                ]}
+              />
+            </Row>
+            <Row label="Learn feedback">
+              <Segmented
+                value={humor.usePreferenceLearning !== false ? "on" : "off"}
+                onChange={async (v) => {
+                  await updateHumor.mutateAsync({
+                    usePreferenceLearning: v === "on",
+                  });
+                  await humorQ.refetch();
+                }}
+                options={[
+                  { value: "on", label: "On" },
+                  { value: "off", label: "Off" },
+                ]}
+              />
+            </Row>
+            <Row label="Language">
+              <Segmented
+                value={humor.languageMode ?? "auto"}
+                onChange={async (v) => {
+                  await updateHumor.mutateAsync({
+                    languageMode: v as "auto" | "en" | "am" | "code_mix",
+                  });
+                  await humorQ.refetch();
+                }}
+                options={[
+                  { value: "auto", label: "Auto" },
+                  { value: "en", label: "EN" },
+                  { value: "am", label: "AM" },
+                  { value: "code_mix", label: "Mix" },
+                ]}
+              />
+            </Row>
+            <Row label="Mute 7 days">
+              <Button
+                variant="ghost"
+                disabled={updateHumor.isPending}
+                onClick={async () => {
+                  await updateHumor.mutateAsync({ muteDays: 7 });
+                  await humorQ.refetch();
+                }}
+              >
+                Mute
+              </Button>
+            </Row>
+            {humor.mutedUntil && (
+              <p className="t-caption" style={{ color: "var(--text-faint)", margin: 0 }}>
+                Muted until {new Date(humor.mutedUntil).toLocaleString()}
+              </p>
+            )}
+            {vibe && (
+              <p className="t-caption" style={{ color: "var(--text-faint)", margin: 0 }}>
+                Vibe: {vibe.status}
+                {vibe.sampleMessageCount
+                  ? ` · ${vibe.sampleMessageCount} msgs · ${vibe.formality} formality`
+                  : ""}
+                {vibe.preferredStyles?.length
+                  ? ` · prefers ${vibe.preferredStyles.slice(0, 2).join(", ")}`
+                  : ""}
+              </p>
+            )}
+            {isAdmin && (
+              <Row label="Reset vibe">
+                <Button
+                  variant="ghost"
+                  disabled={resetVibe.isPending}
+                  onClick={async () => {
+                    await resetVibe.mutateAsync();
+                    await humorQ.refetch();
+                  }}
+                >
+                  Reset
+                </Button>
+              </Row>
+            )}
+            {isAdmin && (
+              <div style={{ display: "grid", gap: 8 }}>
+                <span className="t-caption" style={{ color: "var(--text-muted)" }}>
+                  Approved catchphrases (optional callbacks)
+                </span>
+                <div style={{ display: "flex", gap: 8 }}>
+                  <input
+                    className="t-body"
+                    value={callbackText}
+                    onChange={(e) => setCallbackText(e.target.value)}
+                    placeholder="Short phrase"
+                    style={{
+                      flex: 1,
+                      padding: "8px 10px",
+                      borderRadius: 8,
+                      border: "1px solid var(--border)",
+                      background: "var(--surface)",
+                      color: "var(--text)",
+                    }}
+                  />
+                  <Button
+                    disabled={!callbackText.trim() || addCallback.isPending}
+                    onClick={async () => {
+                      await addCallback.mutateAsync(callbackText.trim());
+                      setCallbackText("");
+                      await humorQ.refetch();
+                    }}
+                  >
+                    Add
+                  </Button>
+                </div>
+                {(vibe?.approvedCallbacks ?? []).map((c) => (
+                  <div
+                    key={c.text}
+                    style={{
+                      display: "flex",
+                      justifyContent: "space-between",
+                      gap: 8,
+                      alignItems: "center",
+                    }}
+                  >
+                    <span className="t-caption">{c.text}</span>
+                    <Button
+                      variant="ghost"
+                      onClick={async () => {
+                        await removeCallback.mutateAsync(c.text);
+                        await humorQ.refetch();
+                      }}
+                    >
+                      Remove
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </>
+        )}
+      </Section>
+
+      <Section title="My humor consent">
+        <p className="t-caption" style={{ color: "var(--text-faint)", margin: "0 0 8px" }}>
+          Controls whether Jemaw learns from your messages and may name you in roast/chaos.
+        </p>
+        {(
+          [
+            ["contributeToStyleProfile", "Use my messages for group vibe"],
+            ["allowDirectReference", "Allow naming me in jokes"],
+            ["allowPublicFinancialRoasting", "Allow money roasting about me"],
+            ["allowHardshipHumor", "Allow hardship humor about me"],
+            ["allowRelationshipHumor", "Allow relationship humor about me"],
+            ["allowCallbackFromMessages", "Allow catchphrases from my messages"],
+          ] as const
+        ).map(([key, label]) => (
+          <Row key={key} label={label}>
+            <Segmented
+              value={myPrefs?.[key] ? "on" : "off"}
+              onChange={async (v) => {
+                await updateMyPrefs.mutateAsync({ [key]: v === "on" });
+                await humorQ.refetch();
+              }}
+              options={[
+                { value: "on", label: "On" },
+                { value: "off", label: "Off" },
+              ]}
+            />
+          </Row>
+        ))}
+      </Section>
+
       {/* Group */}
       <Section title="Group">
         <Row label="Name">
@@ -104,7 +366,7 @@ export function Settings() {
       {/* Members */}
       <Section title="Members">
         <div style={{ display: "grid", gap: 4 }}>
-          {g.members.map((m) => (
+          {activeMembers.map((m) => (
             <button
               key={m.id}
               onClick={() => isAdmin && setEditMemberId(m.id)}
@@ -124,13 +386,13 @@ export function Settings() {
               }}
             >
               <MemberAvatar
-                name={m.displayName}
+                name={formatDisplayName(m.displayName)}
                 telegramUserId={m.telegramUserId}
                 size={32}
               />
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div className="t-body-strong" style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                  {m.displayName}
+                  {formatDisplayName(m.displayName)}
                 </div>
                 <div className="t-caption" style={{ color: "var(--text-muted)" }}>
                   {m.role === "admin" ? "Admin" : "Member"}
@@ -247,7 +509,23 @@ export function Settings() {
               });
               await group.refetch();
             }}
+            canRemove={me.data ? me.data.memberId !== editMember.id : false}
+            onRemove={() => {
+              setEditMemberId(null);
+              setRemoveMemberId(editMember.id);
+            }}
             onClose={() => setEditMemberId(null)}
+          />
+        )}
+      </Modal>
+
+      {/* Removal review + confirm (admins) */}
+      <Modal open={!!removeMemberId} onClose={() => setRemoveMemberId(null)}>
+        {removeMemberId && (
+          <RemoveMemberModal
+            memberId={removeMemberId}
+            currency={g.defaultCurrency}
+            onClose={() => setRemoveMemberId(null)}
           />
         )}
       </Modal>
@@ -266,6 +544,8 @@ function MemberEditor({
   onRename,
   onTogglePrimary,
   onToggleRole,
+  canRemove,
+  onRemove,
   onClose,
 }: {
   member: MemberDto;
@@ -276,6 +556,8 @@ function MemberEditor({
   onRename: (name: string) => Promise<unknown>;
   onTogglePrimary: () => Promise<unknown>;
   onToggleRole: () => Promise<unknown>;
+  canRemove: boolean;
+  onRemove: () => void;
   onClose: () => void;
 }) {
   const [name, setName] = useState(member.displayName);
@@ -309,9 +591,9 @@ function MemberEditor({
   return (
     <div style={{ display: "grid", gap: 16 }}>
       <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-        <MemberAvatar name={member.displayName} telegramUserId={member.telegramUserId} size={44} />
+        <MemberAvatar name={formatDisplayName(member.displayName)} telegramUserId={member.telegramUserId} size={44} />
         <h2 className="t-heading" style={{ margin: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-          {member.displayName}
+          {formatDisplayName(member.displayName)}
         </h2>
       </div>
 
@@ -355,6 +637,15 @@ function MemberEditor({
         disabled={togglingRole || isLastAdmin}
       />
 
+      {/* telegram account link */}
+      <TelegramSection member={member} />
+
+      {canRemove && (
+        <Button variant="danger" onClick={onRemove} disabled={isSavingName}>
+          Remove from group...
+        </Button>
+      )}
+
       <div style={{ display: "flex", gap: 8, marginTop: 4 }}>
         <Button variant="ghost" onClick={onClose} disabled={isSavingName} style={{ flex: 1 }}>
           Close
@@ -367,6 +658,513 @@ function MemberEditor({
           {isSavingName ? "Saving..." : "Save"}
         </Button>
       </div>
+    </div>
+  );
+}
+
+const REMOVE_PAGE_SIZE = 4;
+
+/**
+ * Removal review modal: everything recorded about the member (KPIs, expenses,
+ * settlements) on tabs with pagination, then an explicit confirm. Removal is
+ * a hard delete when the member has no history, a deactivation otherwise.
+ */
+function RemoveMemberModal({
+  memberId,
+  currency,
+  onClose,
+}: {
+  memberId: string;
+  currency: string;
+  onClose: () => void;
+}) {
+  const summary = useMemberSummary(memberId);
+  const remove = useRemoveMember();
+  const toast = useToast();
+  const [tab, setTab] = useState<"expenses" | "settlements">("expenses");
+  const [page, setPage] = useState(0);
+  const [error, setError] = useState<string | null>(null);
+
+  const s = summary.data;
+
+  async function doRemove() {
+    setError(null);
+    try {
+      const result = await remove.mutateAsync(memberId);
+      toast.show(
+        result.removed === "deleted"
+          ? "Member deleted."
+          : "Member removed and kept in history.",
+        "success",
+      );
+      onClose();
+    } catch (err) {
+      setError(
+        err instanceof Error ? err.message : "Could not remove this member.",
+      );
+    }
+  }
+
+  if (summary.isLoading || !s) {
+    return (
+      <div style={{ display: "grid", gap: 12 }}>
+        <h2 className="t-heading" style={{ marginTop: 0 }}>
+          Remove member?
+        </h2>
+        <p className="t-body" style={{ color: "var(--text-muted)" }}>
+          {summary.isError
+            ? "Couldn't load this member's data."
+            : "Loading this member's data..."}
+        </p>
+        <Button variant="ghost" onClick={onClose}>
+          Close
+        </Button>
+      </div>
+    );
+  }
+
+  const rows =
+    tab === "expenses"
+      ? s.expenses.map((e) => ({
+          key: e.id,
+          title: e.description,
+          amount: formatMoney(e.role === "participant" ? e.share : e.amount, currency),
+          caption: [
+            e.role === "payer"
+              ? "paid"
+              : e.role === "both"
+                ? `paid · own share ${formatMoney(e.share, currency)}`
+                : "their share",
+            e.occurredAt.slice(0, 10),
+            e.settled ? "settled" : "open",
+          ].join(" · "),
+        }))
+      : s.settlements.map((x) => ({
+          key: x.id,
+          title:
+            x.direction === "sent"
+              ? `Paid ${x.counterpartName}`
+              : `Received from ${x.counterpartName}`,
+          amount: formatMoney(x.amount, currency),
+          caption: `${x.method} · ${x.when.slice(0, 10)}`,
+        }));
+
+  const pageCount = Math.max(1, Math.ceil(rows.length / REMOVE_PAGE_SIZE));
+  const safePage = Math.min(page, pageCount - 1);
+  const visible = rows.slice(
+    safePage * REMOVE_PAGE_SIZE,
+    (safePage + 1) * REMOVE_PAGE_SIZE,
+  );
+  const busy = remove.isPending;
+
+  return (
+    <div style={{ display: "grid", gap: 14 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+        <MemberAvatar
+          name={formatDisplayName(s.member.displayName)}
+          telegramUserId={s.member.telegramUserId}
+          size={44}
+        />
+        <div style={{ minWidth: 0 }}>
+          <h2 className="t-heading" style={{ margin: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+            Remove {formatDisplayName(s.member.displayName)}?
+          </h2>
+          <span className="t-caption" style={{ color: "var(--text-muted)" }}>
+            Review their record before you decide.
+          </span>
+        </div>
+      </div>
+
+      {/* KPIs */}
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "1fr 1fr 1fr",
+          gap: 8,
+        }}
+      >
+        <Kpi label="Paid" value={formatMoney(s.kpis.totalPaid, currency)} />
+        <Kpi label="Their share" value={formatMoney(s.kpis.totalShare, currency)} />
+        <Kpi
+          label="Net"
+          value={formatMoney(s.kpis.net, currency)}
+          tone={
+            Number(s.kpis.net) > 0
+              ? "positive"
+              : Number(s.kpis.net) < 0
+                ? "negative"
+                : undefined
+          }
+        />
+        <Kpi label="Owes now" value={formatMoney(s.kpis.outstandingOwes, currency)} />
+        <Kpi label="Owed now" value={formatMoney(s.kpis.outstandingOwed, currency)} />
+        <Kpi
+          label="Entries"
+          value={`${s.kpis.expenseCount + s.kpis.settlementCount}`}
+        />
+      </div>
+
+      {/* Tabs */}
+      <Segmented
+        value={tab}
+        onChange={(t) => {
+          setTab(t);
+          setPage(0);
+        }}
+        options={[
+          { value: "expenses", label: `Expenses (${s.kpis.expenseCount})` },
+          {
+            value: "settlements",
+            label: `Settlements (${s.kpis.settlementCount})`,
+          },
+        ]}
+      />
+
+      {/* Paginated list */}
+      <div style={{ display: "grid", gap: 4, minHeight: 120 }}>
+        {visible.length === 0 && (
+          <span className="t-caption" style={{ color: "var(--text-muted)" }}>
+            Nothing recorded here for this member.
+          </span>
+        )}
+        {visible.map((r) => (
+          <div
+            key={r.key}
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+              gap: 10,
+              padding: "6px 2px",
+              borderBottom: "1px solid var(--border)",
+            }}
+          >
+            <div style={{ minWidth: 0 }}>
+              <div className="t-body-strong" style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                {r.title}
+              </div>
+              <div className="t-caption" style={{ color: "var(--text-faint)" }}>
+                {r.caption}
+              </div>
+            </div>
+            <span className="t-body-strong" style={{ flexShrink: 0 }}>
+              {r.amount}
+            </span>
+          </div>
+        ))}
+      </div>
+      {pageCount > 1 && (
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+          }}
+        >
+          <Button
+            variant="ghost"
+            disabled={safePage === 0}
+            onClick={() => setPage(safePage - 1)}
+            style={{ height: 34, padding: "0 14px" }}
+          >
+            Prev
+          </Button>
+          <span className="t-caption" style={{ color: "var(--text-muted)" }}>
+            Page {safePage + 1} of {pageCount}
+          </span>
+          <Button
+            variant="ghost"
+            disabled={safePage >= pageCount - 1}
+            onClick={() => setPage(safePage + 1)}
+            style={{ height: 34, padding: "0 14px" }}
+          >
+            Next
+          </Button>
+        </div>
+      )}
+
+      {/* Confirm */}
+      <p className="t-caption" style={{ color: "var(--text-faint)", margin: 0 }}>
+        Are you sure you want to proceed? History stays intact: if{" "}
+        {formatDisplayName(s.member.displayName)} appears in past entries the account is kept but
+        marked removed and locked out of the app; otherwise it is deleted
+        permanently.
+      </p>
+      {error && (
+        <span className="t-caption" style={{ color: "var(--danger)" }}>
+          {error}
+        </span>
+      )}
+      <div style={{ display: "flex", gap: 8 }}>
+        <Button variant="ghost" onClick={onClose} disabled={busy} style={{ flex: 1 }}>
+          Cancel
+        </Button>
+        <Button variant="danger" onClick={doRemove} disabled={busy} style={{ flex: 1 }}>
+          {busy ? "Removing..." : "Remove member"}
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+function Kpi({
+  label,
+  value,
+  tone,
+}: {
+  label: string;
+  value: string;
+  tone?: "positive" | "negative";
+}) {
+  return (
+    <div
+      style={{
+        border: "1px solid var(--border)",
+        borderRadius: "var(--r-md)",
+        padding: "8px 10px",
+        display: "grid",
+        gap: 2,
+        minWidth: 0,
+      }}
+    >
+      <span className="t-mono-label" style={{ color: "var(--text-muted)", fontSize: 9 }}>
+        {label}
+      </span>
+      <span
+        className="t-body-strong"
+        style={{
+          fontSize: 13,
+          overflow: "hidden",
+          textOverflow: "ellipsis",
+          whiteSpace: "nowrap",
+          color:
+            tone === "positive"
+              ? "var(--positive)"
+              : tone === "negative"
+                ? "var(--danger)"
+                : "var(--text)",
+        }}
+      >
+        {value}
+      </span>
+    </div>
+  );
+}
+
+/**
+ * Admin control for which Telegram account a member is. Assigning an account
+ * already held by another member swaps the two identities; unlinking detaches
+ * the account so the member goes back to a manual (unlinked) entry.
+ */
+function TelegramSection({ member }: { member: MemberDto }) {
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const candidates = useTelegramCandidates(open);
+  const assign = useAssignMemberTelegram();
+  const toast = useToast();
+
+  const linked = member.telegramLinked;
+  const busy = assign.isPending;
+
+  async function doAssign(input: AssignTelegramInput) {
+    setError(null);
+    try {
+      await assign.mutateAsync({ memberId: member.id, input });
+      toast.show(
+        input.telegramUserId === null
+          ? "Telegram account unlinked."
+          : "Telegram account updated.",
+        "success",
+      );
+      setOpen(false);
+      setQuery("");
+    } catch (err) {
+      setError(
+        err instanceof Error ? err.message : "Could not update this account.",
+      );
+    }
+  }
+
+  // Search-and-select: filter known accounts by @username or name as you type.
+  const q = query.trim().replace(/^@/, "").toLowerCase();
+  const all = (candidates.data?.candidates ?? []).filter(
+    (c) => c.memberId !== member.id,
+  );
+  const list = q
+    ? all.filter(
+        (c) =>
+          (c.username ?? "").toLowerCase().includes(q) ||
+          (c.displayName ?? "").toLowerCase().includes(q) ||
+          c.telegramUserId.includes(q),
+      )
+    : all;
+  // A digits only query that matches no known account can still be assigned
+  // directly as a raw Telegram user id.
+  const rawIdOption =
+    /^\d+$/.test(q) && !all.some((c) => c.telegramUserId === q) ? q : null;
+
+  return (
+    <div style={{ display: "grid", gap: 8 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div className="t-body-strong">Telegram account</div>
+          <div className="t-caption" style={{ color: "var(--text-faint)" }}>
+            {linked
+              ? member.username
+                ? `Linked · @${member.username}`
+                : `Linked · id ${member.telegramUserId}`
+              : "Not linked · this member can't open the app yet."}
+          </div>
+        </div>
+        <Button
+          variant="ghost"
+          disabled={busy}
+          onClick={() => setOpen((v) => !v)}
+        >
+          {open ? "Close" : linked ? "Change" : "Link"}
+        </Button>
+      </div>
+
+      {open && (
+        <div
+          style={{
+            display: "grid",
+            gap: 6,
+            padding: 10,
+            borderRadius: "var(--r-md)",
+            border: "1px solid var(--border)",
+            background: "var(--bg)",
+          }}
+        >
+          <span className="t-mono-label" style={{ color: "var(--text-muted)" }}>
+            Assign account
+          </span>
+          <input
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Search by @username or name"
+            disabled={busy}
+            style={{ ...memberInput, height: 40 }}
+          />
+          {candidates.isLoading && (
+            <span className="t-caption" style={{ color: "var(--text-muted)" }}>
+              Loading accounts...
+            </span>
+          )}
+          {!candidates.isLoading && list.length === 0 && !rawIdOption && (
+            <span className="t-caption" style={{ color: "var(--text-muted)" }}>
+              {q
+                ? "No account matches this search."
+                : "No known accounts yet. Search by @username, or type a numeric Telegram user id."}
+            </span>
+          )}
+          {list.map((c) => (
+            <button
+              key={c.telegramUserId}
+              disabled={busy}
+              onClick={() =>
+                doAssign({
+                  telegramUserId: c.telegramUserId,
+                  username: c.username,
+                })
+              }
+              style={{
+                display: "grid",
+                gap: 2,
+                textAlign: "left",
+                minHeight: 44,
+                padding: "6px 8px",
+                borderRadius: "var(--r-sm)",
+                border: "none",
+                background: "transparent",
+                color: "var(--text)",
+                cursor: busy ? "wait" : "pointer",
+                fontFamily: "inherit",
+              }}
+            >
+              <span
+                style={{
+                  display: "flex",
+                  alignItems: "baseline",
+                  gap: 8,
+                  minWidth: 0,
+                }}
+              >
+                <span
+                  className="t-body-strong"
+                  style={{
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  {formatDisplayName(c.displayName ?? `User ${c.telegramUserId}`)}
+                </span>
+                {c.username && (
+                  <span
+                    className="t-caption"
+                    style={{ color: "var(--accent)", flexShrink: 0, fontSize: 11 }}
+                  >
+                    @{c.username}
+                  </span>
+                )}
+              </span>
+              <span className="t-caption" style={{ color: "var(--text-faint)" }}>
+                {c.memberName
+                  ? `Currently ${c.memberName} · assigning swaps the two`
+                  : "Seen in chat · not assigned to a member"}
+              </span>
+            </button>
+          ))}
+
+          {rawIdOption && (
+            <button
+              disabled={busy}
+              onClick={() => doAssign({ telegramUserId: rawIdOption })}
+              style={{
+                display: "grid",
+                gap: 2,
+                textAlign: "left",
+                minHeight: 44,
+                padding: "6px 8px",
+                borderRadius: "var(--r-sm)",
+                border: "1px dashed var(--border-strong)",
+                background: "transparent",
+                color: "var(--text)",
+                cursor: busy ? "wait" : "pointer",
+                fontFamily: "inherit",
+              }}
+            >
+              <span className="t-body-strong">Assign id {rawIdOption}</span>
+              <span className="t-caption" style={{ color: "var(--text-faint)" }}>
+                Not a known account · uses the raw Telegram user id
+              </span>
+            </button>
+          )}
+
+          {linked && (
+            <Button
+              variant="danger"
+              disabled={busy}
+              onClick={() => doAssign({ telegramUserId: null })}
+            >
+              Unlink this account
+            </Button>
+          )}
+        </div>
+      )}
+
+      {busy && (
+        <span className="t-caption" style={{ color: "var(--accent)" }}>
+          Updating...
+        </span>
+      )}
+      {error && (
+        <span className="t-caption" style={{ color: "var(--danger)" }}>
+          {error}
+        </span>
+      )}
     </div>
   );
 }
@@ -712,11 +1510,16 @@ function Segmented<T extends string>({
           onClick={() => onChange(o.value)}
           className="t-label"
           style={{
+            flex: 1,
+            minWidth: 0,
             height: 30,
             padding: "0 12px",
             borderRadius: "var(--r-sm)",
             border: "none",
             cursor: "pointer",
+            whiteSpace: "nowrap",
+            overflow: "hidden",
+            textOverflow: "ellipsis",
             fontWeight: value === o.value ? 600 : 500,
             background: value === o.value ? "var(--accent)" : "transparent",
             color: value === o.value ? "#fff" : "var(--text-muted)",

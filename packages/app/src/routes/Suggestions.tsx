@@ -3,6 +3,7 @@ import { AnimatePresence, motion, type PanInfo } from "framer-motion";
 import {
   useGroup,
   useSuggestions,
+  useSettlePlan,
   useConfirmSuggestion,
   useConfirmSuggestionWithAmount,
   useDismissSuggestion,
@@ -13,18 +14,32 @@ import { EmptyState } from "../ui/EmptyState.js";
 import { useReducedMotion } from "../motion/useReducedMotion.js";
 import { spring } from "../motion/tokens.js";
 import type { SuggestionDto } from "@jemaw/shared/types";
+import { memberDisplayName } from "../lib/names.js";
 
 export function Suggestions() {
   const group = useGroup();
   const q = useSuggestions();
+  const plan = useSettlePlan();
   const confirm = useConfirmSuggestion();
   const confirmWithAmount = useConfirmSuggestionWithAmount();
   const dismiss = useDismissSuggestion();
   const nav = useNavigate();
 
   const currency = group.data?.defaultCurrency ?? "EUR";
+  const members = group.data?.members ?? [];
   const nameOf = (id: string | null) =>
-    id ? group.data?.members.find((m) => m.id === id)?.displayName ?? "Member" : "someone";
+    id ? memberDisplayName(members, id, "Member") : "Someone";
+
+  // A settlement suggestion is already settled when no current transfer exists
+  // for its from→to pair — recording it would be rejected by the API, so we
+  // flag the card and block the Settle action instead.
+  const isAlreadySettled = (s: SuggestionDto): boolean => {
+    if (s.kind !== "settlement" || !s.fromMemberId || !s.toMemberId) return false;
+    if (!plan.data) return false;
+    return !plan.data.transfers.some(
+      (t) => t.fromMemberId === s.fromMemberId && t.toMemberId === s.toMemberId,
+    );
+  };
 
   function editPath(s: SuggestionDto): string {
     if (s.kind !== "settlement") return `/add?from=${s.id}`;
@@ -66,6 +81,8 @@ export function Suggestions() {
             borrowerName={nameOf(s.splitWith[0] ?? null)}
             fromName={nameOf(s.fromMemberId)}
             toName={nameOf(s.toMemberId)}
+            alreadySettled={isAlreadySettled(s)}
+            untied={s.kind === "settlement" && s.expenseIds.length === 0}
             onAdd={() => {
               if (s.kind === "settlement") {
                 if (s.amount && s.expenseIds.length > 0) {
@@ -95,6 +112,8 @@ function Card({
   borrowerName,
   fromName,
   toName,
+  alreadySettled,
+  untied,
   onAdd,
   onDismiss,
   onEdit,
@@ -107,6 +126,8 @@ function Card({
   borrowerName: string;
   fromName: string;
   toName: string;
+  alreadySettled: boolean;
+  untied: boolean;
   onAdd: () => void;
   onDismiss: () => void;
   onEdit: () => void;
@@ -137,7 +158,11 @@ function Card({
       style={{
         position: "relative",
         background: "var(--surface)",
-        border: "1px solid var(--border)",
+        border: alreadySettled
+          ? "1px solid var(--destructive, #e53e3e)"
+          : untied
+            ? "1px solid var(--warn, #d69e2e)"
+            : "1px solid var(--border)",
         borderRadius: "var(--r-lg)",
         padding: 16,
         overflow: "hidden",
@@ -168,19 +193,49 @@ function Card({
         </div>
       </div>
 
-      {/* evidence / reasoning as a quoted block */}
-      <div
-        className="t-caption"
-        style={{
-          color: "var(--text-muted)",
-          marginTop: 12,
-          paddingLeft: 10,
-          borderLeft: "2px solid var(--border-strong)",
-          fontStyle: "italic",
-        }}
-      >
-        {s.reasoning}
-      </div>
+      {/* evidence / reasoning — replaced by a status note when the pair is
+          already even (red, blocked) or has no expenses matched yet (amber,
+          actionable), so the user knows what to do. */}
+      {alreadySettled ? (
+        <div
+          className="t-caption"
+          style={{
+            color: "var(--destructive, #e53e3e)",
+            marginTop: 12,
+            paddingLeft: 10,
+            borderLeft: "2px solid var(--destructive, #e53e3e)",
+            fontWeight: 600,
+          }}
+        >
+          Already settled — you can dismiss this suggestion.
+        </div>
+      ) : untied ? (
+        <div
+          className="t-caption"
+          style={{
+            color: "var(--warn, #d69e2e)",
+            marginTop: 12,
+            paddingLeft: 10,
+            borderLeft: "2px solid var(--warn, #d69e2e)",
+            fontWeight: 600,
+          }}
+        >
+          No expenses matched — tap Settle to choose what this payment covers.
+        </div>
+      ) : (
+        <div
+          className="t-caption"
+          style={{
+            color: "var(--text-muted)",
+            marginTop: 12,
+            paddingLeft: 10,
+            borderLeft: "2px solid var(--border-strong)",
+            fontStyle: "italic",
+          }}
+        >
+          {s.reasoning}
+        </div>
+      )}
 
       <div style={{ display: "flex", gap: 8, marginTop: 14 }}>
         <Button variant="ghost" onClick={onDismiss} disabled={busy} style={{ flex: 1 }}>
@@ -189,7 +244,7 @@ function Card({
         <Button variant="ghost" onClick={onEdit} disabled={busy} style={{ flex: 1 }}>
           Edit
         </Button>
-        <Button onClick={onAdd} disabled={busy} style={{ flex: 1 }}>
+        <Button onClick={onAdd} disabled={busy || alreadySettled} style={{ flex: 1 }}>
           {s.kind === "settlement"
             ? "✓ Settle"
             : s.kind === "loan"

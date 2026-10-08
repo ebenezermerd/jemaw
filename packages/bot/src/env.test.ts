@@ -30,4 +30,24 @@ describe("loadEnv", () => {
       loadEnv({ ...base, BOT_MODE: "webhook" } as NodeJS.ProcessEnv),
     ).toThrow(/WEBHOOK_URL/);
   });
+
+  it("allows webhook mode without WEBHOOK_URL when registration is disabled", () => {
+    const env = loadEnv({
+      ...base,
+      BOT_MODE: "webhook",
+      REGISTER_TELEGRAM_WEBHOOK: "false",
+    } as NodeJS.ProcessEnv);
+
+    expect(env.REGISTER_TELEGRAM_WEBHOOK).toBe(false);
+  });
+
+  it("accepts optional scan model overrides", () => {
+    const env = loadEnv({
+      ...base,
+      GROQ_MODEL: "llama-3.3-70b-versatile",
+      GEMINI_MODEL: "gemini-2.5-flash",
+    } as NodeJS.ProcessEnv);
+    expect(env.GROQ_MODEL).toBe("llama-3.3-70b-versatile");
+    expect(env.GEMINI_MODEL).toBe("gemini-2.5-flash");
+  });
 });

@@ -318,6 +318,122 @@ d("Allocation-based settlements", () => {
     expect(a2?.allocatedAmount).toBe("20.00");
   });
 
+  it("sub-tolerance shortfall covers the expense in full (leave it)", async () => {
+    // Bob owes 50 on a fresh expense. Pay 48.00 → 2.00 short, within the 3.00
+    // tolerance. The expense should be marked fully covered and the allocation
+    // should clear the whole 50.00 residual, leaving no ghost debt.
+    const expense = await createExpense("100.00", "LeaveItDinner", "2026-04-01T12:00:00.000Z");
+    const res = await app.inject({
+      method: "POST",
+      url: `/api/groups/${groupId}/settlements`,
+      headers: auth(bobTg),
+      payload: {
+        fromMemberId: bobId,
+        toMemberId: aliceId,
+        amount: "48.00", // owes 50, 2.00 short < tolerance
+        expenseIds: [expense.id],
+      },
+    });
+    expect(res.statusCode).toBe(201);
+    const s = res.json<SettlementDto>();
+
+    // Allocation clears the full residual, not just the 48.00 paid.
+    const allocs = await db
+      .select()
+      .from(settlementAllocations)
+      .where(eq(settlementAllocations.settlementId, s.id));
+    expect(allocs).toHaveLength(1);
+    expect(allocs[0]!.allocatedAmount).toBe("50.00");
+
+    // Expense is covered → omitted from the active list.
+    const expRes = await app.inject({
+      method: "GET",
+      url: `/api/groups/${groupId}/expenses`,
+      headers: auth(aliceTg),
+    });
+    expect(expRes.json<ExpenseDto[]>().find((e) => e.id === expense.id)).toBeUndefined();
+  });
+
+  it("forMember hides an expense the member already settled, even if others still owe", async () => {
+    // Alice pays 90, split 3 ways → Bob and Carol each owe 30.
+    const triRes = await app.inject({
+      method: "POST",
+      url: `/api/groups/${groupId}/expenses`,
+      headers: auth(aliceTg),
+      payload: {
+        description: "TriDinner",
+        amount: "90.00",
+        payerMemberId: aliceId,
+        splitType: "equal",
+        splitWith: [aliceId, bobId, carolId],
+        occurredAt: "2026-05-01T12:00:00.000Z",
+      },
+    });
+    expect(triRes.statusCode).toBe(201);
+    const tri = triRes.json<ExpenseDto>();
+
+    // Bob settles his 30 share; Carol has not.
+    const payRes = await app.inject({
+      method: "POST",
+      url: `/api/groups/${groupId}/settlements`,
+      headers: auth(bobTg),
+      payload: { fromMemberId: bobId, toMemberId: aliceId, amount: "30.00", expenseIds: [tri.id] },
+    });
+    expect(payRes.statusCode).toBe(201);
+
+    // Expense is still live overall (Carol owes) → present without forMember.
+    const allRes = await app.inject({
+      method: "GET",
+      url: `/api/groups/${groupId}/expenses`,
+      headers: auth(aliceTg),
+    });
+    expect(allRes.json<ExpenseDto[]>().find((e) => e.id === tri.id)).toBeDefined();
+
+    // But hidden for Bob, who already settled his share.
+    const bobRes = await app.inject({
+      method: "GET",
+      url: `/api/groups/${groupId}/expenses?forMember=${bobId}`,
+      headers: auth(bobTg),
+    });
+    expect(bobRes.json<ExpenseDto[]>().find((e) => e.id === tri.id)).toBeUndefined();
+
+    // Still shown for Carol, and her share carries remainingOwed.
+    const carolRes = await app.inject({
+      method: "GET",
+      url: `/api/groups/${groupId}/expenses?forMember=${carolId}`,
+      headers: auth(carolTg),
+    });
+    const carolExp = carolRes.json<ExpenseDto[]>().find((e) => e.id === tri.id);
+    expect(carolExp).toBeDefined();
+    const carolShare = carolExp!.shares.find((s) => s.memberId === carolId);
+    expect(carolShare?.remainingOwed).toBe("30.00");
+    const bobShare = carolExp!.shares.find((s) => s.memberId === bobId);
+    expect(bobShare?.remainingOwed).toBe("0.00");
+    expect(bobShare?.allocatedAmount).toBe("30.00");
+  });
+
+  it("recording a stale already-settled expense is rejected", async () => {
+    const expense = await createExpense("100.00", "StaleDinner", "2026-05-10T12:00:00.000Z");
+    // Bob settles it fully.
+    const first = await app.inject({
+      method: "POST",
+      url: `/api/groups/${groupId}/settlements`,
+      headers: auth(bobTg),
+      payload: { fromMemberId: bobId, toMemberId: aliceId, amount: "50.00", expenseIds: [expense.id] },
+    });
+    expect(first.statusCode).toBe(201);
+
+    // Trying to settle the same (now covered) expense again is rejected, not
+    // silently re-recorded.
+    const again = await app.inject({
+      method: "POST",
+      url: `/api/groups/${groupId}/settlements`,
+      headers: auth(bobTg),
+      payload: { fromMemberId: bobId, toMemberId: aliceId, amount: "50.00", expenseIds: [expense.id] },
+    });
+    expect(again.statusCode).toBe(409);
+  });
+
   it("addManualMember: two calls produce distinct telegram ids", async () => {
     const m1 = await addManualMember(db, groupId, "Manual1", null);
     const m2 = await addManualMember(db, groupId, "Manual2", null);
@@ -429,5 +545,64 @@ d("Allocation-based settlements", () => {
       .innerJoin(settlements, eq(settlementAllocations.settlementId, settlements.id))
       .where(eq(settlements.groupId, groupId));
     expect(remaining).toHaveLength(0);
+  });
+
+  it("paying the netted plan amount also retires the counter debts", async () => {
+    // Clean ledger after the reset test. Alice pays 100 (Bob owes 50); Bob
+    // pays 40 (Alice owes 20). Netted plan: Bob → Alice 30.
+    const big = await createExpense("100.00", "Groceries");
+    const smallRes = await app.inject({
+      method: "POST",
+      url: `/api/groups/${groupId}/expenses`,
+      headers: auth(bobTg),
+      payload: {
+        description: "Coffee",
+        amount: "40.00",
+        payerMemberId: bobId,
+        splitType: "equal",
+        splitWith: [aliceId, bobId],
+        occurredAt: "2026-01-16T12:00:00.000Z",
+      },
+    });
+    expect(smallRes.statusCode).toBe(201);
+
+    const planRes = await app.inject({
+      method: "GET",
+      url: `/api/groups/${groupId}/settle`,
+      headers: auth(bobTg),
+    });
+    const plan = planRes.json<SettlePlanResponse>();
+    expect(plan.transfers).toEqual([
+      { fromMemberId: bobId, toMemberId: aliceId, amount: "30.00" },
+    ]);
+
+    // Bob pays the netted 30 against his 50 share of Groceries. The 20 gap is
+    // offset by Alice's Coffee debt, so BOTH directions must close.
+    const settleRes = await app.inject({
+      method: "POST",
+      url: `/api/groups/${groupId}/settlements`,
+      headers: auth(bobTg),
+      payload: {
+        toMemberId: aliceId,
+        amount: "30.00",
+        expenseIds: [big.id],
+      },
+    });
+    expect(settleRes.statusCode).toBe(201);
+
+    const planAfter = await app.inject({
+      method: "GET",
+      url: `/api/groups/${groupId}/settle`,
+      headers: auth(bobTg),
+    });
+    expect(planAfter.json<SettlePlanResponse>().transfers).toEqual([]);
+
+    // Both expenses drop from the live (uncovered) list.
+    const live = await app.inject({
+      method: "GET",
+      url: `/api/groups/${groupId}/expenses`,
+      headers: auth(bobTg),
+    });
+    expect(live.json<ExpenseDto[]>()).toHaveLength(0);
   });
 });

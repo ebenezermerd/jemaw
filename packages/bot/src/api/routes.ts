@@ -6,7 +6,9 @@ import type { FastifyInstance, FastifyRequest, FastifyReply } from "fastify";
 import { z } from "zod";
 import type { Db } from "../db.js";
 import { makeAuthHook, type AuthDeps } from "../auth/authHook.js";
+import { verifyInitData } from "../auth/initData.js";
 import {
+  listGroupsForTelegramUser,
   listMembers,
   listLiveExpenses,
   createExpenseWithShares,
@@ -19,7 +21,6 @@ import {
   getSettlement,
   createSettlementWithAllocations,
   deleteSettlement,
-  listSettlementAllocations,
   listPendingSuggestions,
   getSuggestion,
   resolveSuggestion,
@@ -27,35 +28,34 @@ import {
   renameMember,
   setMemberRoleById,
   setMemberPrimaryById,
+  assignMemberTelegram,
+  listMessageSenderIds,
+  removeMemberById,
   countAdmins,
   updateGroupCurrency,
   resetGroupData,
+  getGroupById,
+  mergeGroupSettings,
   type AllocationInput,
 } from "../repo.js";
 import { computeSplit } from "../domain/splits.js";
 import {
-  computeBalances,
-  type ExpenseForBalance,
-  type MemberNet,
-} from "../domain/balances.js";
-import {
-  deriveExpenseDebts,
-  isExpenseCovered,
-  computePairwiseTransfers,
   COVERAGE_TOLERANCE_CENTS,
-  type ExpenseForDebt,
   type AllocationForDebt,
 } from "../domain/pairwiseDebt.js";
+import { loadLedger } from "../domain/ledger.js";
 import { refreshGroupSummarySafe } from "../ai/summary.js";
 import {
   decimalToCents,
   centsToDecimal,
+  type BootstrapResponse,
   type HistoryResponse,
   type HistoryItem,
   type SettlePlanResponse,
+  type ExpenseDto,
 } from "@jemaw/shared/types";
-import type { Transfer } from "../domain/settle.js";
-import type { Member, Settlement } from "@jemaw/shared/schema";
+import type { Group, Member, Settlement } from "@jemaw/shared/schema";
+import { formatSettlementAnnouncement } from "../telegram/announcements.js";
 import {
   toGroupDto,
   toExpenseDto,
@@ -68,80 +68,39 @@ import {
 import type {
   SuggestionsResponse,
   MeSummaryDto,
+  TelegramCandidateDto,
+  TelegramCandidatesResponse,
+  MemberDataSummaryDto,
+  MemberExpenseItemDto,
+  MemberSettlementItemDto,
+  RemoveMemberResponse,
 } from "@jemaw/shared/types";
 import type { ScanRateLimiter } from "../ai/rateLimit.js";
 
+
 /**
- * Load the full ledger for a group: net balances (for Balances screen),
- * per-creditor pairwise transfers (for the Settle plan), coverage set, and
- * the raw data needed by settlement-create validation.
- *
- * nets   — computed from ALL live expenses + ALL settlements (zero-sum invariant).
- * transfers — per-creditor pairwise plan from expense_shares minus allocations.
- * coveredExpenseIds — expenses where every debtor share is within tolerance.
+ * Annotate each share with how much is already settled (allocatedAmount) and
+ * what remains owed (remainingOwed), so the client can hide shares a member has
+ * already cleared without re-deriving allocation math.
  */
-async function loadLedger(
-  db: Db,
-  groupId: string,
-): Promise<{
-  members: Member[];
-  nets: MemberNet[];
-  expensesForDebt: ExpenseForDebt[];
-  allocations: AllocationForDebt[];
-  coveredExpenseIds: Set<string>;
-  transfers: Transfer[];
-}> {
-  const members = await listMembers(db, groupId);
-  const liveExpenses = await listLiveExpenses(db, groupId);
-  const settlements = await listSettlements(db, groupId);
-  const rawAllocations = await listSettlementAllocations(db, groupId);
-
-  // Net balances (unchanged from before — keeps zero-sum invariant).
-  const forBalance: ExpenseForBalance[] = liveExpenses.map((e) => ({
-    payerMemberId: e.expense.payerMemberId,
-    amountCents: decimalToCents(e.expense.amount),
-    shares: e.shares.map((s) => ({
-      memberId: s.memberId,
-      shareCents: decimalToCents(s.shareAmount),
-    })),
-  }));
-  const forSettle = settlements.map((s) => ({
-    fromMemberId: s.fromMemberId,
-    toMemberId: s.toMemberId,
-    amountCents: decimalToCents(s.amount),
-  }));
-  const nets = computeBalances(
-    members.map((m) => m.id),
-    forBalance,
-    forSettle,
-  );
-
-  // Per-creditor pairwise debt (new — drives Settle plan + coverage).
-  const expensesForDebt: ExpenseForDebt[] = liveExpenses.map((e) => ({
-    expenseId: e.expense.id,
-    payerMemberId: e.expense.payerMemberId,
-    occurredAt: e.expense.occurredAt,
-    shares: e.shares.map((s) => ({
-      memberId: s.memberId,
-      shareCents: decimalToCents(s.shareAmount),
-    })),
-  }));
-  const allocations: AllocationForDebt[] = rawAllocations.map((a) => ({
-    expenseId: a.expenseId,
-    memberId: a.memberId,
-    allocatedCents: decimalToCents(a.allocatedAmount),
-  }));
-
-  const coveredExpenseIds = new Set(
-    expensesForDebt
-      .filter((e) => isExpenseCovered(e, allocations))
-      .map((e) => e.expenseId),
-  );
-
-  const pairDebts = deriveExpenseDebts(expensesForDebt, allocations);
-  const transfers = computePairwiseTransfers(pairDebts);
-
-  return { members, nets, expensesForDebt, allocations, coveredExpenseIds, transfers };
+function enrichExpenseShares(
+  dto: ExpenseDto,
+  allocations: AllocationForDebt[],
+): ExpenseDto {
+  return {
+    ...dto,
+    shares: dto.shares.map((s) => {
+      const allocatedCents = allocations
+        .filter((a) => a.expenseId === dto.id && a.memberId === s.memberId)
+        .reduce((sum, a) => sum + a.allocatedCents, 0);
+      const remainingCents = Math.max(0, decimalToCents(s.shareAmount) - allocatedCents);
+      return {
+        ...s,
+        allocatedAmount: centsToDecimal(allocatedCents),
+        remainingOwed: centsToDecimal(remainingCents),
+      };
+    }),
+  };
 }
 
 /** Validated expense input shape (shared by create + edit). */
@@ -153,9 +112,7 @@ type ExpenseInput = z.infer<typeof createExpenseSchema>;
  */
 function buildShareRows(
   input: ExpenseInput,
-  groupId: string,
   memberIds: Set<string>,
-  seedSuffix: string,
 ): { shares: { memberId: string; shareAmount: string }[] } | { error: string } {
   if (!memberIds.has(input.payerMemberId)) return { error: "payer not in group" };
   const totalCents = decimalToCents(input.amount);
@@ -186,7 +143,6 @@ function buildShareRows(
             Object.entries(input.exact).map(([k, v]) => [k, decimalToCents(v)]),
           )
         : undefined,
-      expenseSeed: `${groupId}:${input.description}:${input.amount}:${seedSuffix}`,
     });
     return {
       shares: computed.map((c) => ({
@@ -233,6 +189,10 @@ const addMemberSchema = z.object({
 const renameSchema = z.object({ displayName: z.string().min(1).max(80) });
 const setRoleSchema = z.object({ role: z.enum(["admin", "member"]) });
 const setPrimarySchema = z.object({ isPrimary: z.boolean() });
+const assignTelegramSchema = z.object({
+  telegramUserId: z.string().regex(/^\d+$/).nullable(),
+  username: z.string().min(1).max(80).nullable().optional(),
+});
 
 export interface ApiDeps {
   db: Db;
@@ -243,6 +203,8 @@ export interface ApiDeps {
   scanLimiter: ScanRateLimiter;
   /** The bot Api, so app-triggered scans can badge the source messages. */
   botApi?: import("grammy").Api;
+  /** Phase 1–2 humor runtime (optional). */
+  humor?: import("../ai/humor/deliver.js").HumorRuntime;
 }
 
 export async function registerApi(
@@ -256,6 +218,28 @@ export async function registerApi(
     now: deps.now,
   };
   const auth = makeAuthHook(authDeps);
+
+  app.get("/api/bootstrap", async (req, reply): Promise<BootstrapResponse | void> => {
+    const initData = req.headers["x-telegram-init-data"];
+    if (typeof initData !== "string" || initData.length === 0) {
+      await reply.code(401).send({ error: "missing initData" });
+      return;
+    }
+
+    const verified = verifyInitData(initData, deps.botToken, deps.now());
+    if (!verified.ok || !verified.data) {
+      await reply.code(401).send({ error: `auth: ${verified.reason}` });
+      return;
+    }
+
+    const userGroups = await listGroupsForTelegramUser(
+      db,
+      verified.data.user.id,
+    );
+    return {
+      groups: userGroups.map((group) => ({ id: group.id, name: group.name })),
+    };
+  });
 
   // Admin guard: returns true if the caller is a group admin, else sends 403.
   // Relies on req.jemaw.member.role, which the auth hook resolves from verified
@@ -335,8 +319,25 @@ export async function registerApi(
     { preHandler: auth },
     async (req) => {
       const { group, member } = req.jemaw!;
-      const { nets } = await loadLedger(db, group.id);
+      const { members, nets, transfers } = await loadLedger(db, group.id);
       const net = nets.find((n) => n.memberId === member.id)?.netCents ?? 0;
+      // Owes / owed follow the pairwise settle plan, so Home matches Settle.
+      const nameOf = (id: string) =>
+        members.find((m) => m.id === id)?.displayName ?? "Member";
+      const toDto = (memberId: string, cents: number) => ({
+        memberId,
+        name: nameOf(memberId),
+        amount: centsToDecimal(cents),
+      });
+      const mine = [...transfers].sort((a, b) => b.amountCents - a.amountCents);
+      const owesTo = mine
+        .filter((t) => t.fromMemberId === member.id)
+        .map((t) => toDto(t.toMemberId, t.amountCents));
+      const owedBy = mine
+        .filter((t) => t.toMemberId === member.id)
+        .map((t) => toDto(t.fromMemberId, t.amountCents));
+      const sum = (list: { amount: string }[]) =>
+        centsToDecimal(list.reduce((acc, x) => acc + decimalToCents(x.amount), 0));
 
       const expenses = await listLiveExpenses(db, group.id);
       let paidCents = 0;
@@ -358,6 +359,10 @@ export async function registerApi(
         totalShare: centsToDecimal(shareCents),
         expenseCount: count,
         currency: group.defaultCurrency,
+        owes: sum(owesTo),
+        owed: sum(owedBy),
+        owesTo,
+        owedBy,
       };
       return res;
     },
@@ -372,11 +377,19 @@ export async function registerApi(
       const { members, nets } = await loadLedger(db, group.id);
       const nameOf = (id: string) =>
         members.find((m) => m.id === id)?.displayName ?? "Member";
-      return toBalanceDtos(nets, nameOf);
+      // Removed (inactive) members stay visible only while their net is
+      // nonzero; once square they drop off the board.
+      const inactive = new Set(
+        members.filter((m) => !m.isActive).map((m) => m.id),
+      );
+      const visible = nets.filter(
+        (n) => !inactive.has(n.memberId) || n.netCents !== 0,
+      );
+      return toBalanceDtos(visible, nameOf);
     },
   );
 
-  // GET live settle-up plan (per-creditor pairwise, not global netting)
+  // GET live settle-up plan (pairwise: pay who fronted your share)
   app.get(
     "/api/groups/:groupId/settle",
     { preHandler: auth },
@@ -445,7 +458,7 @@ export async function registerApi(
   );
 
   async function recordSettlementFromInput(
-    group: { id: string; defaultCurrency: string },
+    group: Group,
     member: Member,
     input: z.infer<typeof createSettlementSchema>,
   ): Promise<
@@ -455,7 +468,7 @@ export async function registerApi(
     const fromMemberId = input.fromMemberId ?? member.id;
     const { toMemberId, expenseIds } = input;
 
-    const { expensesForDebt, allocations, transfers } = await loadLedger(db, group.id);
+    const { members, expensesForDebt, allocations, transfers } = await loadLedger(db, group.id);
 
     const hasDebt = transfers.some(
       (t) => t.fromMemberId === fromMemberId && t.toMemberId === toMemberId,
@@ -469,11 +482,26 @@ export async function registerApi(
     }
 
     const liveExpenses = await listLiveExpenses(db, group.id);
-    const selectedExpenses = expenseIds
+    const expensesForDebtMap = new Map(expensesForDebt.map((e) => [e.expenseId, e]));
+
+    // Residual the from member still owes on an expense (share minus allocations).
+    const residualFor = (expenseId: string): number => {
+      const efd = expensesForDebtMap.get(expenseId);
+      const share = efd?.shares.find((s) => s.memberId === fromMemberId);
+      if (!share) return 0;
+      const allocated = allocations
+        .filter((a) => a.expenseId === expenseId && a.memberId === fromMemberId)
+        .reduce((sum, a) => sum + a.allocatedCents, 0);
+      return Math.max(0, share.shareCents - allocated);
+    };
+
+    const namedExpenses = expenseIds
       .map((id) => liveExpenses.find((e) => e.expense.id === id))
       .filter((e): e is NonNullable<typeof e> => e !== undefined);
 
-    for (const e of selectedExpenses) {
+    // Validate the named expenses first, so genuine mistakes (wrong payer, no
+    // share) surface a precise error before we drop any already-settled ones.
+    for (const e of namedExpenses) {
       if (e.expense.payerMemberId !== toMemberId) {
         return {
           error: `expense "${e.expense.description}" was not paid by the payee`,
@@ -488,7 +516,21 @@ export async function registerApi(
       }
     }
 
-    const expensesForDebtMap = new Map(expensesForDebt.map((e) => [e.expenseId, e]));
+    // Drop expenses the from member has already settled (residual within
+    // tolerance). A stale suggestion may still carry them; recording would
+    // either over-pay or re-touch a cleared share.
+    const selectedExpenses = namedExpenses.filter(
+      (e) => residualFor(e.expense.id) > COVERAGE_TOLERANCE_CENTS,
+    );
+
+    // After dropping settled entries, nothing remains to record.
+    if (selectedExpenses.length === 0) {
+      return {
+        error: "these expenses are already settled",
+        status: 409,
+      };
+    }
+
     let maxAllocatableCents = 0;
     for (const e of selectedExpenses) {
       const efd = expensesForDebtMap.get(e.expense.id);
@@ -501,9 +543,29 @@ export async function registerApi(
       maxAllocatableCents += Math.max(0, share.shareCents - allocated);
     }
 
+    // Reverse debts (to → from) available to net against this payment. The
+    // settle plan shows the NETTED pair amount, so paying it must also retire
+    // the counter debts — otherwise both directions dangle as uncovered
+    // leftovers the plan can never surface again.
+    const counterDebts: { expenseId: string; residual: number; occurredAt: Date }[] = [];
+    for (const e of expensesForDebt) {
+      if (e.payerMemberId !== fromMemberId) continue;
+      const share = e.shares.find((s) => s.memberId === toMemberId);
+      if (!share) continue;
+      const allocated = allocations
+        .filter((a) => a.expenseId === e.expenseId && a.memberId === toMemberId)
+        .reduce((sum, a) => sum + a.allocatedCents, 0);
+      const residual = share.shareCents - allocated;
+      if (residual > 0) {
+        counterDebts.push({ expenseId: e.expenseId, residual, occurredAt: e.occurredAt });
+      }
+    }
+    counterDebts.sort((a, b) => a.occurredAt.getTime() - b.occurredAt.getTime());
+    const counterTotalCents = counterDebts.reduce((s, d) => s + d.residual, 0);
+
     const requestedCents = input.amount
       ? decimalToCents(input.amount)
-      : maxAllocatableCents;
+      : Math.max(0, maxAllocatableCents - counterTotalCents);
 
     if (requestedCents > maxAllocatableCents + COVERAGE_TOLERANCE_CENTS) {
       return {
@@ -513,14 +575,29 @@ export async function registerApi(
       };
     }
     const paidCents = Math.min(requestedCents, maxAllocatableCents);
+    // Offset: the slice of the selected shares settled by what `to` owes
+    // `from` rather than by cash.
+    const offsetCents = Math.min(
+      counterTotalCents,
+      Math.max(0, maxAllocatableCents - paidCents),
+    );
+
+    // "Leave it": when cash plus offset falls just short of the full owed
+    // amount by a sub-tolerance remainder (e.g. rounding cents), treat the
+    // selected expenses as fully covered and allocate each one's full residual.
+    // The recorded settlement amount still reflects what was actually paid.
+    const coversInFull =
+      maxAllocatableCents - (requestedCents + offsetCents) <=
+      COVERAGE_TOLERANCE_CENTS;
 
     const sortedExpenses = [...selectedExpenses].sort(
       (a, b) => a.expense.occurredAt.getTime() - b.expense.occurredAt.getTime(),
     );
     const allocationInputs: AllocationInput[] = [];
-    let remaining = paidCents;
+    let remaining = paidCents + offsetCents;
+    let allocatedOnSelected = 0;
     for (const e of sortedExpenses) {
-      if (remaining <= 0) break;
+      if (!coversInFull && remaining <= 0) break;
       const efd = expensesForDebtMap.get(e.expense.id);
       const share = efd?.shares.find((s) => s.memberId === fromMemberId);
       if (!share) continue;
@@ -528,7 +605,7 @@ export async function registerApi(
         .filter((a) => a.expenseId === e.expense.id && a.memberId === fromMemberId)
         .reduce((sum, a) => sum + a.allocatedCents, 0);
       const residual = Math.max(0, share.shareCents - allocated);
-      const give = Math.min(remaining, residual);
+      const give = coversInFull ? residual : Math.min(remaining, residual);
       if (give > 0) {
         allocationInputs.push({
           expenseId: e.expense.id,
@@ -536,7 +613,28 @@ export async function registerApi(
           allocatedAmount: centsToDecimal(give),
         });
         remaining -= give;
+        allocatedOnSelected += give;
       }
+    }
+
+    // Retire the counter debts consumed by the offset (the netted slice), so
+    // both directions close together. Sub-tolerance leftovers complete fully.
+    let offsetToConsume = Math.max(0, allocatedOnSelected - paidCents);
+    if (
+      offsetToConsume > 0 &&
+      counterTotalCents - offsetToConsume <= COVERAGE_TOLERANCE_CENTS
+    ) {
+      offsetToConsume = counterTotalCents;
+    }
+    for (const d of counterDebts) {
+      if (offsetToConsume <= 0) break;
+      const give = Math.min(offsetToConsume, d.residual);
+      allocationInputs.push({
+        expenseId: d.expenseId,
+        memberId: toMemberId,
+        allocatedAmount: centsToDecimal(give),
+      });
+      offsetToConsume -= give;
     }
 
     const { settlement } = await createSettlementWithAllocations(
@@ -555,6 +653,40 @@ export async function registerApi(
       },
       allocationInputs,
     );
+
+    // Announce in the group chat (best effort) so settles recorded in the app
+    // are visible without opening it.
+    if (deps.botApi) {
+      const nameOf = (id: string) =>
+        members.find((m) => m.id === id)?.displayName ?? "Member";
+      // The plan's pair amount is already netted, so cash paid is what moves
+      // it; offset allocations retire equal debt on both sides and cancel out.
+      const pairOwed =
+        transfers.find(
+          (t) => t.fromMemberId === fromMemberId && t.toMemberId === toMemberId,
+        )?.amountCents ?? 0;
+      const remainingCents = pairOwed - paidCents;
+      const html = formatSettlementAnnouncement({
+        fromName: nameOf(fromMemberId),
+        toName: nameOf(toMemberId),
+        amount: centsToDecimal(paidCents),
+        currency: group.defaultCurrency,
+        method: input.method ?? "cash",
+        expenseDescriptions: sortedExpenses.map((e) => e.expense.description),
+        remaining:
+          remainingCents > COVERAGE_TOLERANCE_CENTS
+            ? centsToDecimal(remainingCents)
+            : null,
+      });
+      void deps.botApi
+        .sendMessage(Number(group.telegramChatId), html, { parse_mode: "HTML" })
+        .catch((err: unknown) =>
+          console.warn(
+            `[announce] settlement message failed: ${err instanceof Error ? err.message : err}`,
+          ),
+        );
+    }
+
     return { settlement };
   }
 
@@ -564,13 +696,31 @@ export async function registerApi(
     { preHandler: auth },
     async (req) => {
       const { group } = req.jemaw!;
-      const { includeCovered } = req.query as { includeCovered?: string };
+      const { includeCovered, forMember } = req.query as {
+        includeCovered?: string;
+        forMember?: string;
+      };
       const expenses = await listLiveExpenses(db, group.id);
       if (includeCovered === "1") return expenses.map(toExpenseDto);
-      const { coveredExpenseIds } = await loadLedger(db, group.id);
-      return expenses
-        .filter((e) => !coveredExpenseIds.has(e.expense.id))
-        .map(toExpenseDto);
+
+      const { coveredExpenseIds, allocations } = await loadLedger(db, group.id);
+      let live = expenses.filter((e) => !coveredExpenseIds.has(e.expense.id));
+
+      // forMember: drop expenses where this member's own share is already
+      // settled (allocated within tolerance), even if other debtors still owe.
+      // Keeps a settler from re-seeing entries they've already cleared.
+      if (forMember) {
+        live = live.filter((e) => {
+          const share = e.shares.find((s) => s.memberId === forMember);
+          if (!share) return false;
+          const allocated = allocations
+            .filter((a) => a.expenseId === e.expense.id && a.memberId === forMember)
+            .reduce((sum, a) => sum + a.allocatedCents, 0);
+          return decimalToCents(share.shareAmount) - allocated > COVERAGE_TOLERANCE_CENTS;
+        });
+      }
+
+      return live.map((e) => enrichExpenseShares(toExpenseDto(e), allocations));
     },
   );
 
@@ -609,12 +759,7 @@ export async function registerApi(
       }
       const body = parsed.data;
       const members = await listMembers(db, group.id);
-      const built = buildShareRows(
-        body,
-        group.id,
-        new Set(members.map((m) => m.id)),
-        expenseId,
-      );
+      const built = buildShareRows(body, new Set(members.map((m) => m.id)));
       if ("error" in built) return reply.code(400).send({ error: built.error });
 
       try {
@@ -684,12 +829,7 @@ export async function registerApi(
       const body = parsed.data;
 
       const members = await listMembers(db, group.id);
-      const built = buildShareRows(
-        body,
-        group.id,
-        new Set(members.map((m) => m.id)),
-        "create",
-      );
+      const built = buildShareRows(body, new Set(members.map((m) => m.id)));
       if ("error" in built) return reply.code(400).send({ error: built.error });
       const totalCents = decimalToCents(body.amount);
 
@@ -733,14 +873,9 @@ export async function registerApi(
       let expenses = await listLiveExpenses(db, group.id); // includes covered
       let settlements = await listSettlements(db, group.id);
       if (memberId) {
-        expenses = expenses.filter(
-          (e) =>
-            e.expense.payerMemberId === memberId ||
-            e.shares.some((s) => s.memberId === memberId),
-        );
-        settlements = settlements.filter(
-          (s) => s.fromMemberId === memberId || s.toMemberId === memberId,
-        );
+        // "Who paid" filter: expenses the member fronted, settlements they sent.
+        expenses = expenses.filter((e) => e.expense.payerMemberId === memberId);
+        settlements = settlements.filter((s) => s.fromMemberId === memberId);
       }
 
       // Each item carries its day + a sort timestamp.
@@ -885,6 +1020,217 @@ export async function registerApi(
     },
   );
 
+  // GET everything recorded about one member — admin only. Feeds the removal
+  // review modal: KPIs plus the expenses and settlements the member appears in.
+  app.get(
+    "/api/groups/:groupId/members/:memberId/summary",
+    { preHandler: auth },
+    async (req, reply) => {
+      if (!requireAdmin(req, reply)) return;
+      const { group } = req.jemaw!;
+      const { memberId } = req.params as { memberId: string };
+      const members = await listMembers(db, group.id);
+      const target = members.find((m) => m.id === memberId);
+      if (!target) return reply.code(404).send({ error: "member not found" });
+
+      const { nets, transfers, coveredExpenseIds } = await loadLedger(
+        db,
+        group.id,
+      );
+      const liveExpenses = await listLiveExpenses(db, group.id);
+      const settlements = await listSettlements(db, group.id);
+      const nameOf = (id: string) =>
+        members.find((m) => m.id === id)?.displayName ?? "Member";
+
+      let paidCents = 0;
+      let shareCents = 0;
+      const expenseItems: MemberExpenseItemDto[] = [];
+      for (const e of liveExpenses) {
+        const isPayer = e.expense.payerMemberId === memberId;
+        const myShare = e.shares.find((s) => s.memberId === memberId);
+        if (!isPayer && !myShare) continue;
+        if (isPayer) paidCents += decimalToCents(e.expense.amount);
+        if (myShare) shareCents += decimalToCents(myShare.shareAmount);
+        expenseItems.push({
+          id: e.expense.id,
+          description: e.expense.description,
+          amount: e.expense.amount,
+          share: myShare ? myShare.shareAmount : "0.00",
+          role: isPayer && myShare ? "both" : isPayer ? "payer" : "participant",
+          occurredAt: e.expense.occurredAt.toISOString(),
+          settled: coveredExpenseIds.has(e.expense.id),
+        });
+      }
+      expenseItems.sort((a, b) => (a.occurredAt < b.occurredAt ? 1 : -1));
+
+      const settlementItems: MemberSettlementItemDto[] = settlements
+        .filter(
+          (s) => s.fromMemberId === memberId || s.toMemberId === memberId,
+        )
+        .map((s) => ({
+          id: s.id,
+          amount: s.amount,
+          direction: (s.fromMemberId === memberId ? "sent" : "received") as
+            | "sent"
+            | "received",
+          counterpartName: nameOf(
+            s.fromMemberId === memberId ? s.toMemberId : s.fromMemberId,
+          ),
+          method: s.method,
+          when: (s.markedPaidAt ?? s.createdAt).toISOString(),
+        }))
+        .sort((a, b) => (a.when < b.when ? 1 : -1));
+
+      const net = nets.find((n) => n.memberId === memberId)?.netCents ?? 0;
+      const owes = transfers
+        .filter((t) => t.fromMemberId === memberId)
+        .reduce((sum, t) => sum + t.amountCents, 0);
+      const owed = transfers
+        .filter((t) => t.toMemberId === memberId)
+        .reduce((sum, t) => sum + t.amountCents, 0);
+
+      const res: MemberDataSummaryDto = {
+        member: toMemberDto(target),
+        kpis: {
+          totalPaid: centsToDecimal(paidCents),
+          totalShare: centsToDecimal(shareCents),
+          net: centsToDecimal(net),
+          outstandingOwes: centsToDecimal(owes),
+          outstandingOwed: centsToDecimal(owed),
+          expenseCount: expenseItems.length,
+          settlementCount: settlementItems.length,
+        },
+        expenses: expenseItems,
+        settlements: settlementItems,
+      };
+      return res;
+    },
+  );
+
+  // DELETE a member — admin only. Hard-deletes when the member has no ledger
+  // history; deactivates (kept for history, hidden from pickers) otherwise.
+  app.delete(
+    "/api/groups/:groupId/members/:memberId",
+    { preHandler: auth },
+    async (req, reply) => {
+      if (!requireAdmin(req, reply)) return;
+      const { group, member } = req.jemaw!;
+      const { memberId } = req.params as { memberId: string };
+      if (memberId === member.id) {
+        return reply
+          .code(409)
+          .send({ error: "you can't remove yourself — ask another admin" });
+      }
+      const result = await removeMemberById(db, group.id, memberId);
+      if (result === "not_found") {
+        return reply.code(404).send({ error: "member not found" });
+      }
+      await refreshGroupSummarySafe(db, group.id);
+      const res: RemoveMemberResponse = { removed: result };
+      return res;
+    },
+  );
+
+  // GET assignable Telegram identities — admin only. Every linked member's
+  // current account plus chat message senders not yet attached to any member
+  // (names resolved via the bot API when available).
+  app.get(
+    "/api/groups/:groupId/members/telegram-candidates",
+    { preHandler: auth },
+    async (req, reply) => {
+      if (!requireAdmin(req, reply)) return;
+      const { group } = req.jemaw!;
+      const memberRows = await listMembers(db, group.id);
+      const senderIds = await listMessageSenderIds(db, group.id);
+
+      const candidates: TelegramCandidateDto[] = [];
+      const linked = new Set<string>();
+      for (const m of memberRows) {
+        if (m.telegramUserId <= 0n) continue;
+        linked.add(m.telegramUserId.toString());
+        candidates.push({
+          telegramUserId: m.telegramUserId.toString(),
+          username: m.username,
+          displayName: m.displayName,
+          memberId: m.id,
+          memberName: m.displayName,
+        });
+      }
+      // Resolve unattached sender names in parallel — sequential getChatMember
+      // calls made the picker feel like it never loaded.
+      const unattached = senderIds.filter(
+        (tid) => tid > 0n && !linked.has(tid.toString()),
+      );
+      const resolved = await Promise.all(
+        unattached.map(async (tid): Promise<TelegramCandidateDto> => {
+          let displayName: string | null = null;
+          let username: string | null = null;
+          if (deps.botApi) {
+            try {
+              const cm = await deps.botApi.getChatMember(
+                Number(group.telegramChatId),
+                Number(tid),
+              );
+              const full = [cm.user.first_name, cm.user.last_name]
+                .filter(Boolean)
+                .join(" ")
+                .trim();
+              displayName = full || cm.user.username || null;
+              username = cm.user.username ?? null;
+            } catch {
+              // Left the chat or bot lacks rights — keep the raw id.
+            }
+          }
+          return {
+            telegramUserId: tid.toString(),
+            username,
+            displayName,
+            memberId: null,
+            memberName: null,
+          };
+        }),
+      );
+      candidates.push(...resolved);
+
+      const res: TelegramCandidatesResponse = { candidates };
+      return res;
+    },
+  );
+
+  // PATCH a member's Telegram account — admin only. Assigns, swaps (when the
+  // id is held by another member), or unlinks (null) the account.
+  app.patch(
+    "/api/groups/:groupId/members/:memberId/telegram",
+    { preHandler: auth },
+    async (req, reply) => {
+      if (!requireAdmin(req, reply)) return;
+      const { group } = req.jemaw!;
+      const { memberId } = req.params as { memberId: string };
+      const parsed = assignTelegramSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return reply.code(400).send({ error: "invalid body" });
+      }
+      const tid =
+        parsed.data.telegramUserId === null
+          ? null
+          : BigInt(parsed.data.telegramUserId);
+      if (tid !== null && tid <= 0n) {
+        return reply.code(400).send({ error: "invalid telegram user id" });
+      }
+      const result = await assignMemberTelegram(
+        db,
+        group.id,
+        memberId,
+        tid,
+        parsed.data.username ?? null,
+      );
+      if (result.status === "not_found") {
+        return reply.code(404).send({ error: "member not found" });
+      }
+      return toMemberDto(result.member);
+    },
+  );
+
   // ─── Suggestions (Phase 3) ──────────────────────────────────────────
   // GET pending suggestions (+ scanning flag for the polling UI)
   app.get(
@@ -935,8 +1281,341 @@ export async function registerApi(
         ).catch((err) =>
           console.warn(`[scan] badge evidence failed: ${err?.message ?? err}`),
         );
+        const fresh = await getGroupById(db, group.id);
+        if (fresh) {
+          const { maybeDeliverScanHumor } = await import(
+            "../ai/humor/deliver.js"
+          );
+          await maybeDeliverScanHumor({
+            db,
+            api: deps.botApi,
+            group: fresh,
+            written: result.written,
+            pendingCount: result.pendingCount,
+            scanStatus: result.status,
+            directInvocation: true,
+            currency: fresh.defaultCurrency,
+            humor: deps.humor ?? {},
+          }).catch((err) =>
+            console.warn(`[humor] manual scan deliver failed:`, err?.message ?? err),
+          );
+        }
       }
       return reply.send(result);
+    },
+  );
+
+  // GET humor settings + vibe summary
+  app.get(
+    "/api/groups/:groupId/humor",
+    { preHandler: auth },
+    async (req) => {
+      const { group, member } = req.jemaw!;
+      const {
+        parseHumorSettings,
+        toHumorSettingsDto,
+        parseGroupVibe,
+        toGroupVibeDto,
+        parseMemberHumorPrefs,
+        DEFAULT_MEMBER_HUMOR_PREFS,
+      } = await import("@jemaw/shared/humor");
+      const settingsRaw = group.settings as Record<string, unknown> | null;
+      const humor = toHumorSettingsDto(parseHumorSettings(settingsRaw?.humor));
+      const vibe = toGroupVibeDto(parseGroupVibe(settingsRaw?.vibe));
+      const { getHumorMemberPref } = await import("../repo.js");
+      const prefRow = await getHumorMemberPref(db, group.id, member.id);
+      const myPrefs = prefRow
+        ? parseMemberHumorPrefs({
+            contributeToStyleProfile: prefRow.contributeToStyleProfile,
+            allowCallbackFromMessages: prefRow.allowCallbackFromMessages,
+            allowDirectReference: prefRow.allowDirectReference,
+            allowPublicFinancialRoasting: prefRow.allowPublicFinancialRoasting,
+            allowHardshipHumor: prefRow.allowHardshipHumor,
+            allowRelationshipHumor: prefRow.allowRelationshipHumor,
+            allowSecurityIncidentHumor: prefRow.allowSecurityIncidentHumor,
+            allowProfanityTargeting: prefRow.allowProfanityTargeting,
+          })
+        : DEFAULT_MEMBER_HUMOR_PREFS;
+      return { humor, vibe, myPrefs };
+    },
+  );
+
+  // PATCH humor settings — admin only
+  app.patch(
+    "/api/groups/:groupId/humor",
+    { preHandler: auth },
+    async (req, reply) => {
+      if (!requireAdmin(req, reply)) return;
+      const { group, member } = req.jemaw!;
+      const body = (req.body ?? {}) as Record<string, unknown>;
+      const { parseHumorSettings, toHumorSettingsDto, HUMOR_MODE_LIMITS } =
+        await import("@jemaw/shared/humor");
+      const current = parseHumorSettings(
+        (group.settings as Record<string, unknown> | null)?.humor,
+      );
+      const modes = ["off", "jemaw_dry", "roast", "chaos"] as const;
+      if (body.mode != null && !modes.includes(body.mode as (typeof modes)[number])) {
+        return reply.code(400).send({ error: "invalid mode" });
+      }
+      const next = { ...current };
+      if (body.mode != null) next.mode = body.mode as typeof next.mode;
+      for (const key of [
+        "publicRepliesEnabled",
+        "useModelComposer",
+        "useGroupVibe",
+        "usePreferenceLearning",
+        "ledgerBanter",
+        "publicFinancialRoasting",
+        "hardshipHumor",
+        "latePaymentHumor",
+        "relationshipConflictHumor",
+      ] as const) {
+        if (typeof body[key] === "boolean") {
+          (next as Record<string, unknown>)[key] = body[key];
+        }
+      }
+      if (typeof body.maxPublicRepliesPerDay === "number") {
+        next.maxPublicRepliesPerDay = Math.max(
+          0,
+          Math.min(100, Math.floor(body.maxPublicRepliesPerDay)),
+        );
+      }
+      if (typeof body.cooldownMinutes === "number") {
+        next.cooldownMinutes = Math.max(
+          0,
+          Math.min(24 * 60, Math.floor(body.cooldownMinutes)),
+        );
+      }
+      if (
+        body.languageMode === "auto" ||
+        body.languageMode === "en" ||
+        body.languageMode === "am" ||
+        body.languageMode === "code_mix"
+      ) {
+        next.languageMode = body.languageMode;
+      }
+      if (body.callbacks === "off" || body.callbacks === "approved_only") {
+        next.callbacks = body.callbacks;
+      }
+      if (
+        body.profanity === "off" ||
+        body.profanity === "moderate" ||
+        body.profanity === "match_group"
+      ) {
+        next.profanity = body.profanity;
+      }
+      if (
+        body.memberTargeting === "group_only" ||
+        body.memberTargeting === "consenting_members"
+      ) {
+        next.memberTargeting = body.memberTargeting;
+      }
+      if (body.muteDays != null) {
+        const days = Number(body.muteDays);
+        if (days > 0) {
+          next.mutedUntil = new Date(
+            Date.now() + days * 24 * 60 * 60 * 1000,
+          ).toISOString();
+        } else {
+          next.mutedUntil = undefined;
+        }
+      }
+      if (body.mode && body.mode !== "off" && body.mode !== current.mode) {
+        next.enabledByMemberId = member.id;
+        next.enabledAt = new Date().toISOString();
+        const lim = HUMOR_MODE_LIMITS[body.mode as keyof typeof HUMOR_MODE_LIMITS];
+        if (lim && body.maxPublicRepliesPerDay == null) {
+          next.maxPublicRepliesPerDay = lim.maxPublicRepliesPerDay;
+        }
+        if (lim && body.cooldownMinutes == null) {
+          next.cooldownMinutes = lim.cooldownMinutes;
+        }
+      }
+      await mergeGroupSettings(db, group.id, { humor: next });
+      const updated = await getGroupById(db, group.id);
+      const humor = parseHumorSettings(
+        (updated?.settings as Record<string, unknown> | null)?.humor,
+      );
+      return toHumorSettingsDto(humor);
+    },
+  );
+
+  // POST reset group vibe — admin only
+  app.post(
+    "/api/groups/:groupId/humor/vibe/reset",
+    { preHandler: auth },
+    async (req, reply) => {
+      if (!requireAdmin(req, reply)) return;
+      const { group } = req.jemaw!;
+      const { DEFAULT_GROUP_VIBE, toGroupVibeDto } = await import(
+        "@jemaw/shared/humor"
+      );
+      const blank = {
+        ...DEFAULT_GROUP_VIBE,
+        styleWeights: { ...DEFAULT_GROUP_VIBE.styleWeights },
+        feedbackWeights: { ...DEFAULT_GROUP_VIBE.feedbackWeights },
+        languages: [...DEFAULT_GROUP_VIBE.languages],
+        preferredStyles: [...DEFAULT_GROUP_VIBE.preferredStyles],
+        approvedCallbacks: [],
+        updatedAt: new Date().toISOString(),
+        expiresAt: new Date().toISOString(),
+      };
+      await mergeGroupSettings(db, group.id, { vibe: blank });
+      return toGroupVibeDto(blank);
+    },
+  );
+
+  // POST approve callback phrase — admin only
+  app.post(
+    "/api/groups/:groupId/humor/callbacks",
+    { preHandler: auth },
+    async (req, reply) => {
+      if (!requireAdmin(req, reply)) return;
+      const { group, member } = req.jemaw!;
+      const body = (req.body ?? {}) as { text?: string };
+      const text = (body.text ?? "").trim().slice(0, 80);
+      if (text.length < 2) return reply.code(400).send({ error: "text required" });
+      const { parseGroupVibe, toGroupVibeDto } = await import("@jemaw/shared/humor");
+      const vibe = parseGroupVibe(
+        (group.settings as Record<string, unknown> | null)?.vibe,
+      );
+      if (vibe.approvedCallbacks.some((c) => c.text === text)) {
+        return toGroupVibeDto(vibe);
+      }
+      vibe.approvedCallbacks = [
+        ...vibe.approvedCallbacks,
+        {
+          text,
+          approvedByMemberId: member.id,
+          approvedAt: new Date().toISOString(),
+        },
+      ].slice(-30);
+      vibe.updatedAt = new Date().toISOString();
+      await mergeGroupSettings(db, group.id, { vibe });
+      return toGroupVibeDto(vibe);
+    },
+  );
+
+  // DELETE callback by text — admin only
+  app.post(
+    "/api/groups/:groupId/humor/callbacks/remove",
+    { preHandler: auth },
+    async (req, reply) => {
+      if (!requireAdmin(req, reply)) return;
+      const { group } = req.jemaw!;
+      const body = (req.body ?? {}) as { text?: string };
+      const text = (body.text ?? "").trim();
+      const { parseGroupVibe, toGroupVibeDto } = await import("@jemaw/shared/humor");
+      const vibe = parseGroupVibe(
+        (group.settings as Record<string, unknown> | null)?.vibe,
+      );
+      vibe.approvedCallbacks = vibe.approvedCallbacks.filter((c) => c.text !== text);
+      await mergeGroupSettings(db, group.id, { vibe });
+      return toGroupVibeDto(vibe);
+    },
+  );
+
+  // PATCH my humor consent prefs (any member)
+  app.patch(
+    "/api/groups/:groupId/humor/me",
+    { preHandler: auth },
+    async (req) => {
+      const { group, member } = req.jemaw!;
+      const body = (req.body ?? {}) as Record<string, unknown>;
+      const boolKeys = [
+        "contributeToStyleProfile",
+        "allowCallbackFromMessages",
+        "allowDirectReference",
+        "allowPublicFinancialRoasting",
+        "allowHardshipHumor",
+        "allowRelationshipHumor",
+        "allowSecurityIncidentHumor",
+        "allowProfanityTargeting",
+      ] as const;
+      const patch: Record<string, boolean> = {};
+      for (const k of boolKeys) {
+        if (typeof body[k] === "boolean") patch[k] = body[k] as boolean;
+      }
+      const { upsertHumorMemberPrefs } = await import("../repo.js");
+      const row = await upsertHumorMemberPrefs(db, group.id, member.id, patch);
+      return {
+        contributeToStyleProfile: row.contributeToStyleProfile,
+        allowCallbackFromMessages: row.allowCallbackFromMessages,
+        allowDirectReference: row.allowDirectReference,
+        allowPublicFinancialRoasting: row.allowPublicFinancialRoasting,
+        allowHardshipHumor: row.allowHardshipHumor,
+        allowRelationshipHumor: row.allowRelationshipHumor,
+        allowSecurityIncidentHumor: row.allowSecurityIncidentHumor,
+        allowProfanityTargeting: row.allowProfanityTargeting,
+      };
+    },
+  );
+
+  // POST feedback on a bot reply (+ Phase 4 preference learning)
+  app.post(
+    "/api/groups/:groupId/humor/feedback",
+    { preHandler: auth },
+    async (req, reply) => {
+      const { group, member } = req.jemaw!;
+      const body = (req.body ?? {}) as {
+        botReplyId?: string;
+        feedbackType?: string;
+      };
+      const allowed = [
+        "funny",
+        "not_for_us",
+        "too_much",
+        "wrong_tone",
+        "wrong_fact",
+        "mute",
+        "ban_phrase",
+      ];
+      if (!body.botReplyId || !body.feedbackType || !allowed.includes(body.feedbackType)) {
+        return reply.code(400).send({ error: "invalid body" });
+      }
+      const {
+        getBotReply,
+        insertBotReplyFeedback,
+      } = await import("../repo.js");
+      const row = await getBotReply(db, group.id, body.botReplyId);
+      if (!row) return reply.code(404).send({ error: "reply not found" });
+      await insertBotReplyFeedback(
+        db,
+        body.botReplyId,
+        member.id,
+        body.feedbackType,
+      );
+
+      const { parseHumorSettings } = await import("@jemaw/shared/humor");
+      const settings = parseHumorSettings(
+        (group.settings as Record<string, unknown> | null)?.humor,
+      );
+      const patch: Record<string, unknown> = {};
+      if (settings.usePreferenceLearning) {
+        const { applyFeedbackToVibe } = await import(
+          "../ai/humor/preferenceLearning.js"
+        );
+        const vibe = applyFeedbackToVibe(
+          (group.settings as Record<string, unknown> | null)?.vibe,
+          body.feedbackType as import("../ai/humor/preferenceLearning.js").FeedbackType,
+        );
+        patch.vibe = vibe;
+      }
+      if (body.feedbackType === "mute") {
+        patch.humor = {
+          ...settings,
+          mutedUntil: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
+        };
+      }
+      if (Object.keys(patch).length) {
+        await mergeGroupSettings(db, group.id, patch);
+      }
+      if (body.feedbackType === "wrong_fact") {
+        console.warn(
+          `[humor] wrong_fact feedback group=${group.id} reply=${body.botReplyId}`,
+        );
+      }
+      return { ok: true };
     },
   );
 
@@ -1009,7 +1688,6 @@ export async function registerApi(
             splitType: s.splitType,
             memberIds: splitWith,
             shares: (s.shares as Record<string, number> | null) ?? undefined,
-            expenseSeed: s.id,
           });
           shares = computed.map((c) => ({
             memberId: c.memberId,
@@ -1073,12 +1751,7 @@ export async function registerApi(
       if (!parsed.success) return reply.code(400).send({ error: "invalid body" });
       const body = parsed.data;
       const members = await listMembers(db, group.id);
-      const built = buildShareRows(
-        body,
-        group.id,
-        new Set(members.map((m) => m.id)),
-        s.id,
-      );
+      const built = buildShareRows(body, new Set(members.map((m) => m.id)));
       if ("error" in built) return reply.code(400).send({ error: built.error });
 
       const created = await createExpenseWithShares(

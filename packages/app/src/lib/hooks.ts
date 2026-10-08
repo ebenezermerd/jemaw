@@ -16,6 +16,13 @@ import type {
   CreateSettlementInput,
   SuggestionsResponse,
   MeSummaryDto,
+  TelegramCandidatesResponse,
+  AssignTelegramInput,
+  MemberDataSummaryDto,
+  RemoveMemberResponse,
+  HumorSettingsDto,
+  GroupVibeDto,
+  HumorMemberPrefsDto,
 } from "@jemaw/shared/types";
 import { api, getGroupId } from "./api.js";
 
@@ -58,6 +65,69 @@ export function useUpdateGroup() {
   });
 }
 
+export type HumorBundle = {
+  humor: HumorSettingsDto;
+  vibe: GroupVibeDto;
+  myPrefs: HumorMemberPrefsDto;
+};
+
+export function useHumorSettings() {
+  return useQuery({
+    queryKey: ["humor"],
+    queryFn: () => api.get<HumorBundle>(`/api/groups/${gid()}/humor`),
+  });
+}
+
+export function useUpdateHumorSettings() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (input: Partial<HumorSettingsDto> & { muteDays?: number }) =>
+      api.patch<HumorSettingsDto>(`/api/groups/${gid()}/humor`, input),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["humor"] });
+      qc.invalidateQueries({ queryKey: ["group"] });
+    },
+  });
+}
+
+export function useUpdateMyHumorPrefs() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (input: Partial<HumorMemberPrefsDto>) =>
+      api.patch<HumorMemberPrefsDto>(`/api/groups/${gid()}/humor/me`, input),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["humor"] }),
+  });
+}
+
+export function useResetHumorVibe() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () =>
+      api.post<GroupVibeDto>(`/api/groups/${gid()}/humor/vibe/reset`, {}),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["humor"] }),
+  });
+}
+
+export function useAddHumorCallback() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (text: string) =>
+      api.post<GroupVibeDto>(`/api/groups/${gid()}/humor/callbacks`, { text }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["humor"] }),
+  });
+}
+
+export function useRemoveHumorCallback() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (text: string) =>
+      api.post<GroupVibeDto>(`/api/groups/${gid()}/humor/callbacks/remove`, {
+        text,
+      }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["humor"] }),
+  });
+}
+
 /** Admin only: clear this group's ledger, then refresh everything. */
 export function useResetGroup() {
   const qc = useQueryClient();
@@ -67,10 +137,16 @@ export function useResetGroup() {
   });
 }
 
-export function useExpenses() {
+/**
+ * Live expenses. Pass `forMember` to drop entries that member has already
+ * settled (their share allocated within tolerance), so the settle form never
+ * lists an expense the payer has already cleared.
+ */
+export function useExpenses(forMember?: string) {
+  const q = forMember ? `?forMember=${forMember}` : "";
   return useQuery({
-    queryKey: ["expenses"],
-    queryFn: () => api.get<ExpenseDto[]>(`/api/groups/${gid()}/expenses`),
+    queryKey: ["expenses", forMember ?? "all"],
+    queryFn: () => api.get<ExpenseDto[]>(`/api/groups/${gid()}/expenses${q}`),
   });
 }
 
@@ -226,6 +302,58 @@ export function useSetMemberPrimary() {
         { isPrimary: args.isPrimary },
       ),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["group"] }),
+  });
+}
+
+/** Admin only: everything recorded about one member, for the removal modal. */
+export function useMemberSummary(memberId: string | null) {
+  return useQuery({
+    queryKey: ["member-summary", memberId],
+    enabled: Boolean(memberId),
+    queryFn: () =>
+      api.get<MemberDataSummaryDto>(
+        `/api/groups/${gid()}/members/${memberId}/summary`,
+      ),
+  });
+}
+
+/** Admin only: remove a member (hard delete or deactivate with history). */
+export function useRemoveMember() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (memberId: string) =>
+      api.delete<RemoveMemberResponse>(
+        `/api/groups/${gid()}/members/${memberId}`,
+      ),
+    onSuccess: () => invalidateLedger(qc),
+  });
+}
+
+/** Admin only: assignable Telegram identities for the account switcher. */
+export function useTelegramCandidates(enabled: boolean) {
+  return useQuery({
+    queryKey: ["telegram-candidates"],
+    enabled,
+    queryFn: () =>
+      api.get<TelegramCandidatesResponse>(
+        `/api/groups/${gid()}/members/telegram-candidates`,
+      ),
+  });
+}
+
+/** Admin only: assign, swap, or unlink a member's Telegram account. */
+export function useAssignMemberTelegram() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (args: { memberId: string; input: AssignTelegramInput }) =>
+      api.patch<MemberDto>(
+        `/api/groups/${gid()}/members/${args.memberId}/telegram`,
+        args.input,
+      ),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["group"] });
+      qc.invalidateQueries({ queryKey: ["telegram-candidates"] });
+    },
   });
 }
 

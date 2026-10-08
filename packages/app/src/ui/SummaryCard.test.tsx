@@ -1,34 +1,77 @@
-import { describe, it, expect } from "vitest";
-import { render } from "@testing-library/react";
+import { describe, it, expect, vi } from "vitest";
+import { render, fireEvent } from "@testing-library/react";
 import { SummaryCard } from "./SummaryCard.js";
 import type { MeSummaryDto } from "@jemaw/shared/types";
 
 const base: MeSummaryDto = {
   memberId: "m1",
-  displayName: "Sara",
-  net: "48.50",
-  totalPaid: "120.00",
-  totalShare: "71.50",
+  displayName: "Ebenezer",
+  net: "24.00",
+  totalPaid: "4360.00",
+  totalShare: "9000.00",
   expenseCount: 4,
-  currency: "EUR",
+  currency: "ETB",
+  owes: "312.00",
+  owed: "336.00",
+  owesTo: [{ memberId: "g", name: "Gemechis", amount: "312.00" }],
+  owedBy: [{ memberId: "a", name: "Ayenew", amount: "336.00" }],
 };
 
 describe("SummaryCard", () => {
-  it("renders the standing, cardholder and stats", () => {
+  it("shows what you still have to pay as a negative figure, with no extra text", () => {
     const { container } = render(<SummaryCard s={base} />);
-    expect(container.textContent).toContain("you're owed");
-    expect(container.textContent).toContain("Sara");
-    expect(container.textContent).toContain("Paid");
+    const text = container.textContent!;
+    expect(text).toContain("you owe");
+    expect(text).toContain("-312");
+    expect(text).toContain("to Gemechis");
+    expect(text).not.toContain("You're owed");
+    expect(text).not.toContain("net");
+  });
+
+  it("shows what you're owed when you owe nothing", () => {
+    const { container } = render(
+      <SummaryCard s={{ ...base, net: "336.00", owes: "0.00", owesTo: [] }} />,
+    );
+    const text = container.textContent!;
+    expect(text).toContain("you're owed");
+    expect(text).toContain("+336");
+    expect(text).toContain("from Ayenew");
+  });
+
+  it("names the count when several people are involved", () => {
+    const { container } = render(
+      <SummaryCard
+        s={{
+          ...base,
+          owes: "400.00",
+          owesTo: [
+            { memberId: "g", name: "Gemechis", amount: "312.00" },
+            { memberId: "t", name: "Getish", amount: "88.00" },
+          ],
+        }}
+      />,
+    );
+    expect(container.textContent).toContain("to 2 people");
+  });
+
+  it("shows the even standing when nothing is open", () => {
+    const { container } = render(
+      <SummaryCard s={{ ...base, net: "0.00", owes: "0.00", owed: "0.00", owesTo: [], owedBy: [] }} />,
+    );
+    expect(container.textContent).toContain("all square");
+  });
+
+  it("labels the stats as lifetime totals", () => {
+    const { container } = render(<SummaryCard s={base} />);
+    expect(container.textContent).toContain("Lifetime paid");
+    expect(container.textContent).toContain("Lifetime share");
     expect(container.textContent).toContain("Entries");
   });
 
-  it("shows 'you owe' for a negative net", () => {
-    const { container } = render(<SummaryCard s={{ ...base, net: "-18.00" }} />);
-    expect(container.textContent).toContain("you owe");
-  });
-
-  it("shows the even standing at zero", () => {
-    const { container } = render(<SummaryCard s={{ ...base, net: "0.00" }} />);
-    expect(container.textContent).toContain("all square");
+  it("opens the settle plan when tapped", () => {
+    const onOpen = vi.fn();
+    const { getByRole } = render(<SummaryCard s={base} onOpen={onOpen} />);
+    fireEvent.click(getByRole("button"));
+    expect(onOpen).toHaveBeenCalled();
   });
 });

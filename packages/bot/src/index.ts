@@ -10,6 +10,7 @@ import {
   type ScanClient,
 } from "./ai/geminiClient.js";
 import { ScanRateLimiter } from "./ai/rateLimit.js";
+import { startWeeklyDigestScheduler } from "./telegram/weeklyJob.js";
 
 async function main(): Promise<void> {
   const env = loadEnv();
@@ -23,20 +24,53 @@ async function main(): Promise<void> {
   const defaultCurrency = "EUR";
 
   // Scan client: Groq preferred (fast), Gemini fallback. Either alone works.
+  // Model ids come from env (with safe defaults) so provider deprecations do not
+  // require a code change — only an env / Secrets Manager update + redeploy.
   const groq = env.GROQ_API_KEY
     ? createGroqClient(env.GROQ_API_KEY, env.GROQ_MODEL)
     : undefined;
   const geminiOnly = env.GEMINI_API_KEY
-    ? createGeminiClient(env.GEMINI_API_KEY)
+    ? createGeminiClient(env.GEMINI_API_KEY, env.GEMINI_MODEL)
     : undefined;
   const gemini: ScanClient | undefined =
     groq && geminiOnly
       ? withFallback(groq, geminiOnly)
       : (groq ?? geminiOnly);
-  if (groq) console.log(`[scan] using Groq${geminiOnly ? " (Gemini fallback)" : ""}`);
-  else if (geminiOnly) console.log(`[scan] using Gemini`);
-  else console.log(`[scan] no AI key configured — scans disabled`);
+  if (groq) {
+    console.log(
+      `[scan] using Groq model=${env.GROQ_MODEL ?? "default"}${
+        geminiOnly
+          ? ` (Gemini fallback model=${env.GEMINI_MODEL ?? "default"})`
+          : ""
+      }`,
+    );
+  } else if (geminiOnly) {
+    console.log(`[scan] using Gemini model=${env.GEMINI_MODEL ?? "default"}`);
+  } else {
+    console.log(`[scan] no AI key configured — scans disabled`);
+  }
   const scanLimiter = new ScanRateLimiter();
+
+  // Humor Phase 2: reuse scan providers; optional HUMOR_MODEL overrides generation model.
+  const humorModel = env.HUMOR_MODEL ?? env.GROQ_MODEL;
+  const humorClient: ScanClient | undefined = env.GROQ_API_KEY
+    ? createGroqClient(env.GROQ_API_KEY, humorModel)
+    : geminiOnly
+      ? createGeminiClient(env.GEMINI_API_KEY!, env.GEMINI_MODEL)
+      : undefined;
+  const humor =
+    humorClient
+      ? {
+          client: humorClient,
+          provider: env.GROQ_API_KEY ? "groq" : "gemini",
+          model: humorModel ?? env.GEMINI_MODEL ?? "default",
+        }
+      : undefined;
+  if (humor) {
+    console.log(
+      `[humor] composer ready provider=${humor.provider} model=${humor.model}`,
+    );
+  }
 
   const bot = createBot(env.TELEGRAM_BOT_TOKEN, {
     db,
@@ -46,6 +80,7 @@ async function main(): Promise<void> {
     miniAppShortName: env.MINI_APP_SHORT_NAME,
     gemini,
     scanLimiter,
+    humor,
   });
 
   const app = await buildServer({
@@ -56,8 +91,12 @@ async function main(): Promise<void> {
       gemini,
       scanLimiter,
       botApi: bot.api,
+      humor,
     },
-    corsOrigin: env.MINI_APP_URL,
+    corsOrigin: [
+      ...(env.MINI_APP_URL ? [env.MINI_APP_URL] : []),
+      ...env.CORS_EXTRA_ORIGINS,
+    ],
   });
 
   if (env.BOT_MODE === "webhook") {
@@ -67,10 +106,14 @@ async function main(): Promise<void> {
     mountWebhookRoute(app, bot);
     await app.listen({ port: env.PORT, host: "0.0.0.0" });
     app.log.info(`Bot in webhook mode, listening on :${env.PORT}`);
-    const url = await registerWebhook(bot, env.WEBHOOK_URL, (m) =>
-      app.log.warn(m),
-    );
-    if (url) app.log.info(`Webhook registered at ${url}`);
+    if (env.REGISTER_TELEGRAM_WEBHOOK) {
+      const url = await registerWebhook(bot, env.WEBHOOK_URL, (m) =>
+        app.log.warn(m),
+      );
+      if (url) app.log.info(`Webhook registered at ${url}`);
+    } else {
+      app.log.info("Telegram webhook registration skipped by configuration");
+    }
   } else {
     await app.listen({ port: env.PORT, host: "0.0.0.0" });
     app.log.info(`Bot in polling mode, /health on :${env.PORT}`);
@@ -79,7 +122,12 @@ async function main(): Promise<void> {
     });
   }
 
+  // Hourly sweep that posts each group's weekly summary when it's due.
+  const stopDigest = startWeeklyDigestScheduler({ db, api: bot.api, gemini });
+  app.log.info("Weekly digest scheduler started");
+
   const shutdown = async () => {
+    stopDigest();
     await bot.stop();
     await app.close();
     process.exit(0);

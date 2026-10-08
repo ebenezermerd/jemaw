@@ -23,7 +23,10 @@ import { Centered } from "./Balances.js";
 import { decimalToCents, centsToDecimal } from "@jemaw/shared/types";
 import type { PaymentMethod, ExpenseDto } from "@jemaw/shared/types";
 import { formatMoney } from "../lib/money.js";
+import { ApiError } from "../lib/api.js";
+import { AlertBanner } from "../ui/AlertBanner.js";
 import { currentTelegramId } from "../telegram.js";
+import { firstDisplayName, formatDisplayName, formatCompactDisplayName } from "../lib/names.js";
 
 const METHODS: { value: PaymentMethod; label: string }[] = [
   { value: "cash", label: "Cash" },
@@ -33,12 +36,19 @@ const METHODS: { value: PaymentMethod; label: string }[] = [
 
 export function SettleForm() {
   const group = useGroup();
-  const expensesQ = useExpenses();
+  const [params] = useSearchParams();
+  // Filter the selectable list to what the payer still owes. The `from` param
+  // is present for every settle entry point (settle list + AI suggestion), so
+  // it's a reliable hint; the client-side remaining filter below covers the
+  // rest once the resolved `from` state is known.
+  const expensesQ = useExpenses(params.get("from") ?? undefined);
+  // Counter direction: entries the payee still owes the payer, netted against
+  // this payment so the amount matches the settle plan's netted figure.
+  const counterQ = useExpenses(params.get("to") ?? undefined);
   const suggestionsQ = useSuggestions();
   const create = useCreateSettlement();
   const editSuggestion = useEditSettlementSuggestion();
   const nav = useNavigate();
-  const [params] = useSearchParams();
   const suggestionId = params.get("suggestion") ?? undefined;
 
   const members = group.data?.members.filter((m) => m.isActive) ?? [];
@@ -73,7 +83,9 @@ export function SettleForm() {
   const [description, setDescription] = useState("");
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [query, setQuery] = useState("");
-  const [overPayError, setOverPayError] = useState<string | null>(null);
+  const [formError, setFormError] = useState<
+    { title: string; message: string; showSuggestions?: boolean } | null
+  >(null);
 
   // Prefill from params. The amount is the settle plan's net (e.g. 450), which
   // already accounts for both directions and prior settlements — we trust it
@@ -94,34 +106,71 @@ export function SettleForm() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [group.data, settlementSuggestion?.id]);
 
-  // Expenses relevant to this from→to pair: ones where `from` owes `to`
-  // (to paid, from has a share). Shown as the context behind this balance and
-  // attached to the settlement; they do NOT drive the amount (the net does).
+  // Expenses relevant to this from→to pair: ones where `from` still owes `to`
+  // (to paid, from has an unsettled share). Already-settled shares are excluded
+  // so a payer never re-sees an entry they've cleared. They do NOT drive the
+  // amount (the net does).
   const relevant = useMemo(
-    () => expenses.filter((e) => isOwedBetween(e, from, to)),
+    () => expenses.filter((e) => isOwedBetween(e, from, to) && owedShareCents(e, from) > 0),
     [expenses, from, to],
   );
 
-  // Reset selection when the from→to pair changes (unless the link named specific ones).
+  // Entries where `to` owes `from` (the reverse direction). Their total is the
+  // credit netted off what `from` pays.
+  const counter = useMemo(
+    () =>
+      (counterQ.data ?? []).filter(
+        (e) => isOwedBetween(e, to, from) && owedShareCents(e, to) > 0,
+      ),
+    [counterQ.data, from, to],
+  );
+  const counterTotalCents = counter.reduce(
+    (sum, e) => sum + owedShareCents(e, to),
+    0,
+  );
+
+  // Reset selection when the from→to pair changes. When opened from the settle
+  // plan (amount in the URL), pre-select every owed expense so the calculation
+  // matches the listed total.
   const [selectedPair, setSelectedPair] = useState("");
   useEffect(() => {
-    if (!from || !to) return;
+    if (!from || !to || params.get("expenses")) return;
     const pair = `${from}>${to}`;
+    const owedIds = expenses
+      .filter((e) => isOwedBetween(e, from, to) && owedShareCents(e, from) > 0)
+      .map((e) => e.id);
+
+    if (params.get("amount") && owedIds.length > 0) {
+      setSelected(new Set(owedIds));
+      setSelectedPair(pair);
+      return;
+    }
+
     if (pair === selectedPair) return;
     setSelectedPair(pair);
-    if (params.get("expenses")) return; // link named specific expenses — keep them
-    setSelected(new Set()); // start empty; user picks what this payment covers
+    setSelected(new Set());
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [from, to, expenses]);
 
-  const toName = members.find((m) => m.id === to)?.displayName ?? "them";
-  // Gross of the selected owed shares — shown against the net so the gap is clear
-  // when expenses in the other direction reduce what you actually pay.
+  const toName = formatDisplayName(members.find((m) => m.id === to)?.displayName ?? "them");
+  const toCalcName = formatCompactDisplayName(
+    members.find((m) => m.id === to)?.displayName ?? "them",
+  );
+  // Gross of the selected owed shares; the credit is what nets off it so the
+  // payable amount matches the settle plan's netted figure.
   const selectedGrossCents = relevant
     .filter((e) => selected.has(e.id))
     .reduce((sum, e) => sum + owedShareCents(e, from), 0);
-  const amountCents = /^\d+(\.\d{1,2})?$/.test(amount) ? decimalToCents(amount) : 0;
-  const hasOffset = selectedGrossCents > 0 && amountCents > 0 && selectedGrossCents !== amountCents;
+  const creditAppliedCents = Math.min(counterTotalCents, selectedGrossCents);
+  const computedPayCents = selectedGrossCents - creditAppliedCents;
+
+  // Keep the amount in step with the calculation until the user edits it.
+  const [amountEdited, setAmountEdited] = useState(false);
+  useEffect(() => {
+    if (amountEdited || selected.size === 0) return;
+    setAmount(centsToDecimal(computedPayCents));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selected, computedPayCents, amountEdited]);
 
   if (group.isLoading || expensesQ.isLoading || (suggestionId && suggestionsQ.isLoading)) {
     return <PageLoader />;
@@ -159,7 +208,7 @@ export function SettleForm() {
   }
 
   async function submit() {
-    setOverPayError(null);
+    setFormError(null);
     const input = {
       fromMemberId: from,
       toMemberId: to,
@@ -177,18 +226,36 @@ export function SettleForm() {
       }
       nav("/settle");
     } catch (err: unknown) {
-      const body = (err as { response?: { maxAllocatable?: string; error?: string } })?.response;
-      if (body?.maxAllocatable) {
-        setOverPayError(`Exceeds what you owe. Max: ${formatMoney(body.maxAllocatable, currency)}`);
-        setAmount(body.maxAllocatable);
+      if (err instanceof ApiError && err.body.maxAllocatable) {
+        setFormError({
+          title: "Amount too high",
+          message: `That's more than ${toName} is owed here. The most you can settle is ${formatMoney(err.body.maxAllocatable, currency)} — we've adjusted it for you.`,
+        });
+        setAmount(err.body.maxAllocatable);
+      } else if (
+        err instanceof ApiError &&
+        /no current debt|already settled/i.test(err.body.error ?? "")
+      ) {
+        setFormError({
+          title: "Already settled",
+          message: "This pair is already even — there's nothing left to record. You can dismiss the suggestion instead.",
+          showSuggestions: true,
+        });
+      } else if (err instanceof ApiError && err.body.error) {
+        setFormError({ title: "Cannot settle", message: err.body.error });
+      } else {
+        setFormError({
+          title: "Something went wrong",
+          message: "Couldn't record this settlement. Please check your connection and try again.",
+        });
       }
     }
   }
 
   return (
-    <div>
+    <div style={{ minWidth: 0, width: "100%", overflowX: "hidden", boxSizing: "border-box" }}>
       <PageHeader title={suggestionId ? "Edit settlement" : "Settle up"} fallback="/settle" />
-      <div style={{ padding: "0 16px 16px", display: "grid", gap: 14 }}>
+      <div style={{ padding: "0 16px 16px", display: "grid", gap: 14, minWidth: 0, width: "100%", boxSizing: "border-box" }}>
       {/* who pays whom — already determined, shown as a fixed presentation */}
       <DuoHeader
         from={members.find((m) => m.id === from)}
@@ -201,7 +268,7 @@ export function SettleForm() {
           <span className="t-mono-label" style={{ color: "var(--text-muted)" }}>Amount</span>
           <input
             value={amount}
-            onChange={(e) => { setAmount(e.target.value.replace(/[^\d.]/g, "")); setOverPayError(null); }}
+            onChange={(e) => { setAmount(e.target.value.replace(/[^\d.]/g, "")); setAmountEdited(true); setFormError(null); }}
             inputMode="decimal"
             placeholder="0.00"
             className="tnum"
@@ -244,7 +311,7 @@ export function SettleForm() {
 
       {/* settling your share of — check-tile entry rows */}
       {to && (
-        <div style={{ display: "grid", gap: 10, marginTop: 2 }}>
+        <div style={{ display: "grid", gap: 10, marginTop: 2, minWidth: 0, width: "100%" }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
             <span style={{ fontSize: 13, fontWeight: 700, color: "var(--text)" }}>
               Settling your share of{" "}
@@ -268,13 +335,6 @@ export function SettleForm() {
           </div>
           <p className="t-caption" style={{ color: "var(--text-faint)", margin: 0 }}>
             Entries {toName} paid or lent where you owe a share.
-            {hasOffset && (
-              <>
-                {" "}
-                Listed shares total {formatMoney(centsToDecimal(selectedGrossCents), currency)}; you
-                pay {formatMoney(centsToDecimal(amountCents), currency)} after what {toName} owes you.
-              </>
-            )}
           </p>
           <input
             value={query}
@@ -289,7 +349,7 @@ export function SettleForm() {
                 : "No matches."}
             </p>
           ) : (
-            <div style={{ maxHeight: 240, overflowY: "auto", display: "grid", gap: 9 }}>
+            <div style={{ maxHeight: 240, overflowY: "auto", overflowX: "hidden", display: "grid", gap: 9, minWidth: 0, width: "100%" }}>
               {filtered.map((e) => {
                 const on = selected.has(e.id);
                 return (
@@ -310,6 +370,9 @@ export function SettleForm() {
                       color: "var(--text)",
                       cursor: "pointer",
                       textAlign: "left",
+                      width: "100%",
+                      minWidth: 0,
+                      boxSizing: "border-box",
                     }}
                   >
                     <span
@@ -328,9 +391,25 @@ export function SettleForm() {
                     >
                       {on ? "✓" : ""}
                     </span>
-                    <span style={{ flex: 1, minWidth: 0, fontSize: 14, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                      {e.description}
-                    </span>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div
+                        style={{
+                          fontSize: 14,
+                          fontWeight: 600,
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
+                          whiteSpace: "nowrap",
+                        }}
+                      >
+                        {e.description}
+                      </div>
+                      <div
+                        className="t-caption"
+                        style={{ fontSize: 10, color: "var(--text-faint)", marginTop: 2 }}
+                      >
+                        {expenseDateLabel(e.occurredAt)}
+                      </div>
+                    </div>
                     <span style={{ flexShrink: 0, textAlign: "right" }}>
                       <div className="tnum" style={{ fontSize: 14, fontWeight: 700, color: "var(--text)" }}>
                         {formatMoney(centsToDecimal(owedShareCents(e, from)), currency)}
@@ -344,13 +423,68 @@ export function SettleForm() {
               })}
             </div>
           )}
+
+          {/* The calculation: how the selected shares net down to the amount. */}
+          {selected.size > 0 && (
+            <div
+              style={{
+                border: "1px solid var(--border)",
+                borderRadius: 13,
+                padding: "12px 13px",
+                display: "grid",
+                gap: 7,
+                background: "var(--surface)",
+                minWidth: 0,
+                width: "100%",
+                boxSizing: "border-box",
+                overflowX: "hidden",
+              }}
+            >
+              <span className="t-mono-label" style={{ color: "var(--text-muted)" }}>
+                The calculation
+              </span>
+              {relevant
+                .filter((e) => selected.has(e.id))
+                .map((e) => (
+                  <CalcRow
+                    key={e.id}
+                    label={e.description}
+                    amount={formatMoney(centsToDecimal(owedShareCents(e, from)), currency)}
+                  />
+                ))}
+              {creditAppliedCents > 0 &&
+                apportionCredit(counter, to, creditAppliedCents).map((c) => (
+                  <CalcRow
+                    key={c.id}
+                    label={`${toCalcName} owes you · ${c.description}`}
+                    amount={`−${formatMoney(centsToDecimal(c.cents), currency)}`}
+                    muted
+                  />
+                ))}
+              <div style={{ borderTop: "1px solid var(--border)", paddingTop: 7 }}>
+                <CalcRow
+                  label="You pay"
+                  amount={formatMoney(centsToDecimal(computedPayCents), currency)}
+                  strong
+                />
+              </div>
+            </div>
+          )}
         </div>
       )}
 
-      {overPayError && (
-        <p className="t-caption" style={{ color: "var(--destructive, #e53e3e)", margin: 0 }}>
-          {overPayError}
-        </p>
+      {formError && (
+        <AlertBanner
+          tone="error"
+          title={formError.title}
+          message={formError.message}
+          action={
+            formError.showSuggestions
+              ? { label: "View suggestions", onClick: () => nav("/suggestions") }
+              : undefined
+          }
+          onDismiss={() => setFormError(null)}
+        />
       )}
       {to && selected.size === 0 && (
         <p className="t-caption" style={{ color: "var(--text-muted)", margin: 0 }}>
@@ -415,7 +549,7 @@ function DuoHeader({
           <MemberAvatar name={from.displayName} telegramUserId={from.telegramUserId} size={46} />
         </div>
         <div style={{ fontSize: 11, color: "var(--text-muted)" }}>
-          {firstName(from.displayName)} pays
+          {firstDisplayName(from.displayName)} pays
         </div>
       </div>
       <svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="var(--accent)" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
@@ -427,15 +561,88 @@ function DuoHeader({
           <MemberAvatar name={to.displayName} telegramUserId={to.telegramUserId} size={46} />
         </div>
         <div style={{ fontSize: 11, color: "var(--text-muted)" }}>
-          {firstName(to.displayName)}
+          {firstDisplayName(to.displayName)}
         </div>
       </div>
     </div>
   );
 }
 
-function firstName(name: string): string {
-  return name.trim().split(/\s+/)[0] ?? name;
+function CalcRow({
+  label,
+  amount,
+  muted,
+  strong,
+}: {
+  label: string;
+  amount: string;
+  muted?: boolean;
+  strong?: boolean;
+}) {
+  return (
+    <div
+      style={{
+        display: "grid",
+        gridTemplateColumns: "minmax(0, 1fr) auto",
+        alignItems: "baseline",
+        gap: 10,
+        width: "100%",
+        minWidth: 0,
+        maxWidth: "100%",
+      }}
+    >
+      <span
+        className={strong ? "t-body-strong" : "t-caption"}
+        title={label}
+        style={{
+          color: strong ? "var(--text)" : muted ? "var(--positive)" : "var(--text-muted)",
+          overflow: "hidden",
+          textOverflow: "ellipsis",
+          whiteSpace: "nowrap",
+          minWidth: 0,
+        }}
+      >
+        {label}
+      </span>
+      <span
+        className="tnum"
+        style={{
+          flexShrink: 0,
+          fontSize: strong ? 15 : 12,
+          fontWeight: strong ? 700 : 600,
+          color: strong ? "var(--text)" : muted ? "var(--positive)" : "var(--text)",
+          whiteSpace: "nowrap",
+        }}
+      >
+        {amount}
+      </span>
+    </div>
+  );
+}
+
+/**
+ * Apportion the applied credit across the counter entries oldest first, so
+ * each credit line in the calculation shows the slice actually netted.
+ */
+function apportionCredit(
+  counter: ExpenseDto[],
+  to: string,
+  creditCents: number,
+): { id: string; description: string; cents: number }[] {
+  const sorted = [...counter].sort(
+    (a, b) => new Date(a.occurredAt).getTime() - new Date(b.occurredAt).getTime(),
+  );
+  const rows: { id: string; description: string; cents: number }[] = [];
+  let remaining = creditCents;
+  for (const e of sorted) {
+    if (remaining <= 0) break;
+    const give = Math.min(remaining, owedShareCents(e, to));
+    if (give > 0) {
+      rows.push({ id: e.id, description: e.description, cents: give });
+      remaining -= give;
+    }
+  }
+  return rows;
 }
 
 // ── helpers: how much `from` owes for an entry `to` paid ──
@@ -445,7 +652,10 @@ function isOwedBetween(e: ExpenseDto, from: string, to: string): boolean {
 }
 function owedShareCents(e: ExpenseDto, from: string): number {
   const share = e.shares.find((s) => s.memberId === from);
-  return share ? decimalToCents(share.shareAmount) : 0;
+  if (!share) return 0;
+  // Prefer the server-computed remaining (share minus what's already settled);
+  // fall back to the full share when the field isn't present.
+  return decimalToCents(share.remainingOwed ?? share.shareAmount);
 }
 
 // ── small form bits ──
@@ -509,4 +719,11 @@ const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "
 function friendlyDate(ymd: string): string {
   const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(ymd);
   return m ? `${MONTHS[Number(m[2]) - 1]} ${Number(m[3])} ${m[1]}` : ymd;
+}
+
+/** Expense occurredAt → "(Mar 2 2026)" for share-entry subtext. */
+function expenseDateLabel(iso: string): string {
+  const ymd = iso.slice(0, 10);
+  const label = friendlyDate(ymd);
+  return label === ymd ? label : `(${label})`;
 }

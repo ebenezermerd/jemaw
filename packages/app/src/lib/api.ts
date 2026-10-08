@@ -7,9 +7,30 @@ import { getInitData } from "../telegram.js";
 
 const BASE = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8080";
 
+/**
+ * Thrown on any non-2xx response. Carries the HTTP status and the parsed JSON
+ * body so callers can read structured fields (`error`, `maxAllocatable`, …)
+ * instead of scraping a string message.
+ */
+export class ApiError extends Error {
+  constructor(
+    readonly status: number,
+    readonly body: { error?: string; maxAllocatable?: string; [k: string]: unknown },
+  ) {
+    super(body.error ?? `${status}: request failed`);
+    this.name = "ApiError";
+  }
+}
+
 export function getGroupId(): string | null {
   const fromQuery = new URLSearchParams(window.location.search).get("group");
   if (fromQuery) return fromQuery;
+  const fromStartApp = new URLSearchParams(window.location.search).get("startapp");
+  if (fromStartApp) return fromStartApp;
+  const fromHash = new URLSearchParams(window.location.hash.replace(/^#/, "")).get(
+    "tgWebAppStartParam",
+  );
+  if (fromHash) return fromHash;
   const wa = window.Telegram?.WebApp as { initDataUnsafe?: { start_param?: string } } | undefined;
   return wa?.initDataUnsafe?.start_param ?? null;
 }
@@ -18,17 +39,23 @@ async function request<T>(
   path: string,
   init?: RequestInit,
 ): Promise<T> {
-  const res = await fetch(`${BASE}${path}`, {
-    ...init,
-    headers: {
-      "content-type": "application/json",
-      "x-telegram-init-data": getInitData(),
-      ...(init?.headers ?? {}),
-    },
-  });
+  // Only claim a JSON content type when a body is actually sent — Fastify
+  // rejects an empty body with an application/json content type as a 400.
+  const headers: Record<string, string> = {
+    "x-telegram-init-data": getInitData(),
+    ...((init?.headers as Record<string, string>) ?? {}),
+  };
+  if (init?.body !== undefined) headers["content-type"] = "application/json";
+  const res = await fetch(`${BASE}${path}`, { ...init, headers });
   if (!res.ok) {
-    const body = await res.text();
-    throw new Error(`${res.status}: ${body}`);
+    const text = await res.text();
+    let body: { error?: string; maxAllocatable?: string; [k: string]: unknown };
+    try {
+      body = JSON.parse(text);
+    } catch {
+      body = { error: text };
+    }
+    throw new ApiError(res.status, body);
   }
   return res.json() as Promise<T>;
 }

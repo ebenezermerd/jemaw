@@ -55,6 +55,8 @@ export interface MemberDto {
   displayName: string;
   username: string | null;
   telegramUserId: TelegramIdString;
+  /** True when a real Telegram account holds this member (synthetic ids are negative). */
+  telegramLinked: boolean;
   role: "admin" | "member";
   isActive: boolean;
   /** Default-included in expense splits; secondary members are added explicitly. */
@@ -71,12 +73,81 @@ export interface GroupDto {
   canScan: boolean;
   /** Whether the calling member is an admin of this group. */
   isAdmin: boolean;
+  /** Interactive humor settings (from groups.settings.humor). */
+  humor?: HumorSettingsDto;
+}
+
+/** Wire format for groups.settings.humor (Phases 1–4). */
+export interface HumorSettingsDto {
+  mode: "off" | "jemaw_dry" | "roast" | "chaos";
+  publicRepliesEnabled: boolean;
+  maxPublicRepliesPerDay: number;
+  cooldownMinutes: number;
+  languageMode: "auto" | "en" | "am" | "code_mix";
+  useModelComposer: boolean;
+  useGroupVibe: boolean;
+  usePreferenceLearning: boolean;
+  ledgerBanter: boolean;
+  callbacks: "off" | "approved_only";
+  publicFinancialRoasting: boolean;
+  hardshipHumor: boolean;
+  latePaymentHumor: boolean;
+  relationshipConflictHumor: boolean;
+  profanity: "off" | "moderate" | "match_group";
+  memberTargeting: "group_only" | "consenting_members";
+  mutedUntil: string | null;
+}
+
+export interface GroupVibeDto {
+  status: "insufficient_data" | "active" | "paused";
+  sampleMessageCount: number;
+  activeDayCount: number;
+  languages: Array<{ code: string; weight: number }>;
+  codeMixRate: number;
+  medianMessageChars: number;
+  emojiRate: number;
+  formality: "low" | "medium" | "high";
+  preferredStyles: string[];
+  approvedCallbacks: Array<{ text: string; approvedAt: string }>;
+  feedbackWeights: {
+    funny: number;
+    not_for_us: number;
+    too_much: number;
+    wrong_tone: number;
+    wrong_fact: number;
+  };
+  updatedAt: string;
+  expiresAt: string;
+}
+
+export interface HumorMemberPrefsDto {
+  contributeToStyleProfile: boolean;
+  allowCallbackFromMessages: boolean;
+  allowDirectReference: boolean;
+  allowPublicFinancialRoasting: boolean;
+  allowHardshipHumor: boolean;
+  allowRelationshipHumor: boolean;
+  allowSecurityIncidentHumor: boolean;
+  allowProfanityTargeting: boolean;
+}
+
+export interface BootstrapGroupDto {
+  id: string;
+  name: string;
+}
+
+export interface BootstrapResponse {
+  groups: BootstrapGroupDto[];
 }
 
 export interface ExpenseShareDto {
   memberId: string;
   /** decimal string */
   shareAmount: string;
+  /** decimal string — total already settled toward this member's share. */
+  allocatedAmount?: string;
+  /** decimal string — shareAmount minus allocatedAmount, floored at 0. */
+  remainingOwed?: string;
 }
 
 export interface ExpenseDto {
@@ -115,6 +186,21 @@ export interface MeSummaryDto {
   /** number of live expense or loan entries they're involved in */
   expenseCount: number;
   currency: string;
+  /** total this member still has to pay, per the pairwise settle plan (decimal) */
+  owes: string;
+  /** total still owed to this member, per the pairwise settle plan (decimal) */
+  owed: string;
+  /** who this member pays, largest first */
+  owesTo: MemberAmountDto[];
+  /** who pays this member, largest first */
+  owedBy: MemberAmountDto[];
+}
+
+export interface MemberAmountDto {
+  memberId: string;
+  name: string;
+  /** decimal */
+  amount: string;
 }
 
 export interface UpdateGroupInput {
@@ -146,6 +232,77 @@ export interface AddMemberInput {
 
 export interface RenameMemberInput {
   displayName: string;
+}
+
+// ─── Member removal (admin) ───────────────────────────────────────────
+export interface MemberKpisDto {
+  /** sum of expenses this member fronted (decimal) */
+  totalPaid: string;
+  /** sum of this member's shares (decimal) */
+  totalShare: string;
+  /** signed decimal net position */
+  net: string;
+  /** residual this member still owes others (decimal) */
+  outstandingOwes: string;
+  /** residual others still owe this member (decimal) */
+  outstandingOwed: string;
+  expenseCount: number;
+  settlementCount: number;
+}
+
+export interface MemberExpenseItemDto {
+  id: string;
+  description: string;
+  /** full expense amount (decimal) */
+  amount: string;
+  /** this member's own share ("0.00" when payer only) */
+  share: string;
+  role: "payer" | "participant" | "both";
+  occurredAt: string; // ISO
+  settled: boolean;
+}
+
+export interface MemberSettlementItemDto {
+  id: string;
+  amount: string;
+  direction: "sent" | "received";
+  counterpartName: string;
+  method: PaymentMethod;
+  when: string; // ISO
+}
+
+/** Everything recorded about one member, for the removal review modal. */
+export interface MemberDataSummaryDto {
+  member: MemberDto;
+  kpis: MemberKpisDto;
+  expenses: MemberExpenseItemDto[];
+  settlements: MemberSettlementItemDto[];
+}
+
+export interface RemoveMemberResponse {
+  /** deleted = row gone entirely; deactivated = kept for history, marked removed */
+  removed: "deleted" | "deactivated";
+}
+
+/** An assignable Telegram identity for the admin account switcher. */
+export interface TelegramCandidateDto {
+  telegramUserId: TelegramIdString;
+  username: string | null;
+  /** Best known name for this account (member name or chat profile). */
+  displayName: string | null;
+  /** Member currently holding this account, if any. */
+  memberId: string | null;
+  memberName: string | null;
+}
+
+export interface TelegramCandidatesResponse {
+  candidates: TelegramCandidateDto[];
+}
+
+/** Assign (or swap) a Telegram account to a member; null unlinks it. */
+export interface AssignTelegramInput {
+  telegramUserId: TelegramIdString | null;
+  username?: string | null;
 }
 
 // ─── Settlements ──────────────────────────────────────────────────────

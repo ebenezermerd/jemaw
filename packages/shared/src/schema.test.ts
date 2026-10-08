@@ -9,6 +9,9 @@ import {
   suggestions,
   aiRuns,
   messages,
+  botReplies,
+  botReplyFeedback,
+  humorMemberPreferences,
   adminAuditLog,
   announcements,
   appConfig,
@@ -16,7 +19,7 @@ import {
 import { getTableName } from "drizzle-orm";
 
 describe("schema", () => {
-  it("defines all 9 tables", () => {
+  it("defines core and humor tables", () => {
     const names = [
       groups,
       members,
@@ -27,6 +30,9 @@ describe("schema", () => {
       suggestions,
       aiRuns,
       messages,
+      botReplies,
+      botReplyFeedback,
+      humorMemberPreferences,
     ].map(getTableName);
 
     expect(names).toEqual([
@@ -39,6 +45,9 @@ describe("schema", () => {
       "suggestions",
       "ai_runs",
       "messages",
+      "bot_replies",
+      "bot_reply_feedback",
+      "humor_member_preferences",
     ]);
   });
 

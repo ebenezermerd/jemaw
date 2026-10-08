@@ -2,29 +2,51 @@
  * Personal balance card for Home — pixel-faithful to the Hi-Fi "premium balance
  * card": violet gradient, specular highlight, the bubble-logo watermark, a name
  * pill + gold chip, semantic status pill, the focal net in Bricolage, and a
- * three-column stat row. Net standing is the focal number.
+ * three-column stat row. The focal number follows the pairwise settle plan:
+ * minus what you still have to pay, else plus what you're owed, so Home never
+ * says "you're owed" while Settle has a payment waiting.
  */
 import { AnimatedNumber } from "../motion/AnimatedNumber.js";
 import { currencyAffix, formatNumber } from "../lib/money.js";
-import type { MeSummaryDto } from "@jemaw/shared/types";
+import { formatDisplayName } from "../lib/names.js";
+import type { MemberAmountDto, MeSummaryDto } from "@jemaw/shared/types";
 
-export function SummaryCard({ s }: { s: MeSummaryDto }) {
-  const net = Number(s.net);
+/** "to Gemechis" for one person, "to 2 people" for several. */
+function whoLabel(list: MemberAmountDto[], prep: string): string {
+  if (list.length === 1) return `${prep} ${formatDisplayName(list[0]!.name)}`;
+  return `${prep} ${list.length} people`;
+}
+
+export function SummaryCard({ s, onOpen }: { s: MeSummaryDto; onOpen?: () => void }) {
+  const owes = Number(s.owes);
+  const owed = Number(s.owed);
   const standing =
-    net > 0 ? "you're owed" : net < 0 ? "you owe" : "you're all square";
-  // Semantic status sub-pill: teal owed, amber owes, neutral even.
+    owes > 0 ? "you owe" : owed > 0 ? "you're owed" : "you're all square";
+  // Semantic status sub-pill: amber owes, teal owed, neutral even.
   const status =
-    net > 0
-      ? { color: "#bff3e2", bg: "rgba(45,212,167,.24)", glyph: "▲", word: "net positive" }
-      : net < 0
-        ? { color: "#fbe0bd", bg: "rgba(240,166,64,.24)", glyph: "▼", word: "net negative" }
+    owes > 0
+      ? { color: "#fbe0bd", bg: "rgba(240,166,64,.24)", glyph: "▼", word: whoLabel(s.owesTo, "to") }
+      : owed > 0
+        ? { color: "#bff3e2", bg: "rgba(45,212,167,.24)", glyph: "▲", word: whoLabel(s.owedBy, "from") }
         : { color: "rgba(255,255,255,.8)", bg: "rgba(255,255,255,.16)", glyph: "•", word: "all square" };
   const { symbol, suffix } = currencyAffix(s.currency);
-  const focal = net > 0 ? `+${formatNumber(s.net)}` : formatNumber(s.net);
+  const focal =
+    owes > 0 ? `-${formatNumber(s.owes)}` : owed > 0 ? `+${formatNumber(s.owed)}` : formatNumber("0");
 
   return (
     <div
+      role={onOpen ? "button" : undefined}
+      tabIndex={onOpen ? 0 : undefined}
+      onClick={onOpen}
+      onKeyDown={
+        onOpen
+          ? (e) => {
+              if (e.key === "Enter" || e.key === " ") onOpen();
+            }
+          : undefined
+      }
       style={{
+        cursor: onOpen ? "pointer" : undefined,
         position: "relative",
         borderRadius: 26,
         padding: 15,
@@ -87,7 +109,7 @@ export function SummaryCard({ s }: { s: MeSummaryDto }) {
               borderRadius: 999,
             }}
           >
-            {s.displayName}
+            {formatDisplayName(s.displayName)}
           </span>
           <Chip />
         </div>
@@ -164,8 +186,8 @@ export function SummaryCard({ s }: { s: MeSummaryDto }) {
             fontVariantNumeric: "tabular-nums",
           }}
         >
-          <Stat label="Paid" value={formatNumber(s.totalPaid)} />
-          <Stat label="Your share" value={formatNumber(s.totalShare)} />
+          <Stat label="Lifetime paid" value={formatNumber(s.totalPaid)} />
+          <Stat label="Lifetime share" value={formatNumber(s.totalShare)} />
           <Stat label="Entries" value={String(s.expenseCount)} />
         </div>
       </div>

@@ -14,6 +14,9 @@ import {
   messages,
   aiRuns,
   suggestions,
+  botReplies,
+  botReplyFeedback,
+  humorMemberPreferences,
   type Group,
   type Member,
   type Settlement,
@@ -21,6 +24,9 @@ import {
   type Message,
   type AiRun,
   type Suggestion,
+  type NewBotReply,
+  type BotReply,
+  type HumorMemberPreference,
 } from "@jemaw/shared/schema";
 import { centsToDecimal, decimalToCents } from "@jemaw/shared/types";
 
@@ -50,9 +56,40 @@ export async function upsertGroup(
   return inserted[0]!;
 }
 
+/** Every group the bot knows (weekly digest sweep). */
+export async function listAllGroups(db: Db): Promise<Group[]> {
+  return db.select().from(groups);
+}
+
 export async function getGroupById(db: Db, id: string): Promise<Group | null> {
   const rows = await db.select().from(groups).where(eq(groups.id, id)).limit(1);
   return rows[0] ?? null;
+}
+
+export async function listGroupsForTelegramUser(
+  db: Db,
+  telegramUserId: bigint,
+): Promise<Group[]> {
+  return db
+    .select({
+      id: groups.id,
+      telegramChatId: groups.telegramChatId,
+      name: groups.name,
+      defaultCurrency: groups.defaultCurrency,
+      createdAt: groups.createdAt,
+      lastScanMessageId: groups.lastScanMessageId,
+      pinnedMessageId: groups.pinnedMessageId,
+      settings: groups.settings,
+    })
+    .from(groups)
+    .innerJoin(members, eq(members.groupId, groups.id))
+    .where(
+      and(
+        eq(members.telegramUserId, telegramUserId),
+        eq(members.isActive, true),
+      ),
+    )
+    .orderBy(desc(groups.createdAt));
 }
 
 /** Shallow-merge keys into groups.settings without clobbering other keys. */
@@ -227,6 +264,18 @@ export async function countAdmins(db: Db, groupId: string): Promise<number> {
   return rows.length;
 }
 
+/**
+ * Random large-negative synthetic Telegram id for members without a linked
+ * account. Collisions are guarded by unique(group_id, telegram_user_id), not
+ * by the random value being globally unique.
+ */
+function syntheticTelegramId(): bigint {
+  return -(
+    BigInt(Date.now()) * 1_000_000n +
+    BigInt(Math.floor(Math.random() * 1_000_000))
+  );
+}
+
 export async function addManualMember(
   db: Db,
   groupId: string,
@@ -240,14 +289,9 @@ export async function addManualMember(
       .returning();
     return inserted[0]!;
   }
-  // No Telegram id: generate a random large-negative synthetic id and retry on
-  // unique(group_id, telegram_user_id) collision. Correctness rests on the DB
-  // constraint, not on the random value being globally unique.
+  // No Telegram id: generate a synthetic id and retry on unique collision.
   for (let attempt = 0; attempt < 10; attempt++) {
-    const tid = -(
-      BigInt(Date.now()) * 1_000_000n +
-      BigInt(Math.floor(Math.random() * 1_000_000))
-    );
+    const tid = syntheticTelegramId();
     try {
       const inserted = await db
         .insert(members)
@@ -286,6 +330,138 @@ export async function listMembers(
     .from(members)
     .where(eq(members.groupId, groupId))
     .orderBy(members.joinedAt);
+}
+
+export type RemoveMemberResult = "deleted" | "deactivated" | "not_found";
+
+/**
+ * Remove a member. Hard-deletes the row when nothing references it; if the
+ * member appears anywhere in the ledger (expenses, shares, settlements,
+ * suggestions, ai runs) the foreign keys block the delete and we deactivate
+ * instead: isActive false, no longer primary, demoted to member. History and
+ * balances stay intact; the auth hook already rejects inactive members.
+ */
+export async function removeMemberById(
+  db: Db,
+  groupId: string,
+  memberId: string,
+): Promise<RemoveMemberResult> {
+  try {
+    const rows = await db
+      .delete(members)
+      .where(and(eq(members.groupId, groupId), eq(members.id, memberId)))
+      .returning({ id: members.id });
+    return rows[0] ? "deleted" : "not_found";
+  } catch (err) {
+    // Postgres foreign-key violation — the member has ledger history.
+    if ((err as { code?: string }).code !== "23503") throw err;
+    const rows = await db
+      .update(members)
+      .set({ isActive: false, isPrimary: false, role: "member" })
+      .where(and(eq(members.groupId, groupId), eq(members.id, memberId)))
+      .returning({ id: members.id });
+    return rows[0] ? "deactivated" : "not_found";
+  }
+}
+
+export type AssignTelegramResult =
+  | { status: "ok"; member: Member; swappedMember: Member | null }
+  | { status: "not_found" };
+
+/**
+ * Assign a Telegram account to a member. Passing null unlinks the member
+ * (fresh synthetic id). If another member of the group already holds the
+ * target id, the two members SWAP identities (ids and usernames) in one
+ * transaction, so crossed identities are fixed in a single action and taking
+ * an account over from an auto created duplicate leaves that row unlinked.
+ */
+export async function assignMemberTelegram(
+  db: Db,
+  groupId: string,
+  memberId: string,
+  telegramUserId: bigint | null,
+  username: string | null,
+): Promise<AssignTelegramResult> {
+  return db.transaction(async (tx) => {
+    const targetRows = await tx
+      .select()
+      .from(members)
+      .where(and(eq(members.groupId, groupId), eq(members.id, memberId)))
+      .limit(1);
+    const target = targetRows[0];
+    if (!target) return { status: "not_found" as const };
+
+    if (telegramUserId === null) {
+      const rows = await tx
+        .update(members)
+        .set({ telegramUserId: syntheticTelegramId(), username: null })
+        .where(eq(members.id, target.id))
+        .returning();
+      return { status: "ok" as const, member: rows[0]!, swappedMember: null };
+    }
+
+    if (telegramUserId === target.telegramUserId) {
+      return { status: "ok" as const, member: target, swappedMember: null };
+    }
+
+    const holderRows = await tx
+      .select()
+      .from(members)
+      .where(
+        and(
+          eq(members.groupId, groupId),
+          eq(members.telegramUserId, telegramUserId),
+        ),
+      )
+      .limit(1);
+    const holder = holderRows[0];
+
+    if (holder) {
+      // Park the holder on a temporary synthetic id so the unique constraint
+      // never sees both members on the same Telegram id mid swap.
+      await tx
+        .update(members)
+        .set({ telegramUserId: syntheticTelegramId() })
+        .where(eq(members.id, holder.id));
+      const updated = await tx
+        .update(members)
+        .set({ telegramUserId, username: username ?? holder.username })
+        .where(eq(members.id, target.id))
+        .returning();
+      const swapped = await tx
+        .update(members)
+        .set({
+          telegramUserId: target.telegramUserId,
+          username: target.username,
+        })
+        .where(eq(members.id, holder.id))
+        .returning();
+      return {
+        status: "ok" as const,
+        member: updated[0]!,
+        swappedMember: swapped[0]!,
+      };
+    }
+
+    const updated = await tx
+      .update(members)
+      .set({ telegramUserId, username: username ?? null })
+      .where(eq(members.id, target.id))
+      .returning();
+    return { status: "ok" as const, member: updated[0]!, swappedMember: null };
+  });
+}
+
+/** Distinct Telegram user ids seen sending messages in this group's chat. */
+export async function listMessageSenderIds(
+  db: Db,
+  groupId: string,
+): Promise<bigint[]> {
+  const rows = await db
+    .selectDistinct({ senderTelegramUserId: messages.senderTelegramUserId })
+    .from(messages)
+    .where(eq(messages.groupId, groupId));
+  return rows.map((r) => r.senderTelegramUserId);
 }
 
 export async function findMemberByTelegramId(
@@ -807,4 +983,172 @@ export async function resetGroupData(db: Db, groupId: string): Promise<void> {
       .set({ lastScanMessageId: null })
       .where(eq(groups.id, groupId));
   });
+}
+
+// ─── Bot replies (humor audit) ────────────────────────────────────────
+export async function insertBotReply(
+  db: Db,
+  row: Omit<NewBotReply, "id" | "createdAt">,
+): Promise<BotReply> {
+  const inserted = await db.insert(botReplies).values(row).returning();
+  return inserted[0]!;
+}
+
+export async function countBotRepliesSince(
+  db: Db,
+  groupId: string,
+  since: Date,
+): Promise<number> {
+  const rows = await db
+    .select({ id: botReplies.id })
+    .from(botReplies)
+    .where(
+      and(
+        eq(botReplies.groupId, groupId),
+        eq(botReplies.decision, "sent"),
+        gt(botReplies.createdAt, since),
+      ),
+    );
+  return rows.length;
+}
+
+export async function lastBotReplyAt(
+  db: Db,
+  groupId: string,
+): Promise<Date | null> {
+  const rows = await db
+    .select({ createdAt: botReplies.createdAt })
+    .from(botReplies)
+    .where(
+      and(eq(botReplies.groupId, groupId), eq(botReplies.decision, "sent")),
+    )
+    .orderBy(desc(botReplies.createdAt))
+    .limit(1);
+  return rows[0]?.createdAt ?? null;
+}
+
+export async function listRecentBotReplyTexts(
+  db: Db,
+  groupId: string,
+  limit: number,
+): Promise<string[]> {
+  const rows = await listRecentBotReplies(db, groupId, limit);
+  return rows.map((r) => r.text);
+}
+
+/** Recent sent bot replies with timestamps (newest first). */
+export async function listRecentBotReplies(
+  db: Db,
+  groupId: string,
+  limit: number,
+): Promise<Array<{ text: string; createdAt: Date; triggerEvent: string }>> {
+  const rows = await db
+    .select({
+      selectedText: botReplies.selectedText,
+      createdAt: botReplies.createdAt,
+      triggerEvent: botReplies.triggerEvent,
+    })
+    .from(botReplies)
+    .where(
+      and(eq(botReplies.groupId, groupId), eq(botReplies.decision, "sent")),
+    )
+    .orderBy(desc(botReplies.createdAt))
+    .limit(limit);
+  return rows
+    .filter((r) => typeof r.selectedText === "string" && r.selectedText.length > 0)
+    .map((r) => ({
+      text: r.selectedText as string,
+      createdAt: r.createdAt,
+      triggerEvent: r.triggerEvent,
+    }));
+}
+
+export async function getBotReply(
+  db: Db,
+  groupId: string,
+  replyId: string,
+): Promise<BotReply | null> {
+  const rows = await db
+    .select()
+    .from(botReplies)
+    .where(and(eq(botReplies.id, replyId), eq(botReplies.groupId, groupId)))
+    .limit(1);
+  return rows[0] ?? null;
+}
+
+export async function insertBotReplyFeedback(
+  db: Db,
+  botReplyId: string,
+  memberId: string,
+  feedbackType: string,
+): Promise<void> {
+  await db.insert(botReplyFeedback).values({
+    botReplyId,
+    memberId,
+    feedbackType,
+  });
+}
+
+// ─── Humor member preferences (Phase 3) ───────────────────────────────
+export async function getHumorMemberPrefs(
+  db: Db,
+  groupId: string,
+): Promise<HumorMemberPreference[]> {
+  return db
+    .select()
+    .from(humorMemberPreferences)
+    .where(eq(humorMemberPreferences.groupId, groupId));
+}
+
+export async function getHumorMemberPref(
+  db: Db,
+  groupId: string,
+  memberId: string,
+): Promise<HumorMemberPreference | null> {
+  const rows = await db
+    .select()
+    .from(humorMemberPreferences)
+    .where(
+      and(
+        eq(humorMemberPreferences.groupId, groupId),
+        eq(humorMemberPreferences.memberId, memberId),
+      ),
+    )
+    .limit(1);
+  return rows[0] ?? null;
+}
+
+export async function upsertHumorMemberPrefs(
+  db: Db,
+  groupId: string,
+  memberId: string,
+  patch: Partial<{
+    contributeToStyleProfile: boolean;
+    allowCallbackFromMessages: boolean;
+    allowDirectReference: boolean;
+    allowPublicFinancialRoasting: boolean;
+    allowHardshipHumor: boolean;
+    allowRelationshipHumor: boolean;
+    allowSecurityIncidentHumor: boolean;
+    allowProfanityTargeting: boolean;
+  }>,
+): Promise<HumorMemberPreference> {
+  const existing = await getHumorMemberPref(db, groupId, memberId);
+  if (existing) {
+    const updated = await db
+      .update(humorMemberPreferences)
+      .set({ ...patch, updatedAt: new Date() })
+      .where(eq(humorMemberPreferences.id, existing.id))
+      .returning();
+    return updated[0]!;
+  }
+  const inserted = await db
+    .insert(humorMemberPreferences)
+    .values({
+      groupId,
+      memberId,
+      ...patch,
+    })
+    .returning();
+  return inserted[0]!;
 }

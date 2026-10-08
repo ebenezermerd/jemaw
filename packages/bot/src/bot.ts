@@ -11,9 +11,32 @@ import {
 import { registerUser, seedAdmins } from "./telegram/memberSync.js";
 import { ensurePinnedMessage } from "./telegram/pinnedMessage.js";
 import { badgeEvidence } from "./telegram/reactions.js";
+import { sendDigestNow } from "./telegram/weeklyJob.js";
 import type { GeminiClient } from "./ai/geminiClient.js";
 import type { ScanRateLimiter } from "./ai/rateLimit.js";
-import { scanGroup } from "./ai/scan.js";
+import { scanGroup, type ScanResult } from "./ai/scan.js";
+import {
+  maybeDeliverDirectChat,
+  maybeDeliverScanHumor,
+  type HumorRuntime,
+} from "./ai/humor/deliver.js";
+import {
+  classifyJemawIntent,
+  chatLoadingTopic,
+  parseLedgerQuery,
+  type JemawIntent,
+  type LedgerQuery,
+} from "./ai/humor/intent.js";
+import { parseHumorSettings } from "@jemaw/shared/humor";
+import { deliverLedgerAnswer } from "./ai/ledger/deliver.js";
+import { understandMessage, type Understanding } from "./ai/ledger/understand.js";
+import {
+  CORRECTION_LINES,
+  recallLedgerQuestion,
+  rememberLedgerQuestion,
+  type RememberedQuestion,
+} from "./ai/ledger/memory.js";
+import { startLoading, type LoadingHandle, type LoadingTopic } from "./telegram/loading.js";
 
 /** Word-boundary, case-insensitive "jemaw" trigger (plan §10). */
 const JEMAW_RE = /(?<![a-z0-9])jemaw(?![a-z0-9])/i;
@@ -21,12 +44,12 @@ const JEMAW_RE = /(?<![a-z0-9])jemaw(?![a-z0-9])/i;
 // ─── Reply copy (pure, testable) ──────────────────────────────────────
 /** Fallback reply, used only when the pinned message can't be posted. */
 export function startGroupText(): string {
-  return "Jemaw — your group's expense tracker.";
+  return "Jemaw, your group's quiet bookkeeper.";
 }
 
 export function startPrivateText(): string {
   return [
-    "Jemaw — personal setup.",
+    "Jemaw personal setup.",
     "",
     "You can now receive private review DMs. Add me to a group to start.",
   ].join("\n");
@@ -34,16 +57,65 @@ export function startPrivateText(): string {
 
 export function helpText(): string {
   return [
-    "Jemaw — commands",
+    "Jemaw commands",
     "",
-    "/jemaw — refresh and scan the recent chat",
-    "/balance — show everyone's net position",
-    "/settle — open the settle-up plan",
-    "/add — add an expense manually",
-    "/history — open the history",
-    "/help — this message",
+    "/jemaw: refresh and scan the recent chat",
+    "/balance: who owes whom right now",
+    "/history: the latest expenses",
+    "/digest: post the weekly summary now",
+    "/help: this message",
+    "",
+    "Or just ask: \"jemaw how much do I owe?\", \"jemaw list this week's expenses\", \"jemaw who spent the most?\"",
   ].join("\n");
 }
+
+/** Plain scan outcome, used when humor is off or has nothing to add. */
+export function scanResultLine(res: ScanResult): string {
+  if (res.status === "api_error" || res.status === "parse_error") {
+    return "🫠 My scanner tripped over something. Try again in a bit.";
+  }
+  const s = (n: number) => (n === 1 ? "" : "s");
+  if (res.written > 0) {
+    return `Found ${res.written} new draft${s(res.written)}. ${res.pendingCount} waiting for review in the app.`;
+  }
+  if (res.pendingCount > 0) {
+    return `Nothing new. ${res.pendingCount} draft${s(res.pendingCount)} still waiting for review.`;
+  }
+  return "Nothing new to record.";
+}
+
+/**
+ * Keyword fallback for when the model can't be asked. A complaint is redone
+ * as the previous question, sharpened by anything new in the complaint.
+ */
+export function understandByRules(
+  text: string,
+  previous: RememberedQuestion | null,
+): Understanding {
+  const intent: JemawIntent = classifyJemawIntent(text, { hasPrevious: previous != null });
+  if (intent === "ledger") return { intent, query: parseLedgerQuery(text) };
+  if (intent === "correction" && previous) {
+    const q = parseLedgerQuery(text);
+    if (q.kind === "overview") return { intent, query: previous.query };
+    return {
+      intent,
+      query: {
+        ...previous.query,
+        kind: q.kind,
+        mine: q.mine ?? previous.query.mine,
+        ...(q.days ? { days: q.days, limit: undefined } : {}),
+        ...(q.limit ? { limit: q.limit, days: undefined } : {}),
+      },
+    };
+  }
+  return { intent: intent === "correction" ? "chat" : intent };
+}
+
+const RATE_LIMITED_LINES = [
+  "Easy. I literally just checked. Give me 10 seconds.",
+  "I'm still blinking from the last scan. Ten seconds, please.",
+  "Patience. Even ghosts need a breather between scans.",
+];
 
 export interface BotDeps {
   db: Db;
@@ -54,6 +126,8 @@ export interface BotDeps {
   /** Present only when GEMINI_API_KEY is set; absent → scans don't run. */
   gemini?: GeminiClient;
   scanLimiter: ScanRateLimiter;
+  /** Optional Phase 1–2 humor composer client (usually same keys as scan). */
+  humor?: HumorRuntime;
 }
 
 const GROUP_TYPES = new Set(["group", "supergroup"]);
@@ -61,8 +135,16 @@ const GROUP_TYPES = new Set(["group", "supergroup"]);
 /** Create the grammY bot with all handlers (Phases 1-3) registered. */
 export function createBot(token: string, deps: BotDeps): Bot {
   const bot = new Bot(token);
-  const { db, defaultCurrency, miniAppUrl, botUsername, miniAppShortName, gemini, scanLimiter } =
-    deps;
+  const {
+    db,
+    defaultCurrency,
+    miniAppUrl,
+    botUsername,
+    miniAppShortName,
+    gemini,
+    scanLimiter,
+    humor,
+  } = deps;
 
   /** Refresh the pinned button so it reflects the current suggestion count. */
   async function refreshPinned(
@@ -98,13 +180,31 @@ export function createBot(token: string, deps: BotDeps): Bot {
     group: { id: string; telegramChatId: bigint },
     triggeredByMemberId: string | null,
     triggerType: "keyword" | "command",
+    replyTo?: number,
+    existingLoading?: LoadingHandle,
   ): void {
+    const chatId = Number(group.telegramChatId);
     if (!gemini) {
       console.log(`[scan] skipped: GEMINI_API_KEY not configured`);
+      void existingLoading?.cancel();
       return;
     }
     if (!scanLimiter.tryAcquire(group.id)) {
       console.log(`[scan] rate-limited for group ${group.id}`);
+      const line = RATE_LIMITED_LINES[Math.floor(Math.random() * RATE_LIMITED_LINES.length)]!;
+      if (existingLoading) {
+        void existingLoading.finish(line);
+        return;
+      }
+      void api
+        .sendMessage(
+          chatId,
+          line,
+          replyTo != null
+            ? { reply_parameters: { message_id: replyTo, allow_sending_without_reply: true } }
+            : {},
+        )
+        .catch(() => {});
       return;
     }
     console.log(`[scan] triggered (${triggerType}) for group ${group.id}`);
@@ -114,6 +214,8 @@ export function createBot(token: string, deps: BotDeps): Bot {
         console.log(`[scan] group ${group.id} not found`);
         return;
       }
+      const loading =
+        existingLoading ?? (await startLoading(api, chatId, { topic: "scan", replyTo }));
       const res = await scanGroup(
         { db, gemini: gemini!, now: () => Date.now() },
         g,
@@ -130,8 +232,61 @@ export function createBot(token: string, deps: BotDeps): Bot {
         res.evidenceMessageIds,
       );
       await refreshPinned(api, group.id, Number(group.telegramChatId));
+      // Humor edits the placeholder; when it stays quiet, say the plain outcome.
+      const delivered = await maybeDeliverScanHumor({
+        db,
+        api,
+        group: g,
+        written: res.written,
+        pendingCount: res.pendingCount,
+        scanStatus: res.status,
+        directInvocation:
+          triggerType === "keyword" || triggerType === "command",
+        currency: g.defaultCurrency,
+        humor: humor ?? {},
+        loading,
+      }).catch((err) => {
+        console.warn(`[humor] after scan failed:`, err?.message ?? err);
+        return false;
+      });
+      if (!delivered) await loading.finish(scanResultLine(res));
     })().catch((err) =>
       console.error(`[scan] failed:`, err?.message ?? err),
+    );
+  }
+
+  /** Answer a ledger question with exact figures behind a funny placeholder. */
+  function answerLedger(
+    ctx: Context,
+    groupId: string,
+    query: LedgerQuery,
+    opts: { loading?: LoadingHandle; lead?: string; questionText?: string } = {},
+  ): void {
+    const chatId = ctx.chat!.id;
+    const replyTo = ctx.message?.message_id;
+    const askerTelegramId = ctx.from ? BigInt(ctx.from.id) : null;
+    void (async () => {
+      const g = await getGroupById(db, groupId);
+      if (!g) {
+        await opts.loading?.cancel();
+        return;
+      }
+      if (opts.questionText) {
+        rememberLedgerQuestion(groupId, askerTelegramId, opts.questionText, query);
+      }
+      const loading =
+        opts.loading ?? (await startLoading(ctx.api, chatId, { topic: query.kind, replyTo }));
+      await deliverLedgerAnswer({
+        db,
+        group: g,
+        askerTelegramId,
+        query,
+        loading,
+        humor: humor ?? {},
+        lead: opts.lead,
+      });
+    })().catch((err) =>
+      console.warn(`[ledger] answer failed:`, err instanceof Error ? err.message : err),
     );
   }
 
@@ -217,8 +372,45 @@ export function createBot(token: string, deps: BotDeps): Bot {
       { id: groupId, telegramChatId: BigInt(ctx.chat.id) },
       member,
       "command",
+      ctx.message?.message_id,
     );
     await refreshPinned(ctx.api, groupId, ctx.chat.id);
+  });
+
+  // /balance and /history — ledger answers without typing a question.
+  bot.command("balance", async (ctx) => {
+    const groupId = await ensureGroup(ctx);
+    if (!groupId || !ctx.chat) return;
+    if (ctx.from) await registerUser(db, groupId, ctx.from).catch(() => {});
+    answerLedger(ctx, groupId, { kind: "who_owes", period: "all" });
+  });
+
+  bot.command("history", async (ctx) => {
+    const groupId = await ensureGroup(ctx);
+    if (!groupId || !ctx.chat) return;
+    answerLedger(ctx, groupId, { kind: "expense_list", period: "all" });
+  });
+
+  // /digest — post the weekly summary on demand and restart its weekly clock.
+  bot.command("digest", async (ctx) => {
+    const groupId = await ensureGroup(ctx);
+    if (!groupId || !ctx.chat) return;
+    const group = await getGroupById(db, groupId);
+    if (!group) return;
+    try {
+      const result = await sendDigestNow(
+        { db, api: ctx.api, gemini },
+        group,
+      );
+      if (result === "quiet") {
+        await ctx.reply("Nothing recorded in the last 7 days, so no summary to post.");
+      }
+    } catch (err) {
+      console.warn(
+        `[digest] /digest failed: ${err instanceof Error ? err.message : err}`,
+      );
+      await ctx.reply("Couldn't build the summary right now. Try again shortly.");
+    }
   });
 
   // Capture plain group text + register the speaker; trigger a scan on "jemaw".
@@ -240,14 +432,81 @@ export function createBot(token: string, deps: BotDeps): Bot {
     ).catch(() => {});
 
     if (JEMAW_RE.test(text)) {
-      const member = ctx.from
-        ? await findScanMember(db, groupId, ctx.from.id)
-        : null;
-      maybeScan(
-        ctx.api,
-        { id: groupId, telegramChatId: BigInt(chat.id) },
-        member,
-        "keyword",
+      const askerTelegramId = ctx.from ? BigInt(ctx.from.id) : null;
+      const replyTo = ctx.message.message_id;
+      void (async () => {
+        const g = await getGroupById(db, groupId);
+        if (!g) return;
+        const previous = recallLedgerQuestion(groupId, askerTelegramId);
+        const byRules = understandByRules(text, previous);
+        const mode = parseHumorSettings(
+          (g.settings as Record<string, unknown> | null)?.humor,
+        ).mode;
+        // Humor off and plainly social: stay quiet, as before.
+        if (byRules.intent === "chat" && mode === "off") return;
+
+        // Placeholder first, from the fast rules; the model refines the route.
+        const topic: LoadingTopic =
+          byRules.query?.kind ?? (byRules.intent === "chat" ? chatLoadingTopic(text) : "scan");
+        const loading = await startLoading(ctx.api, chat.id, { topic, replyTo });
+
+        const understander = humor?.client ?? gemini;
+        const byModel = understander
+          ? await understandMessage({
+              client: understander,
+              text,
+              previous: previous ? { text: previous.text, kind: previous.query.kind } : undefined,
+            })
+          : null;
+        const u = byModel ?? byRules;
+        console.log(
+          `[understand] group=${groupId} intent=${u.intent} source=${byModel ? "model" : "rules"} query=${JSON.stringify(u.query ?? null)}`,
+        );
+
+        if ((u.intent === "ledger" || u.intent === "correction") && u.query) {
+          const correcting = u.intent === "correction" && previous != null;
+          answerLedger(ctx, groupId, u.query, {
+            loading,
+            questionText: correcting && previous ? previous.text : text,
+            lead: correcting
+              ? CORRECTION_LINES[Math.floor(Math.random() * CORRECTION_LINES.length)]
+              : undefined,
+          });
+          return;
+        }
+        if (u.intent === "scan") {
+          const member = ctx.from ? await findScanMember(db, groupId, ctx.from.id) : null;
+          maybeScan(
+            ctx.api,
+            { id: groupId, telegramChatId: BigInt(chat.id) },
+            member,
+            "keyword",
+            replyTo,
+            loading,
+          );
+          return;
+        }
+        // Social banter: reply from live DB context.
+        if (mode === "off") {
+          await loading.cancel();
+          return;
+        }
+        const delivered = await maybeDeliverDirectChat({
+          db,
+          api: ctx.api,
+          group: g,
+          userText: text,
+          currency: g.defaultCurrency,
+          humor: humor ?? {},
+          askerTelegramId,
+          loading,
+        });
+        if (!delivered) await loading.cancel();
+      })().catch((err) =>
+        console.warn(
+          `[jemaw] reply failed:`,
+          err instanceof Error ? err.message : err,
+        ),
       );
     }
   });
