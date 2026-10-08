@@ -1,4 +1,4 @@
-import { initializeApp, getApps, cert, applicationDefault } from "firebase-admin/app";
+import { initializeApp, getApps, cert } from "firebase-admin/app";
 import { getAuth } from "firebase-admin/auth";
 
 /** The verified identity extracted from a Firebase ID token. */
@@ -13,17 +13,14 @@ export interface TokenVerifier {
 }
 
 /**
- * Real Firebase verifier. On Cloud Run, Application Default Credentials are
- * present, so no key file is needed; locally, GOOGLE_APPLICATION_CREDENTIALS
- * may point at a service-account key. The project id is always set explicitly.
+ * Real Firebase verifier. Checking an ID token only needs the project id and
+ * Google's public signing keys, so no credential is required off Google Cloud.
+ * GOOGLE_APPLICATION_CREDENTIALS may still point at a service-account key.
  */
 export function createFirebaseVerifier(projectId: string): TokenVerifier {
   if (getApps().length === 0) {
-    const credential =
-      process.env.GOOGLE_APPLICATION_CREDENTIALS
-        ? cert(process.env.GOOGLE_APPLICATION_CREDENTIALS)
-        : applicationDefault();
-    initializeApp({ credential, projectId });
+    const keyFile = process.env.GOOGLE_APPLICATION_CREDENTIALS;
+    initializeApp(keyFile ? { credential: cert(keyFile), projectId } : { projectId });
   }
   const auth = getAuth();
   return {
