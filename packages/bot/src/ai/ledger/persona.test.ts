@@ -103,4 +103,14 @@ describe("composeLedgerPersonaLine", () => {
     });
     expect(r.source).toBe("model");
   });
+
+  it("strips em dashes and semicolons from the line", async () => {
+    const r = await composeLedgerPersonaLine({
+      client: client(["Sami—our debtor—owes Abenezer 900; the ledger sighs."]),
+      mode: "roast",
+      snapshot: snap,
+      kind: "my_balance",
+    });
+    expect(r.text).toBe("Sami, our debtor, owes Abenezer 900, the ledger sighs.");
+  });
 });

@@ -140,7 +140,7 @@ export function formatWeeklyDigest(i: DigestInput): string {
     const tag = rows.length > 3 ? "<blockquote expandable>" : "<blockquote>";
     sections.push(`<b>Open debts</b>\n${tag}${rows.join("\n")}</blockquote>`);
   } else {
-    sections.push(`✅ <b>All square</b> — no open debts.`);
+    sections.push(`✅ <b>All square</b>, no open debts.`);
   }
 
   if (i.narrative) {

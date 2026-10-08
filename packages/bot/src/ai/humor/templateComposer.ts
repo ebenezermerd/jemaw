@@ -187,7 +187,7 @@ const TEMPLATES: Template[] = [
     id: "chat_roast",
     event: "direct_mention",
     modes: ["roast", "chaos"],
-    body: "Man, come on — clear {{topic_line}} or stop poking the infrastructure.",
+    body: "Man, come on. Clear {{topic_line}} or stop poking the infrastructure.",
     style: "roast",
   },
   {
@@ -201,7 +201,7 @@ const TEMPLATES: Template[] = [
     id: "chat_quiet",
     event: "direct_mention",
     modes: ["jemaw_dry", "roast", "chaos"],
-    body: "Hey. Books are clear — nothing pending. Free to mess around.",
+    body: "Hey. Books are clear, nothing pending. Free to mess around.",
     style: "dry_observation",
   },
 ];

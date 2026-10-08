@@ -9,6 +9,7 @@ import type { ScanClient } from "../geminiClient.js";
 import type { LedgerQuestionKind } from "../humor/intent.js";
 import { buildDirectChatPacket } from "../humor/factPacket.js";
 import { verifyCandidate } from "../humor/verifier.js";
+import { cleanReplyPunctuation } from "../humor/punctuation.js";
 import {
   ledgerHighlights,
   ledgerNames,
@@ -40,6 +41,7 @@ function systemPrompt(mode: Exclude<HumorMode, "off">): string {
     "Talk to ASKER by name. React to FOCUS, the answer that was just shown, and pick ONE angle: brag about whoever carries the group or playfully guilt-trip whoever owes, including ASKER if they owe.",
     "Do not default to praising ASKER; aim at whoever FOCUS makes interesting. If everyone is square, joke about the peace or the spending instead.",
     "Friendly ribbing only: never cruel, never about poverty, worth, family or appearance.",
+    "Never use em dashes, en dashes or semicolons.",
     "Only use names and numbers that appear in FACTS. Write numbers exactly as given, without thousands separators. Do not restate the whole answer.",
     'Return JSON only: {"candidates":[{"text":"..."},{"text":"..."}]} with 2 candidates, each one sentence of at most 30 words.',
   ].join(" ");
@@ -93,7 +95,12 @@ export async function composeLedgerPersonaLine(input: {
       for (const c of Array.isArray(list) ? list : []) {
         const text = String(c?.text ?? "").trim();
         if (text && verifyCandidate(text, packet).ok) {
-          return { text, source: "model", inputTokens: res.inputTokens, outputTokens: res.outputTokens };
+          return {
+            text: cleanReplyPunctuation(text),
+            source: "model",
+            inputTokens: res.inputTokens,
+            outputTokens: res.outputTokens,
+          };
         }
       }
       console.log(`[ledger] persona model lines rejected by verifier`);
@@ -101,7 +108,7 @@ export async function composeLedgerPersonaLine(input: {
       console.warn(`[ledger] persona model failed:`, err instanceof Error ? err.message : err);
     }
   }
-  return { text: templateLine(s, input.rng ?? Math.random), source: "template" };
+  return { text: cleanReplyPunctuation(templateLine(s, input.rng ?? Math.random)), source: "template" };
 }
 
 /** The facts behind the answer that was just shown, so the line reacts to it. */

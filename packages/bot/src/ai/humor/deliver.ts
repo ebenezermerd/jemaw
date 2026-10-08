@@ -15,6 +15,7 @@ import {
 } from "@jemaw/shared/humor";
 import type { ScanClient } from "../geminiClient.js";
 import type { LoadingHandle } from "../../telegram/loading.js";
+import { cleanReplyPunctuation } from "./punctuation.js";
 import { buildLedgerSnapshot, ledgerHighlights } from "../ledger/snapshot.js";
 import {
   buildDirectChatPacket,
@@ -369,14 +370,14 @@ async function composeAndSend(input: {
     return false;
   }
 
+  const text = cleanReplyPunctuation(composed.text);
   try {
     const messageId = input.loading
-      ? await input.loading.finish(composed.text)
-      : (await input.api.sendMessage(Number(input.group.telegramChatId), composed.text))
-          .message_id;
+      ? await input.loading.finish(text)
+      : (await input.api.sendMessage(Number(input.group.telegramChatId), text)).message_id;
     if (messageId == null) throw new Error("send_failed");
     console.log(
-      `[humor] sent group=${input.group.id} source=${composed.source} event=${input.packet.event} text_len=${composed.text.length}`,
+      `[humor] sent group=${input.group.id} source=${composed.source} event=${input.packet.event} text_len=${text.length}`,
     );
     await insertBotReply(input.db, {
       groupId: input.group.id,
@@ -390,7 +391,7 @@ async function composeAndSend(input: {
       factPacketRedacted: input.packet,
       factHash: hashPacket(input.packet),
       candidateTexts: composed.candidates,
-      selectedText: composed.text,
+      selectedText: text,
       selectedStyle: composed.style,
       riskClass: input.packet.risk,
       telegramMessageId: BigInt(messageId),
@@ -428,7 +429,7 @@ async function composeAndSend(input: {
       decision: "failed",
       suppressionReason:
         err instanceof Error ? err.message.slice(0, 200) : "send_failed",
-      selectedText: composed.text,
+      selectedText: text,
       factPacketRedacted: input.packet,
       factHash: hashPacket(input.packet),
       latencyMs: Date.now() - input.started,

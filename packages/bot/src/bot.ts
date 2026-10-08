@@ -37,12 +37,12 @@ const JEMAW_RE = /(?<![a-z0-9])jemaw(?![a-z0-9])/i;
 // ─── Reply copy (pure, testable) ──────────────────────────────────────
 /** Fallback reply, used only when the pinned message can't be posted. */
 export function startGroupText(): string {
-  return "Jemaw — your group's quiet bookkeeper.";
+  return "Jemaw, your group's quiet bookkeeper.";
 }
 
 export function startPrivateText(): string {
   return [
-    "Jemaw — personal setup.",
+    "Jemaw personal setup.",
     "",
     "You can now receive private review DMs. Add me to a group to start.",
   ].join("\n");
@@ -50,13 +50,13 @@ export function startPrivateText(): string {
 
 export function helpText(): string {
   return [
-    "Jemaw — commands",
+    "Jemaw commands",
     "",
-    "/jemaw — refresh and scan the recent chat",
-    "/balance — who owes whom right now",
-    "/history — the latest expenses",
-    "/digest — post the weekly summary now",
-    "/help — this message",
+    "/jemaw: refresh and scan the recent chat",
+    "/balance: who owes whom right now",
+    "/history: the latest expenses",
+    "/digest: post the weekly summary now",
+    "/help: this message",
     "",
     "Or just ask: \"jemaw how much do I owe?\", \"jemaw list this week's expenses\", \"jemaw who spent the most?\"",
   ].join("\n");
@@ -355,13 +355,13 @@ export function createBot(token: string, deps: BotDeps): Bot {
         group,
       );
       if (result === "quiet") {
-        await ctx.reply("Nothing recorded in the last 7 days — no summary to post.");
+        await ctx.reply("Nothing recorded in the last 7 days, so no summary to post.");
       }
     } catch (err) {
       console.warn(
         `[digest] /digest failed: ${err instanceof Error ? err.message : err}`,
       );
-      await ctx.reply("Couldn't build the summary right now — try again shortly.");
+      await ctx.reply("Couldn't build the summary right now. Try again shortly.");
     }
   });
 
