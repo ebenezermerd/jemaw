@@ -1343,6 +1343,7 @@ export async function registerApi(
         "useModelComposer",
         "useGroupVibe",
         "usePreferenceLearning",
+        "ledgerBanter",
         "publicFinancialRoasting",
         "hardshipHumor",
         "latePaymentHumor",

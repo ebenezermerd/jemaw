@@ -37,6 +37,8 @@ export type HumorSettingsV1 = {
   useGroupVibe: boolean;
   /** Apply feedback-learned style weights (Phase 4). */
   usePreferenceLearning: boolean;
+  /** Let Jemaw brag about and roast members using real ledger numbers. */
+  ledgerBanter: boolean;
   enabledByMemberId?: string;
   enabledAt?: string;
   mutedUntil?: string;
@@ -107,6 +109,7 @@ export type HumorTriggerEvent =
   | "batch_confirmed"
   | "correction"
   | "direct_mention"
+  | "ledger_question"
   | "weekly_digest";
 
 export type HumorChannel = "group" | "dm" | "ephemeral" | "mini_app";
@@ -260,6 +263,7 @@ export const DEFAULT_HUMOR_SETTINGS: HumorSettingsV1 = {
   useModelComposer: true,
   useGroupVibe: true,
   usePreferenceLearning: true,
+  ledgerBanter: true,
 };
 
 export const DEFAULT_MEMBER_HUMOR_PREFS: HumorMemberPrefsV1 = {
@@ -316,6 +320,7 @@ export function toHumorSettingsDto(s: HumorSettingsV1) {
     useModelComposer: s.useModelComposer,
     useGroupVibe: s.useGroupVibe,
     usePreferenceLearning: s.usePreferenceLearning,
+    ledgerBanter: s.ledgerBanter,
     callbacks: s.callbacks,
     publicFinancialRoasting: s.publicFinancialRoasting,
     hardshipHumor: s.hardshipHumor,

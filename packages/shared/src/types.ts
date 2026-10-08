@@ -87,6 +87,7 @@ export interface HumorSettingsDto {
   useModelComposer: boolean;
   useGroupVibe: boolean;
   usePreferenceLearning: boolean;
+  ledgerBanter: boolean;
   callbacks: "off" | "approved_only";
   publicFinancialRoasting: boolean;
   hardshipHumor: boolean;

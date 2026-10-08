@@ -2,8 +2,22 @@ import { describe, it, expect } from "vitest";
 import {
   DEFAULT_HUMOR_SETTINGS,
   parseHumorSettings,
+  toHumorSettingsDto,
   HUMOR_MODE_LIMITS,
 } from "./humor.js";
+
+describe("ledgerBanter", () => {
+  it("is on by default, including for groups saved before it existed", () => {
+    expect(DEFAULT_HUMOR_SETTINGS.ledgerBanter).toBe(true);
+    expect(parseHumorSettings({ mode: "roast" }).ledgerBanter).toBe(true);
+  });
+
+  it("keeps an explicit off and exposes it on the DTO", () => {
+    const s = parseHumorSettings({ mode: "roast", ledgerBanter: false });
+    expect(s.ledgerBanter).toBe(false);
+    expect(toHumorSettingsDto(s).ledgerBanter).toBe(false);
+  });
+});
 
 describe("parseHumorSettings", () => {
   it("defaults missing settings to off", () => {
