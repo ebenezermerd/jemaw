@@ -205,6 +205,8 @@ export interface ApiDeps {
   botApi?: import("grammy").Api;
   /** Phase 1–2 humor runtime (optional). */
   humor?: import("../ai/humor/deliver.js").HumorRuntime;
+  /** Admin-console switches; scans are refused while they are paused. */
+  runtime?: import("../runtimeConfig.js").RuntimeConfigStore;
 }
 
 export async function registerApi(
@@ -258,7 +260,7 @@ export async function registerApi(
       const { group, member } = req.jemaw!;
       const members = await listMembers(db, group.id);
       const hasExpenses = await groupHasExpenses(db, group.id);
-      const canScan = deps.gemini
+      const canScan = deps.gemini && deps.runtime?.current().scanEnabled !== false
         ? await groupHasNewMessages(db, group.id)
         : false;
       return toGroupDto(group, members, hasExpenses, canScan, member);
@@ -291,7 +293,7 @@ export async function registerApi(
       }
       const members = await listMembers(db, group.id);
       const hasExpenses = await groupHasExpenses(db, group.id);
-      const canScan = deps.gemini
+      const canScan = deps.gemini && deps.runtime?.current().scanEnabled !== false
         ? await groupHasNewMessages(db, group.id)
         : false;
       return toGroupDto(group, members, hasExpenses, canScan, member);
@@ -1257,6 +1259,9 @@ export async function registerApi(
         console.warn(`[scan] manual skipped: AI scanning is not configured for group ${group.id}`);
         return reply.code(503).send({ error: "AI scanning is not configured" });
       }
+      if (deps.runtime && !deps.runtime.current().scanEnabled) {
+        return reply.code(503).send({ error: "AI scanning is paused by the Jemaw team" });
+      }
       if (!deps.scanLimiter.tryAcquire(group.id)) {
         console.log(`[scan] manual rate-limited for group ${group.id}`);
         return reply.code(429).send({ error: "rate limited — try again shortly" });
@@ -1348,89 +1353,16 @@ export async function registerApi(
       if (!requireAdmin(req, reply)) return;
       const { group, member } = req.jemaw!;
       const body = (req.body ?? {}) as Record<string, unknown>;
-      const { parseHumorSettings, toHumorSettingsDto, HUMOR_MODE_LIMITS } =
+      const { parseHumorSettings, toHumorSettingsDto, applyHumorPatch } =
         await import("@jemaw/shared/humor");
       const current = parseHumorSettings(
         (group.settings as Record<string, unknown> | null)?.humor,
       );
-      const modes = ["off", "jemaw_dry", "roast", "chaos"] as const;
-      if (body.mode != null && !modes.includes(body.mode as (typeof modes)[number])) {
-        return reply.code(400).send({ error: "invalid mode" });
-      }
-      const next = { ...current };
-      if (body.mode != null) next.mode = body.mode as typeof next.mode;
-      for (const key of [
-        "publicRepliesEnabled",
-        "useModelComposer",
-        "useGroupVibe",
-        "usePreferenceLearning",
-        "ledgerBanter",
-        "publicFinancialRoasting",
-        "hardshipHumor",
-        "latePaymentHumor",
-        "relationshipConflictHumor",
-      ] as const) {
-        if (typeof body[key] === "boolean") {
-          (next as Record<string, unknown>)[key] = body[key];
-        }
-      }
-      if (typeof body.maxPublicRepliesPerDay === "number") {
-        next.maxPublicRepliesPerDay = Math.max(
-          0,
-          Math.min(100, Math.floor(body.maxPublicRepliesPerDay)),
-        );
-      }
-      if (typeof body.cooldownMinutes === "number") {
-        next.cooldownMinutes = Math.max(
-          0,
-          Math.min(24 * 60, Math.floor(body.cooldownMinutes)),
-        );
-      }
-      if (
-        body.languageMode === "auto" ||
-        body.languageMode === "en" ||
-        body.languageMode === "am" ||
-        body.languageMode === "code_mix"
-      ) {
-        next.languageMode = body.languageMode;
-      }
-      if (body.callbacks === "off" || body.callbacks === "approved_only") {
-        next.callbacks = body.callbacks;
-      }
-      if (
-        body.profanity === "off" ||
-        body.profanity === "moderate" ||
-        body.profanity === "match_group"
-      ) {
-        next.profanity = body.profanity;
-      }
-      if (
-        body.memberTargeting === "group_only" ||
-        body.memberTargeting === "consenting_members"
-      ) {
-        next.memberTargeting = body.memberTargeting;
-      }
-      if (body.muteDays != null) {
-        const days = Number(body.muteDays);
-        if (days > 0) {
-          next.mutedUntil = new Date(
-            Date.now() + days * 24 * 60 * 60 * 1000,
-          ).toISOString();
-        } else {
-          next.mutedUntil = undefined;
-        }
-      }
-      if (body.mode && body.mode !== "off" && body.mode !== current.mode) {
-        next.enabledByMemberId = member.id;
-        next.enabledAt = new Date().toISOString();
-        const lim = HUMOR_MODE_LIMITS[body.mode as keyof typeof HUMOR_MODE_LIMITS];
-        if (lim && body.maxPublicRepliesPerDay == null) {
-          next.maxPublicRepliesPerDay = lim.maxPublicRepliesPerDay;
-        }
-        if (lim && body.cooldownMinutes == null) {
-          next.cooldownMinutes = lim.cooldownMinutes;
-        }
-      }
+      const next = applyHumorPatch(current, body, {
+        actorMemberId: member.id,
+        now: new Date(),
+      });
+      if ("error" in next) return reply.code(400).send({ error: next.error });
       await mergeGroupSettings(db, group.id, { humor: next });
       const updated = await getGroupById(db, group.id);
       const humor = parseHumorSettings(

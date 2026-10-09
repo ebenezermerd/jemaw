@@ -50,6 +50,13 @@ export function StatusPill({ status }: { status: string }) {
         padding: "3px 10px",
         borderRadius: 7,
         textTransform: "capitalize",
+        // Hug the label even as a direct grid or flex child, where it would stretch.
+        display: "inline-block",
+        width: "fit-content",
+        justifySelf: "start",
+        alignSelf: "center",
+        whiteSpace: "nowrap",
+        lineHeight: 1.4,
       }}
     >
       {status}

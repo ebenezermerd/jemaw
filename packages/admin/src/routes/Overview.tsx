@@ -14,6 +14,7 @@ import {
 import { api } from "../lib/api.js";
 import type { AdminOverviewDto } from "@jemaw/shared/types";
 import { Card, CenteredMessage } from "../ui/primitives.js";
+import { Skeleton } from "../ui/Loader.js";
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
 
@@ -248,7 +249,7 @@ export function Overview() {
     queryFn: () => api.get<AdminOverviewDto>("/api/admin/overview"),
   });
 
-  if (isLoading) return <CenteredMessage>Loading overview…</CenteredMessage>;
+  if (isLoading) return <OverviewSkeleton />;
   if (error || !data) return <CenteredMessage>Could not load the overview.</CenteredMessage>;
 
   return (
@@ -425,6 +426,26 @@ export function Overview() {
         </Card>
       </div>
 
+    </div>
+  );
+}
+
+function OverviewSkeleton() {
+  return (
+    <div role="status" aria-label="Loading" style={{ display: "flex", flexDirection: "column", gap: 18 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 14 }}>
+        {[0, 1, 2, 3].map((i) => (
+          <Skeleton key={i} height={112} radius={16} />
+        ))}
+      </div>
+      <div style={{ display: "grid", gridTemplateColumns: "1.6fr 1fr", gap: 14 }}>
+        <Skeleton height={300} radius={16} />
+        <Skeleton height={300} radius={16} />
+      </div>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
+        <Skeleton height={240} radius={16} />
+        <Skeleton height={240} radius={16} />
+      </div>
     </div>
   );
 }

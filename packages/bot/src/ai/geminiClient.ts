@@ -3,6 +3,7 @@
  * scan code and tests stay provider-agnostic. The name `GeminiClient` is kept as
  * an alias for back-compat; new code can use `ScanClient`.
  */
+import { limitsFromHeaders, type AiLimitsSnapshot } from "@jemaw/shared/runtimeConfig";
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import OpenAI from "openai";
 
@@ -78,15 +79,28 @@ export function createGeminiClient(apiKey: string, model?: string): ScanClient {
  * Groq backend via its OpenAI-compatible API. JSON mode at temperature 0 for
  * stable extraction. Default model is overridable with GROQ_MODEL.
  */
-export function createGroqClient(apiKey: string, model?: string): ScanClient {
+export function createGroqClient(
+  apiKey: string,
+  model?: string | (() => string | null | undefined),
+  opts: {
+    /** Called with Groq's remaining-limit headers after every reply. */
+    onLimits?: (snapshot: AiLimitsSnapshot) => void;
+    fetch?: typeof fetch;
+  } = {},
+): ScanClient {
   const client = new OpenAI({
     apiKey,
     baseURL: "https://api.groq.com/openai/v1",
+    ...(opts.fetch ? { fetch: opts.fetch } : {}),
   });
-  const modelName = model?.trim() || DEFAULT_GROQ_MODEL;
+  // Resolved per call so an admin override takes effect without a restart.
+  const resolveModel = () =>
+    (typeof model === "function" ? model() : model)?.trim() || DEFAULT_GROQ_MODEL;
   return {
     async suggest({ systemPrompt, userPrompt, temperature, maxTokens }) {
-      const res = await client.chat.completions.create({
+      const modelName = resolveModel();
+      const { data: res, response } = await client.chat.completions
+        .create({
         model: modelName,
         temperature: temperature ?? 0,
         ...(maxTokens != null ? { max_tokens: maxTokens } : {}),
@@ -96,7 +110,16 @@ export function createGroqClient(apiKey: string, model?: string): ScanClient {
           { role: "system", content: systemPrompt },
           { role: "user", content: userPrompt },
         ],
-      });
+      })
+        .withResponse();
+      if (opts.onLimits) {
+        const snap = limitsFromHeaders((n) => response.headers.get(n), {
+          model: modelName,
+          source: "bot",
+          now: new Date(),
+        });
+        if (snap) opts.onLimits(snap);
+      }
       const text = res.choices[0]?.message?.content ?? "{}";
       return {
         json: JSON.parse(text),

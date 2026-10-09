@@ -22,6 +22,12 @@ const schema = z.object({
   ADMIN_ORIGIN: z.string().url().optional(),
   /** Set in Cloud Run to connect to Cloud SQL over the mounted Unix socket. */
   INSTANCE_CONNECTION_NAME: z.string().optional(),
+  /** The bot's token: sends announcements, renames or leaves chats, checks health. */
+  TELEGRAM_BOT_TOKEN: z.string().optional(),
+  /** Lets the console ask Groq for the current limits ("Check now"). */
+  GROQ_API_KEY: z.string().optional(),
+  /** The bot's default Groq model, when the console hasn't overridden it. */
+  GROQ_MODEL: z.string().optional(),
 });
 
 export type Env = z.infer<typeof schema>;

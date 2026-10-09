@@ -127,38 +127,6 @@ export async function createAnnouncement(
   return rows[0]!;
 }
 
-// ─── groups ──────────────────────────────────────────────────────────────
-export interface AdminGroupRow {
-  id: string;
-  name: string;
-  defaultCurrency: string;
-  createdAt: Date;
-  memberCount: number;
-  volumeCents: number;
-}
-
-export async function listGroupsWithStats(db: Db): Promise<AdminGroupRow[]> {
-  const rows = await db
-    .select({
-      id: groups.id,
-      name: groups.name,
-      defaultCurrency: groups.defaultCurrency,
-      createdAt: groups.createdAt,
-      memberCount: sql<number>`(select count(*)::int from ${members} where ${members.groupId} = ${groups.id})`,
-      volume: sql<string>`coalesce((select sum(${expenses.amount}) from ${expenses} where ${expenses.groupId} = ${groups.id} and ${expenses.voidedAt} is null), 0)`,
-    })
-    .from(groups)
-    .orderBy(desc(groups.createdAt));
-  return rows.map((r) => ({
-    id: r.id,
-    name: r.name,
-    defaultCurrency: r.defaultCurrency,
-    createdAt: r.createdAt,
-    memberCount: Number(r.memberCount),
-    volumeCents: Math.round(Number(r.volume) * 100),
-  }));
-}
-
 // ─── users (members aggregated by telegram id) ────────────────────────────
 export interface AdminUserRow {
   telegramUserId: bigint;
@@ -167,6 +135,7 @@ export interface AdminUserRow {
   groupCount: number;
   isActive: boolean;
   lastActiveAt: Date | null;
+  joinedAt: Date;
 }
 
 /**
@@ -178,11 +147,13 @@ export async function listUsers(db: Db): Promise<AdminUserRow[]> {
   const rows = await db
     .select({
       telegramUserId: members.telegramUserId,
-      displayName: sql<string>`max(${members.displayName})`,
+      // The name from their most recent membership; names differ per group.
+      displayName: sql<string>`(array_agg(${members.displayName} order by ${members.joinedAt} desc))[1]`,
       username: sql<string | null>`max(${members.username})`,
-      groupCount: sql<number>`count(distinct ${members.groupId})::int`,
+      groupCount: sql<number>`(count(distinct ${members.groupId}) filter (where ${members.isActive}))::int`,
+      joinedAt: sql<Date>`max(${members.joinedAt})`,
       anyActive: sql<boolean>`bool_or(${members.isActive})`,
-      lastActiveAt: sql<Date | null>`max((select max(${expenses.createdAt}) from ${expenses} where ${expenses.createdByMemberId} = ${members.id}))`,
+      lastActiveAt: sql<Date | null>`max((select max(e."created_at") from "expenses" e where e."created_by_member_id" = "members"."id" or e."payer_member_id" = "members"."id"))`,
     })
     .from(members)
     .groupBy(members.telegramUserId)
@@ -194,6 +165,7 @@ export async function listUsers(db: Db): Promise<AdminUserRow[]> {
     groupCount: Number(r.groupCount),
     isActive: r.anyActive,
     lastActiveAt: r.lastActiveAt ? new Date(r.lastActiveAt) : null,
+    joinedAt: new Date(r.joinedAt),
   }));
 }
 
@@ -205,7 +177,9 @@ export async function setUserActive(
 ): Promise<number> {
   const rows = await db
     .update(members)
-    .set({ isActive })
+    // Suspended people leave the default split for new expenses, like a mini
+    // app removal; past shares and balances are untouched.
+    .set({ isActive, isPrimary: isActive })
     .where(eq(members.telegramUserId, telegramUserId))
     .returning({ id: members.id });
   return rows.length;
@@ -230,7 +204,7 @@ export async function sumLiveExpensesCents(db: Db): Promise<number> {
       total: sql<string>`coalesce(sum(${expenses.amount}), 0)`,
     })
     .from(expenses)
-    .where(isNull(expenses.voidedAt));
+    .where(and(isNull(expenses.voidedAt), eq(expenses.kind, "expense")));
   return Math.round(Number(rows[0]?.total ?? 0) * 100);
 }
 
@@ -257,7 +231,7 @@ export async function activitySeries(db: Db, days: number): Promise<DailyCount[]
       n: sql<number>`count(*)::int`,
     })
     .from(expenses)
-    .where(gte(expenses.createdAt, since))
+    .where(and(gte(expenses.createdAt, since), isNull(expenses.voidedAt)))
     .groupBy(sql`to_char(${expenses.createdAt}, 'YYYY-MM-DD')`);
   const setRows = await db
     .select({
@@ -339,57 +313,6 @@ export async function recentActivity(db: Db, limit: number): Promise<RecentRow[]
   return rows.slice(0, limit);
 }
 
-export interface AdminExpenseRow {
-  id: string;
-  description: string;
-  amountCents: number;
-  currency: string;
-  kind: "expense" | "loan";
-  source: string;
-  groupName: string;
-  payerName: string;
-  occurredAt: Date;
-  voided: boolean;
-}
-
-/** Cross-group expense feed for the admin Expenses screen (most recent first). */
-export async function listRecentExpenses(
-  db: Db,
-  limit: number,
-): Promise<AdminExpenseRow[]> {
-  const payer = members;
-  const rows = await db
-    .select({
-      id: expenses.id,
-      description: expenses.description,
-      amount: expenses.amount,
-      currency: expenses.currency,
-      kind: expenses.kind,
-      source: expenses.source,
-      occurredAt: expenses.occurredAt,
-      voidedAt: expenses.voidedAt,
-      groupName: groups.name,
-      payerName: payer.displayName,
-    })
-    .from(expenses)
-    .innerJoin(groups, eq(expenses.groupId, groups.id))
-    .innerJoin(payer, eq(expenses.payerMemberId, payer.id))
-    .orderBy(desc(expenses.occurredAt))
-    .limit(limit);
-  return rows.map((r) => ({
-    id: r.id,
-    description: r.description,
-    amountCents: Math.round(Number(r.amount) * 100),
-    currency: r.currency,
-    kind: r.kind,
-    source: r.source,
-    groupName: r.groupName,
-    payerName: r.payerName,
-    occurredAt: r.occurredAt,
-    voided: r.voidedAt !== null,
-  }));
-}
-
 export interface TopGroupRow {
   id: string;
   name: string;
@@ -406,7 +329,7 @@ export async function topGroupsByVolume(db: Db, limit: number): Promise<TopGroup
     .from(groups)
     .leftJoin(
       expenses,
-      and(eq(expenses.groupId, groups.id), isNull(expenses.voidedAt)),
+      and(eq(expenses.groupId, groups.id), isNull(expenses.voidedAt), eq(expenses.kind, "expense")),
     )
     .groupBy(groups.id, groups.name)
     .orderBy(desc(sql`coalesce(sum(${expenses.amount}), 0)`))

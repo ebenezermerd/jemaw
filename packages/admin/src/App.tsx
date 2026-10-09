@@ -3,8 +3,9 @@ import { AuthProvider, useAuth } from "./lib/auth.js";
 import { AppShell } from "./ui/AppShell.js";
 import { Login } from "./routes/Login.js";
 import { Overview } from "./routes/Overview.js";
-import { Users } from "./routes/Users.js";
-import { Groups } from "./routes/Groups.js";
+import { UserDetailPage, Users } from "./routes/Users.js";
+import { GroupDetailPage, Groups } from "./routes/Groups.js";
+import { PageLoader } from "./ui/Loader.js";
 import { Expenses } from "./routes/Expenses.js";
 import { Logs } from "./routes/Logs.js";
 import { Announcements } from "./routes/Announcements.js";
@@ -13,11 +14,7 @@ import { Settings } from "./routes/Settings.js";
 function Protected() {
   const { user, loading } = useAuth();
   if (loading) {
-    return (
-      <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", color: "var(--text-dim)" }}>
-        Loading…
-      </div>
-    );
+    return <PageLoader minHeight="100vh" />;
   }
   if (!user) return <Navigate to="/login" replace />;
   return (
@@ -25,7 +22,9 @@ function Protected() {
       <Routes>
         <Route path="/" element={<Overview />} />
         <Route path="/users" element={<Users />} />
+        <Route path="/users/:telegramId" element={<UserDetailPage />} />
         <Route path="/groups" element={<Groups />} />
+        <Route path="/groups/:groupId" element={<GroupDetailPage />} />
         <Route path="/expenses" element={<Expenses />} />
         <Route path="/logs" element={<Logs />} />
         <Route path="/announcements" element={<Announcements />} />

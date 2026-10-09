@@ -37,6 +37,7 @@ import {
   type RememberedQuestion,
 } from "./ai/ledger/memory.js";
 import { startLoading, type LoadingHandle, type LoadingTopic } from "./telegram/loading.js";
+import { staticRuntimeConfig, type RuntimeConfigStore } from "./runtimeConfig.js";
 
 /** Word-boundary, case-insensitive "jemaw" trigger (plan §10). */
 const JEMAW_RE = /(?<![a-z0-9])jemaw(?![a-z0-9])/i;
@@ -128,6 +129,8 @@ export interface BotDeps {
   scanLimiter: ScanRateLimiter;
   /** Optional Phase 1–2 humor composer client (usually same keys as scan). */
   humor?: HumorRuntime;
+  /** Admin-console switches (scans, chat, maintenance). Defaults when absent. */
+  runtime?: RuntimeConfigStore;
 }
 
 const GROUP_TYPES = new Set(["group", "supergroup"]);
@@ -145,6 +148,7 @@ export function createBot(token: string, deps: BotDeps): Bot {
     scanLimiter,
     humor,
   } = deps;
+  const runtime = deps.runtime ?? staticRuntimeConfig();
 
   // Error boundary, registered first. A failed Telegram call (say, a user who
   // blocked the bot) must not fail the webhook: Telegram would retry that
@@ -198,6 +202,11 @@ export function createBot(token: string, deps: BotDeps): Bot {
     if (!gemini) {
       console.log(`[scan] skipped: GEMINI_API_KEY not configured`);
       void existingLoading?.cancel();
+      return;
+    }
+    if (!runtime.current().scanEnabled) {
+      console.log(`[scan] skipped: paused from the admin console`);
+      void existingLoading?.finish("Scanning is paused for a bit. The Jemaw team will switch it back on soon.");
       return;
     }
     if (!scanLimiter.tryAcquire(group.id)) {
@@ -327,6 +336,16 @@ export function createBot(token: string, deps: BotDeps): Bot {
     }
   });
 
+  // Maintenance: commands get the admins' notice instead of running.
+  bot.on("message:text", async (ctx, next) => {
+    const notice = runtime.current().maintenanceMessage;
+    if (notice && ctx.message.text.startsWith("/")) {
+      await ctx.reply(notice).catch(() => {});
+      return;
+    }
+    await next();
+  });
+
   bot.command("start", async (ctx) => {
     if (ctx.chat?.type === "private") {
       await ctx.reply(startPrivateText());
@@ -443,6 +462,14 @@ export function createBot(token: string, deps: BotDeps): Bot {
     ).catch(() => {});
 
     if (JEMAW_RE.test(text)) {
+      const notice = runtime.current().maintenanceMessage;
+      if (notice) {
+        await ctx
+          .reply(notice, { reply_parameters: { message_id: ctx.message.message_id, allow_sending_without_reply: true } })
+          .catch(() => {});
+        return;
+      }
+      const chatEnabled = runtime.current().chatEnabled;
       const askerTelegramId = ctx.from ? BigInt(ctx.from.id) : null;
       const replyTo = ctx.message.message_id;
       void (async () => {
@@ -453,15 +480,15 @@ export function createBot(token: string, deps: BotDeps): Bot {
         const mode = parseHumorSettings(
           (g.settings as Record<string, unknown> | null)?.humor,
         ).mode;
-        // Humor off and plainly social: stay quiet, as before.
-        if (byRules.intent === "chat" && mode === "off") return;
+        // Humor off (or chat paused by the admins) and plainly social: stay quiet.
+        if (byRules.intent === "chat" && (mode === "off" || !chatEnabled)) return;
 
         // Placeholder first, from the fast rules; the model refines the route.
         const topic: LoadingTopic =
           byRules.query?.kind ?? (byRules.intent === "chat" ? chatLoadingTopic(text) : "scan");
         const loading = await startLoading(ctx.api, chat.id, { topic, replyTo });
 
-        const understander = humor?.client ?? gemini;
+        const understander = chatEnabled ? (humor?.client ?? gemini) : undefined;
         const byModel = understander
           ? await understandMessage({
               client: understander,
@@ -498,7 +525,7 @@ export function createBot(token: string, deps: BotDeps): Bot {
           return;
         }
         // Social banter: reply from live DB context.
-        if (mode === "off") {
+        if (mode === "off" || !chatEnabled) {
           await loading.cancel();
           return;
         }

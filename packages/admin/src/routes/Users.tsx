@@ -1,7 +1,12 @@
 import { useState, useRef, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "../lib/api.js";
-import type { AdminUserDto, AdminExpenseDto, AdminGroupDto } from "@jemaw/shared/types";
+import type { AdminGroupDetailDto, AdminGroupDto, AdminUserDetailDto, AdminUserDto } from "@jemaw/shared/types";
+import { useNavigate, useParams } from "react-router-dom";
+import { fmtMoney, fmtNet, scrollAfter, titleCase } from "../lib/format.js";
+import { BackLink, fromState, useBackTo } from "../ui/BackLink.js";
+import { Busy, Loader, PageLoader, SkeletonList, SkeletonRows } from "../ui/Loader.js";
+import { DEFAULT_PAGE_SIZE, TableFooter } from "../ui/Pager.js";
 import { StatusPill, CenteredMessage } from "../ui/primitives.js";
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
@@ -617,57 +622,81 @@ function GroupsDropdown({
 
 // ─── USER DETAIL PAGE ─────────────────────────────────────────────────────────
 
+/** /users/:telegramId — opened from the list or from a group's member row. */
+export function UserDetailPage() {
+  const { telegramId = "" } = useParams();
+  const qc = useQueryClient();
+  const back = useBackTo({ path: "/users", label: "All users" });
+  const { data, isLoading, error } = useQuery({
+    queryKey: ["user", telegramId],
+    queryFn: () => api.get<AdminUserDetailDto>(`/api/admin/users/${telegramId}`),
+  });
+  const toggle = useMutation({
+    mutationFn: (u: AdminUserDto) =>
+      api.post(`/api/admin/users/${u.telegramUserId}/${u.isActive ? "suspend" : "activate"}`),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ["users"] });
+      void qc.invalidateQueries({ queryKey: ["user", telegramId] });
+    },
+  });
+  if (isLoading) return <div><BackLink to={back} /><PageLoader /></div>;
+  if (error || !data) return <div><BackLink to={back} /><CenteredMessage>Could not load this user.</CenteredMessage></div>;
+  return (
+    <UserDetail
+      user={data.user}
+      back={<BackLink to={back} />}
+      onToggle={() => toggle.mutate(data.user)}
+      isPending={toggle.isPending}
+    />
+  );
+}
+
 function UserDetail({
   user,
-  expenses,
-  onBack,
+  back,
   onToggle,
   isPending,
 }: {
   user: AdminUserDto;
-  expenses: AdminExpenseDto[];
-  onBack: () => void;
+  back: React.ReactNode;
   onToggle: () => void;
   isPending: boolean;
 }) {
+  const navigate = useNavigate();
   const [showMessage, setShowMessage] = useState(false);
   const { bg, color } = getAvatarStyle(user.displayName);
+  const { data: detail, isLoading: detailLoading } = useQuery({
+    queryKey: ["user", user.telegramUserId],
+    queryFn: () => api.get<AdminUserDetailDto>(`/api/admin/users/${user.telegramUserId}`),
+  });
 
-  const userExpenses = expenses
-    .filter((e) => e.payerName === user.displayName && !e.voided)
-    .slice(0, 30);
+  const memberships = detail?.memberships ?? [];
+  const activeMemberships = memberships.filter((m) => m.isActive);
+  const currencies = new Set(memberships.map((m) => m.currency));
+  // Sums only make sense when every group uses the same currency.
+  const oneCurrency = currencies.size === 1 ? [...currencies][0]! : null;
+  const sum = (pick: (m: (typeof memberships)[number]) => string) =>
+    memberships.reduce((acc, m) => acc + Number(pick(m)), 0);
+  const totalNet = sum((m) => m.net);
+  const expensesPaid = memberships.reduce((acc, m) => acc + m.expenseCount, 0);
 
-  const totalPaid = userExpenses.reduce((s, e) => s + Number(e.amount), 0);
-
-  const groupMap = new Map<string, { name: string; entries: number; amount: number }>();
-  expenses
-    .filter((e) => e.payerName === user.displayName && !e.voided)
-    .forEach((e) => {
-      const g = groupMap.get(e.groupName) ?? { name: e.groupName, entries: 0, amount: 0 };
-      g.entries++;
-      g.amount += Number(e.amount);
-      groupMap.set(e.groupName, g);
-    });
-  const groups = [...groupMap.values()].sort((a, b) => b.amount - a.amount);
-
-  const timeline = expenses
-    .filter((e) => e.payerName === user.displayName)
-    .slice(0, 5)
-    .map((e) => ({
-      id: e.id,
-      dot: e.kind === "loan" ? "#E0B23C" : e.kind === "expense" ? "#8A78D6" : "#5BA8E0",
-      text:
-        e.kind === "loan" ? (
-          <>
-            Recorded loan <b>{Number(e.amount).toLocaleString()} {e.currency}</b> · {e.groupName}
-          </>
-        ) : (
-          <>
-            Added expense <b>{e.description} · {Number(e.amount).toLocaleString()} {e.currency}</b>
-          </>
-        ),
-      at: e.occurredAt,
-    }));
+  const timeline = (detail?.recentExpenses ?? []).map((e) => ({
+    id: e.id,
+    dot: e.voided ? "rgba(244,242,251,.3)" : e.kind === "loan" ? "#E0B23C" : "#8A78D6",
+    text:
+      e.kind === "loan" ? (
+        <>
+          Lent <b>{fmtMoney(e.amount, e.currency)}</b> to {e.shares[0]?.name ?? "someone"} · {e.groupName}
+          {e.voided ? " (voided)" : ""}
+        </>
+      ) : (
+        <>
+          Paid <b>{e.description} · {fmtMoney(e.amount, e.currency)}</b> · {e.groupName}
+          {e.voided ? " (voided)" : ""}
+        </>
+      ),
+    at: e.occurredAt,
+  }));
 
   return (
     <>
@@ -676,28 +705,7 @@ function UserDetail({
       )}
 
       <div>
-        {/* back link */}
-        <button
-          onClick={onBack}
-          style={{
-            display: "inline-flex",
-            alignItems: "center",
-            gap: 7,
-            fontSize: 13,
-            fontWeight: 600,
-            color: "#A99CE3",
-            background: "none",
-            border: "none",
-            cursor: "pointer",
-            padding: 0,
-            marginBottom: 16,
-          }}
-        >
-          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M15 18l-6-6 6-6" />
-          </svg>
-          All users
-        </button>
+        {back}
 
         {/* header card */}
         <div
@@ -741,12 +749,13 @@ function UserDetail({
                   margin: 0,
                 }}
               >
-                {user.displayName}
+                {titleCase(user.displayName)}
               </h2>
               <StatusPill status={user.status} />
             </div>
             <div style={{ fontSize: 13, color: "rgba(244,242,251,.5)", marginTop: 3 }}>
-              {user.username ? `@${user.username} · ` : ""}ID {user.telegramUserId}
+              {user.isManual ? "Added by hand, no Telegram account · " : user.username ? `@${user.username} · ` : ""}
+              {user.isManual ? "" : `ID ${user.telegramUserId}`}
               {user.lastActiveAt ? ` · Last active ${fmtDate(user.lastActiveAt)}` : ""}
             </div>
           </div>
@@ -790,57 +799,42 @@ function UserDetail({
         {/* 4-stat grid */}
         <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 16, marginBottom: 18 }}>
           {[
-            { value: String(user.groupCount), label: "Groups" },
+            { value: String(activeMemberships.length), label: "Groups" },
             {
-              value: totalPaid,
-              label: "Total paid",
-              suffix: " Br",
+              value: detailLoading ? <Loader size={20} /> : oneCurrency ? fmtMoney(sum((m) => m.paid), oneCurrency) : "Mixed currencies",
+              label: "Total paid (loans excluded)",
             },
             {
-              value: null,
+              value: detailLoading ? <Loader size={20} /> : oneCurrency ? fmtNet(totalNet, oneCurrency) : "See groups",
               label: "Net balance",
-              accent: "#2DD4A7",
+              accent: !oneCurrency || totalNet === 0 ? undefined : totalNet > 0 ? "#2DD4A7" : "#F0A640",
             },
-            { value: userExpenses.length, label: "Entries logged" },
-          ].map(({ value, label, suffix, accent }) => {
-            const display =
-              value === null
-                ? "—"
-                : typeof value === "number" && value > 0
-                  ? value.toLocaleString(undefined, { maximumFractionDigits: 0 })
-                  : typeof value === "number"
-                    ? String(value)
-                    : value;
-
-            return (
+            { value: detailLoading ? <Loader size={20} /> : String(expensesPaid), label: "Expenses paid for" },
+          ].map(({ value, label, accent }) => (
+            <div
+              key={label}
+              style={{
+                background: "#16151F",
+                border: "1px solid rgba(255,255,255,.07)",
+                borderRadius: 14,
+                padding: 16,
+              }}
+            >
               <div
-                key={label}
                 style={{
-                  background: "#16151F",
-                  border: "1px solid rgba(255,255,255,.07)",
-                  borderRadius: 14,
-                  padding: 16,
+                  fontFamily: "var(--font-display)",
+                  fontWeight: 800,
+                  fontSize: 22,
+                  fontVariantNumeric: "tabular-nums",
+                  color: accent ?? "var(--text)",
+                  lineHeight: 1,
                 }}
               >
-                <div
-                  style={{
-                    fontFamily: "var(--font-display)",
-                    fontWeight: 800,
-                    fontSize: 24,
-                    fontVariantNumeric: "tabular-nums",
-                    color: accent ?? "var(--text)",
-                    lineHeight: 1,
-                  }}
-                >
-                  {display}
-                  {suffix && value !== null && Number(value) > 0 && (
-                    <span style={{ fontSize: 14, opacity: 0.6 }}>{suffix}</span>
-                  )}
-                </div>
-                <div style={{ fontSize: 12, color: "rgba(244,242,251,.5)", marginTop: 6 }}>{label}</div>
+                {value}
               </div>
-            );
-          })}
+              <div style={{ fontSize: 12, color: "rgba(244,242,251,.5)", marginTop: 6 }}>{label}</div>
+            </div>
+          ))}
         </div>
 
         {/* two-column */}
@@ -864,22 +858,27 @@ function UserDetail({
             >
               Group memberships
             </div>
-            {groups.length === 0 ? (
+            {detailLoading ? (
+              <SkeletonList count={3} height={44} />
+            ) : memberships.length === 0 ? (
               <div style={{ padding: "16px 20px", fontSize: 13, color: "rgba(244,242,251,.4)" }}>
-                No group activity found.
+                Not in any group.
               </div>
             ) : (
-              groups.map((g, i) => (
+              <div className="jx-scroll" style={{ maxHeight: scrollAfter(8, 61), overflowY: "auto" }}>
+              {memberships.map((g, i) => (
                 <div
-                  key={g.name}
+                  key={g.memberId}
                   className="jx-row"
+                  onClick={() => navigate(`/groups/${g.groupId}`, fromState(`/users/${user.telegramUserId}`, titleCase(user.displayName)))}
                   style={{
                     display: "flex",
                     alignItems: "center",
                     gap: 11,
                     padding: "13px 20px",
-                    borderBottom: i < groups.length - 1 ? "1px solid rgba(255,255,255,.04)" : "none",
-                    cursor: "default",
+                    borderBottom: i < memberships.length - 1 ? "1px solid rgba(255,255,255,.04)" : "none",
+                    cursor: "pointer",
+                    opacity: g.isActive ? 1 : 0.5,
                   }}
                 >
                   <GroupIcon size={34} />
@@ -893,26 +892,29 @@ function UserDetail({
                         whiteSpace: "nowrap",
                       }}
                     >
-                      {g.name}
+                      {g.groupName}
                     </div>
                     <div style={{ fontSize: 11, color: "rgba(244,242,251,.45)" }}>
-                      Member · {g.entries} {g.entries === 1 ? "entry" : "entries"}
+                      {g.isActive ? (g.role === "admin" ? "Admin" : "Member") : "Removed"}
+                      {g.displayName !== user.displayName ? ` as ${g.displayName}` : ""} · paid{" "}
+                      {fmtMoney(g.paid, g.currency)} over {g.expenseCount}{" "}
+                      {g.expenseCount === 1 ? "expense" : "expenses"}
                     </div>
                   </div>
                   <span
                     style={{
                       fontSize: 13,
                       fontWeight: 700,
-                      color: g.amount >= 0 ? "#2DD4A7" : "#F0A640",
+                      color: Number(g.net) > 0 ? "#2DD4A7" : Number(g.net) < 0 ? "#F0A640" : "rgba(244,242,251,.55)",
                       fontVariantNumeric: "tabular-nums",
                       flex: "none",
                     }}
                   >
-                    {g.amount >= 0 ? "+" : "−"}
-                    {Math.abs(g.amount).toLocaleString(undefined, { maximumFractionDigits: 0 })} Br
+                    {fmtNet(g.net, g.currency)}
                   </span>
                 </div>
-              ))
+              ))}
+              </div>
             )}
           </div>
 
@@ -925,11 +927,24 @@ function UserDetail({
               padding: 20,
             }}
           >
-            <div style={{ fontSize: 15, fontWeight: 700, marginBottom: 16 }}>Recent activity</div>
-            {timeline.length === 0 ? (
-              <div style={{ fontSize: 13, color: "rgba(244,242,251,.4)" }}>No activity recorded.</div>
+            <div style={{ fontSize: 15, fontWeight: 700, marginBottom: 16 }}>
+              Recent activity
+              {timeline.length > 0 && (
+                <span style={{ fontWeight: 500, fontSize: 12, color: "rgba(244,242,251,.45)" }}> · last {timeline.length}</span>
+              )}
+            </div>
+            {detailLoading ? (
+              <SkeletonList count={4} height={34} padding={0} />
+            ) : timeline.length === 0 ? (
+              <div style={{ fontSize: 13, color: "rgba(244,242,251,.4)" }}>
+                Has not paid for anything yet.
+              </div>
             ) : (
-              <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+              <div
+                className="jx-scroll"
+                data-testid="user-activity"
+                style={{ display: "flex", flexDirection: "column", gap: 14, maxHeight: scrollAfter(8, 50), overflowY: "auto", paddingRight: 6 }}
+              >
                 {timeline.map((item, i) => (
                   <div key={item.id} style={{ display: "flex", gap: 11 }}>
                     <div style={{ display: "flex", flexDirection: "column", alignItems: "center" }}>
@@ -981,7 +996,6 @@ function UserDetail({
 // ─── USERS LIST ───────────────────────────────────────────────────────────────
 
 const COLS = "2.2fr 1.4fr 1fr 1.1fr 1.1fr 0.6fr";
-const PAGE_SIZE = 50;
 
 type Filter = "all" | "active" | "idle" | "new" | "suspended";
 const FILTERS: { key: Filter; label: string }[] = [
@@ -991,21 +1005,22 @@ const FILTERS: { key: Filter; label: string }[] = [
 ];
 
 export function Users() {
-  const qc = useQueryClient();
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState<Filter>("all");
   const [groupId, setGroupId] = useState<string | null>(null);
-  const [page, setPage] = useState(1);
-  const [selected, setSelected] = useState<AdminUserDto | null>(null);
+  const [offset, setOffset] = useState(0);
+  const [limit, setLimit] = useState(DEFAULT_PAGE_SIZE);
+  const navigate = useNavigate();
 
   const { data: users = [], isLoading, error } = useQuery({
     queryKey: ["users"],
     queryFn: () => api.get<AdminUserDto[]>("/api/admin/users"),
   });
 
-  const { data: expenses = [] } = useQuery({
-    queryKey: ["expenses"],
-    queryFn: () => api.get<AdminExpenseDto[]>("/api/admin/expenses"),
+  const { data: groupDetail, isFetching: groupLoading } = useQuery({
+    queryKey: ["group", groupId],
+    queryFn: () => api.get<AdminGroupDetailDto>(`/api/admin/groups/${groupId}`),
+    enabled: groupId !== null,
   });
 
   const { data: groups = [] } = useQuery({
@@ -1013,42 +1028,16 @@ export function Users() {
     queryFn: () => api.get<AdminGroupDto[]>("/api/admin/groups"),
   });
 
-  const toggle = useMutation({
-    mutationFn: (u: AdminUserDto) =>
-      api.post(`/api/admin/users/${u.telegramUserId}/${u.isActive ? "suspend" : "activate"}`),
-    onSuccess: () => void qc.invalidateQueries({ queryKey: ["users"] }),
-  });
-
-  if (isLoading) return <CenteredMessage>Loading users…</CenteredMessage>;
   if (error) return <CenteredMessage>Could not load users.</CenteredMessage>;
 
-  const liveSelected = selected
-    ? (users.find((u) => u.telegramUserId === selected.telegramUserId) ?? selected)
-    : null;
-
-  if (liveSelected) {
-    return (
-      <UserDetail
-        user={liveSelected}
-        expenses={expenses}
-        onBack={() => setSelected(null)}
-        onToggle={() => toggle.mutate(liveSelected)}
-        isPending={toggle.isPending}
-      />
-    );
-  }
-
-  // ── derive group membership lookup from expenses ──────────────────────────
-  // { groupId → Set<payerName> } for group filtering
-  const groupNameById = new Map(groups.map((g) => [g.id, g.name]));
-  const usersInGroup = groupId
-    ? new Set(expenses.filter((e) => e.groupName === groupNameById.get(groupId ?? "")).map((e) => e.payerName))
-    : null;
+  // Real membership of the chosen group, by Telegram id.
+  const usersInGroup =
+    groupId && groupDetail ? new Set(groupDetail.members.map((m) => m.telegramUserId)) : null;
 
   const q = search.trim().toLowerCase();
   const filtered = users
     .filter((u) => filter === "all" || u.status === filter)
-    .filter((u) => !usersInGroup || usersInGroup.has(u.displayName))
+    .filter((u) => !groupId || (usersInGroup?.has(u.telegramUserId) ?? false))
     .filter(
       (u) =>
         !q ||
@@ -1057,9 +1046,9 @@ export function Users() {
         u.telegramUserId.includes(q),
     );
 
-  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
-  const safePage = Math.min(page, totalPages);
-  const rows = filtered.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE);
+  const safeOffset = offset < filtered.length ? offset : 0;
+  const rows = filtered.slice(safeOffset, safeOffset + limit);
+  const busy = groupId !== null && groupLoading;
 
   const counts: Record<Filter, number> = {
     all: users.length,
@@ -1071,26 +1060,12 @@ export function Users() {
 
   function changeFilter(f: Filter) {
     setFilter(f);
-    setPage(1);
+    setOffset(0);
   }
 
   function changeGroup(id: string | null) {
     setGroupId(id);
-    setPage(1);
-  }
-
-  // page numbers to show
-  const pageNums: (number | "…")[] = [];
-  if (totalPages <= 5) {
-    for (let i = 1; i <= totalPages; i++) pageNums.push(i);
-  } else {
-    pageNums.push(1);
-    if (safePage > 3) pageNums.push("…");
-    for (let i = Math.max(2, safePage - 1); i <= Math.min(totalPages - 1, safePage + 1); i++) {
-      pageNums.push(i);
-    }
-    if (safePage < totalPages - 2) pageNums.push("…");
-    pageNums.push(totalPages);
+    setOffset(0);
   }
 
   // CSV export
@@ -1141,7 +1116,7 @@ export function Users() {
           </svg>
           <input
             value={search}
-            onChange={(e) => { setSearch(e.target.value); setPage(1); }}
+            onChange={(e) => { setSearch(e.target.value); setOffset(0); }}
             placeholder="Search by name or @handle…"
             style={{
               flex: 1,
@@ -1154,7 +1129,7 @@ export function Users() {
           />
           {search && (
             <button
-              onClick={() => { setSearch(""); setPage(1); }}
+              onClick={() => { setSearch(""); setOffset(0); }}
               style={{ background: "none", border: "none", cursor: "pointer", color: "rgba(244,242,251,.4)", padding: 0 }}
             >
               <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round">
@@ -1257,7 +1232,10 @@ export function Users() {
           <span />
         </div>
 
-        {rows.length === 0 ? (
+        <Busy busy={busy}>
+        {isLoading ? (
+          <SkeletonRows cols={COLS} count={10} />
+        ) : rows.length === 0 ? (
           <CenteredMessage>
             {q || filter !== "all" || groupId ? "No users match." : "No users yet."}
           </CenteredMessage>
@@ -1268,7 +1246,7 @@ export function Users() {
               <div
                 key={u.telegramUserId}
                 className="jx-row"
-                onClick={() => setSelected(u)}
+                onClick={() => navigate(`/users/${u.telegramUserId}`)}
                 style={{
                   display: "grid",
                   gridTemplateColumns: COLS,
@@ -1298,7 +1276,7 @@ export function Users() {
                     {initials(u.displayName)}
                   </div>
                   <div>
-                    <div style={{ fontSize: 14, fontWeight: 600 }}>{u.displayName}</div>
+                    <div style={{ fontSize: 14, fontWeight: 600 }}>{titleCase(u.displayName)}</div>
                     <div style={{ fontSize: 11, color: "rgba(244,242,251,.4)", fontVariantNumeric: "tabular-nums" }}>
                       ID {u.telegramUserId}
                     </div>
@@ -1337,91 +1315,20 @@ export function Users() {
             );
           })
         )}
-      </div>
-
-      {/* pagination */}
-      <div
-        style={{
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "center",
-          marginTop: 14,
-        }}
-      >
-        <span style={{ fontSize: 13, color: "rgba(244,242,251,.45)" }}>
-          Showing {Math.min((safePage - 1) * PAGE_SIZE + 1, filtered.length)}–{Math.min(safePage * PAGE_SIZE, filtered.length)} of{" "}
-          {filtered.length.toLocaleString()} users
-        </span>
-
-        {totalPages > 1 && (
-          <div style={{ display: "flex", gap: 6 }}>
-            <button
-              onClick={() => setPage((p) => Math.max(1, p - 1))}
-              disabled={safePage === 1}
-              style={{
-                fontSize: 13,
-                color: safePage === 1 ? "rgba(244,242,251,.25)" : "rgba(244,242,251,.6)",
-                background: "transparent",
-                border: "1px solid rgba(255,255,255,.1)",
-                padding: "7px 12px",
-                borderRadius: 8,
-                cursor: safePage === 1 ? "default" : "pointer",
-              }}
-            >
-              ‹ Prev
-            </button>
-
-            {pageNums.map((p, i) =>
-              p === "…" ? (
-                <span
-                  key={`ell-${i}`}
-                  style={{
-                    fontSize: 13,
-                    color: "rgba(244,242,251,.4)",
-                    padding: "7px 6px",
-                    display: "flex",
-                    alignItems: "center",
-                  }}
-                >
-                  …
-                </span>
-              ) : (
-                <button
-                  key={p}
-                  onClick={() => setPage(p)}
-                  style={{
-                    fontSize: 13,
-                    fontWeight: safePage === p ? 700 : 400,
-                    color: safePage === p ? "#fff" : "rgba(244,242,251,.6)",
-                    background: safePage === p ? "#6E59C7" : "transparent",
-                    border: safePage === p ? "none" : "1px solid rgba(255,255,255,.1)",
-                    padding: "7px 12px",
-                    borderRadius: 8,
-                    cursor: "pointer",
-                    minWidth: 34,
-                  }}
-                >
-                  {p}
-                </button>
-              ),
-            )}
-
-            <button
-              onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-              disabled={safePage === totalPages}
-              style={{
-                fontSize: 13,
-                color: safePage === totalPages ? "rgba(244,242,251,.25)" : "rgba(244,242,251,.6)",
-                background: "transparent",
-                border: "1px solid rgba(255,255,255,.1)",
-                padding: "7px 12px",
-                borderRadius: 8,
-                cursor: safePage === totalPages ? "default" : "pointer",
-              }}
-            >
-              Next ›
-            </button>
-          </div>
+        </Busy>
+        {!isLoading && (
+          <TableFooter
+            offset={safeOffset}
+            limit={limit}
+            total={filtered.length}
+            onPage={setOffset}
+            onLimit={(n) => {
+              setLimit(n);
+              setOffset(0);
+            }}
+            busy={busy}
+            noun="users"
+          />
         )}
       </div>
     </div>

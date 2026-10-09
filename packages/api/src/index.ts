@@ -11,6 +11,8 @@ import { createDb } from "./db.js";
 import { createFirebaseVerifier } from "./auth/firebase.js";
 import { seedAdminsIfEmpty } from "./repo.js";
 import { buildServer } from "./server.js";
+import { createTelegramClient } from "./telegram.js";
+import { sweepQueued } from "./announce.js";
 
 async function main(): Promise<void> {
   const env = loadEnv();
@@ -22,13 +24,22 @@ async function main(): Promise<void> {
   await seedAdminsIfEmpty(db, parseAdminEmails(env.ADMIN_EMAILS));
 
   const verifier = createFirebaseVerifier(env.FIREBASE_PROJECT_ID);
+  const telegram = createTelegramClient(env.TELEGRAM_BOT_TOKEN);
+  if (!telegram.configured) console.warn("[api] TELEGRAM_BOT_TOKEN not set: announcements and chat actions are off");
   const app = await buildServer({
-    api: { db, verifier, now: () => Date.now() },
+    api: {
+      db,
+      verifier,
+      now: () => Date.now(),
+      telegram,
+      groq: { apiKey: env.GROQ_API_KEY, model: env.GROQ_MODEL },
+    },
     corsOrigin: env.ADMIN_ORIGIN,
   });
 
   await app.listen({ host: "0.0.0.0", port: env.PORT });
   console.log(`[api] listening on :${env.PORT}`);
+  void sweepQueued(db, telegram);
 }
 
 main().catch((err) => {

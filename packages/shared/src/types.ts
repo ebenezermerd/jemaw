@@ -436,16 +436,101 @@ export interface AdminUserDto {
   /** ISO of most recent activity (expense/settlement) or null */
   lastActiveAt: string | null;
   status: "active" | "idle" | "new" | "suspended";
+  /** added by hand in the app, not a real Telegram account */
+  isManual: boolean;
 }
 
 export interface AdminGroupDto {
   id: string;
   name: string;
   defaultCurrency: string;
+  /** active members only */
   memberCount: number;
-  /** decimal string — sum of live expenses */
+  /** decimal string: live spending, loans excluded */
   volume: string;
+  /** live (not voided) expenses and loans */
+  expenseCount: number;
   createdAt: string; // ISO
+}
+
+/** One member of a group with their ledger position, computed like the bot does. */
+export interface AdminGroupMemberDto {
+  memberId: string;
+  displayName: string;
+  username: string | null;
+  telegramUserId: TelegramIdString;
+  /** added by hand in the app, not a real Telegram account */
+  isManual: boolean;
+  role: "admin" | "member";
+  isActive: boolean;
+  isPrimary: boolean;
+  /** decimal strings */
+  paid: string;
+  share: string;
+  /** positive: is owed money; negative: owes money */
+  net: string;
+  expenseCount: number;
+}
+
+export interface AdminTransferDto {
+  fromMemberId: string;
+  fromName: string;
+  toMemberId: string;
+  toName: string;
+  /** decimal string */
+  amount: string;
+}
+
+export interface AdminSettlementDto {
+  id: string;
+  groupId: string;
+  groupName: string;
+  fromName: string;
+  toName: string;
+  /** decimal string */
+  amount: string;
+  currency: string;
+  method: string;
+  at: string; // ISO
+}
+
+export interface AdminGroupDetailDto {
+  group: AdminGroupDto;
+  /** bot and AI settings for the group, plus its Telegram chat id */
+  settings: AdminGroupBotDto;
+  members: AdminGroupMemberDto[];
+  /** the open settle plan: who should pay whom */
+  transfers: AdminTransferDto[];
+  settlements: AdminSettlementDto[];
+  stats: {
+    /** decimal strings */
+    spend: string;
+    loans: string;
+    settled: string;
+    openExpenses: number;
+    settledExpenses: number;
+  };
+}
+
+export interface AdminUserMembershipDto {
+  groupId: string;
+  groupName: string;
+  currency: string;
+  memberId: string;
+  displayName: string;
+  role: "admin" | "member";
+  isActive: boolean;
+  isPrimary: boolean;
+  /** decimal strings */
+  paid: string;
+  net: string;
+  expenseCount: number;
+}
+
+export interface AdminUserDetailDto {
+  user: AdminUserDto;
+  memberships: AdminUserMembershipDto[];
+  recentExpenses: AdminExpenseDto[];
 }
 
 export interface AdminKpiDto {
@@ -544,10 +629,20 @@ export interface AdminExpenseDto {
   currency: string;
   kind: ExpenseKind;
   source: string;
+  groupId: string;
   groupName: string;
+  payerMemberId: string;
   payerName: string;
   occurredAt: string; // ISO
   voided: boolean;
+  /** open: someone still owes on it; settled: every share is paid back */
+  status: "open" | "settled" | "voided";
+  shares: { memberId: string; name: string; amount: string }[];
+}
+
+export interface AdminExpensePageDto {
+  items: AdminExpenseDto[];
+  total: number;
 }
 
 export interface AppConfigDto {
@@ -559,4 +654,123 @@ export interface AppConfigDto {
 export interface UpdateConfigInput {
   key: string;
   value: unknown;
+}
+
+// ─── Admin console: management, activity, bot ─────────────────────────
+export interface UpdateGroupInput {
+  name?: string;
+  defaultCurrency?: string;
+}
+
+export interface UpdateGroupResultDto {
+  group: AdminGroupDto;
+  /** null when the name didn't change; false when Telegram refused the rename */
+  telegramSynced: boolean | null;
+}
+
+export interface UpdateMemberInput {
+  role?: "admin" | "member";
+  isActive?: boolean;
+  displayName?: string;
+}
+
+export interface DeleteGroupResultDto {
+  deleted: Record<string, number>;
+  /** whether the bot left the Telegram chat */
+  leftChat: boolean;
+}
+
+export interface AdminGroupBotDto {
+  humor: HumorSettingsDto;
+  /** the group has live expenses, so its currency is locked */
+  currencyLocked: boolean;
+  telegramChatId: string;
+}
+
+export type AdminActivitySource = "console" | "scan" | "reply" | "draft" | "settlement";
+export type AdminActivitySeverity = "info" | "warn" | "error";
+
+export interface AdminActivityItemDto {
+  id: string;
+  source: AdminActivitySource;
+  severity: AdminActivitySeverity;
+  groupId: string | null;
+  groupName: string | null;
+  /** who did it: an admin email, a member name, or "Jemaw" */
+  actor: string | null;
+  /** short machine-ish verb, e.g. "scan.success", "reply.suppressed" */
+  action: string;
+  /** one human sentence */
+  summary: string;
+  detail: Record<string, unknown>;
+  at: string; // ISO
+}
+
+export interface AdminActivityPageDto {
+  items: AdminActivityItemDto[];
+  total: number;
+}
+
+export interface AdminBotStatusDto {
+  configured: boolean;
+  username: string | null;
+  webhook: {
+    url: string | null;
+    pendingUpdates: number;
+    lastErrorAt: string | null;
+    lastErrorMessage: string | null;
+  } | null;
+  heartbeat: { at: string; version: string | null } | null;
+  /** ok: reachable and beating; warn: reachable but stale or erroring; down: unreachable */
+  health: "ok" | "warn" | "down";
+  error: string | null;
+}
+
+export interface AdminAccountDto {
+  email: string;
+  role: "super" | "admin";
+}
+
+export interface AdminAccountsDto {
+  admins: AdminAccountDto[];
+  /** only supers can add, remove or change admins */
+  canManage: boolean;
+}
+
+export interface AdminAiUsageDayDto {
+  date: string; // YYYY-MM-DD (UTC)
+  scans: number;
+  replies: number;
+  tokens: number;
+}
+
+export interface AdminAiGroupQuotaDto {
+  groupId: string;
+  groupName: string;
+  mode: "off" | "jemaw_dry" | "roast" | "chaos";
+  /** public replies sent since 00:00 UTC, the bot's daily window */
+  repliesToday: number;
+  /** the group's daily cap; 0 when the personality is off */
+  maxPerDay: number;
+  mutedUntil: string | null;
+}
+
+export interface AdminAiUsageDto {
+  today: {
+    calls: number;
+    scans: number;
+    replies: number;
+    inputTokens: number;
+    outputTokens: number;
+    errors: number;
+  };
+  days: AdminAiUsageDayDto[];
+  byModel: { model: string; calls: number; tokens: number }[];
+  groups: AdminAiGroupQuotaDto[];
+  /** Groq's last reported limits, or null before any call was recorded */
+  limits: import("./runtimeConfig.js").AiLimitsSnapshot | null;
+  /** the API holds a Groq key, so "Check now" works */
+  canCheck: boolean;
+  /** the model the bot uses now */
+  model: string;
 }

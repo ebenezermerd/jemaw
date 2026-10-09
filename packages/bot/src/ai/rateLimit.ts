@@ -1,7 +1,7 @@
 /**
- * Per-group scan rate limit (JEMAW_PLAN.md §10): at most one Gemini scan per
- * 60 seconds per group. In-memory map keyed by group id — good enough for a
- * single Cloud Run instance. `now`/`windowMs` are injectable for tests.
+ * Per-group scan rate limit: at most one scan per window per group. The
+ * window can be a getter so the admin console can tune it at runtime.
+ * In-memory map keyed by group id, fine for a single instance.
  */
 export const SCAN_WINDOW_MS = 10_000;
 
@@ -9,7 +9,7 @@ export class ScanRateLimiter {
   private readonly last = new Map<string, number>();
 
   constructor(
-    private readonly windowMs = SCAN_WINDOW_MS,
+    private readonly windowMs: number | (() => number) = SCAN_WINDOW_MS,
     private readonly now: () => number = () => Date.now(),
   ) {}
 
@@ -17,7 +17,8 @@ export class ScanRateLimiter {
   tryAcquire(groupId: string): boolean {
     const t = this.now();
     const prev = this.last.get(groupId);
-    if (prev !== undefined && t - prev < this.windowMs) return false;
+    const windowMs = typeof this.windowMs === "function" ? this.windowMs() : this.windowMs;
+    if (prev !== undefined && t - prev < windowMs) return false;
     this.last.set(groupId, t);
     return true;
   }

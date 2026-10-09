@@ -9,7 +9,9 @@
     ".": "./src/index.ts",
     "./schema": "./src/schema.ts",
     "./types": "./src/types.ts",
-    "./humor": "./src/humor.ts"
+    "./humor": "./src/humor.ts",
+    "./ledger": "./src/ledger/index.ts",
+    "./runtimeConfig": "./src/runtimeConfig.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",

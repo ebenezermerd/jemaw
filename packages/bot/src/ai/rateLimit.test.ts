@@ -20,3 +20,16 @@ describe("ScanRateLimiter", () => {
     expect(rl.tryAcquire("a")).toBe(false);
   });
 });
+
+describe("ScanRateLimiter with a tunable window", () => {
+  it("reads the window on every call", () => {
+    let windowMs = 10_000;
+    let t = 0;
+    const rl = new ScanRateLimiter(() => windowMs, () => t);
+    expect(rl.tryAcquire("g")).toBe(true);
+    t = 5_000;
+    expect(rl.tryAcquire("g")).toBe(false);
+    windowMs = 4_000;
+    expect(rl.tryAcquire("g")).toBe(true);
+  });
+});

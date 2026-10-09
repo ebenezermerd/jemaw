@@ -7,6 +7,17 @@ describe("StatusPill", () => {
     render(<StatusPill status="active" />);
     expect(screen.getByText("active")).toBeTruthy();
   });
+
+  it("hugs its label inside a table grid cell instead of stretching across it", () => {
+    render(
+      <div style={{ display: "grid", gridTemplateColumns: "200px" }}>
+        <StatusPill status="idle" />
+      </div>,
+    );
+    const pill = screen.getByText("idle");
+    expect(pill.style.justifySelf).toBe("start");
+    expect(pill.style.width).toBe("fit-content");
+  });
 });
 
 describe("Card", () => {
