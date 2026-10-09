@@ -1043,7 +1043,7 @@ function TelegramSection({ member }: { member: MemberDto }) {
           <input
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search by @username or name"
+            placeholder="Search this group by @username or name"
             disabled={busy}
             style={{ ...memberInput, height: 40 }}
           />
@@ -1055,8 +1055,15 @@ function TelegramSection({ member }: { member: MemberDto }) {
           {!candidates.isLoading && list.length === 0 && !rawIdOption && (
             <span className="t-caption" style={{ color: "var(--text-muted)" }}>
               {q
-                ? "No account matches this search."
+                ? "No one in this group matches yet."
                 : "No known accounts yet. Search by @username, or type a numeric Telegram user id."}
+            </span>
+          )}
+          {!candidates.isLoading && (
+            <span className="t-caption" style={{ color: "var(--text-faint)", lineHeight: 1.45 }}>
+              Telegram only lets Jemaw see people who have been active in this chat: anyone who
+              sent a message, joined after Jemaw was added, or is a chat admin. Not listed? Ask
+              them to send any message in the group, then search again.
             </span>
           )}
           <div
