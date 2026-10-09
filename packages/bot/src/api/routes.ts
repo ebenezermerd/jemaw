@@ -2,6 +2,7 @@
  * Phase 1 REST API. All routes live under /api/groups/:groupId and run behind
  * the initData auth hook. Bodies validated with zod.
  */
+import { createAvatarFetcher, verifyAvatarSignature } from "@jemaw/shared/avatar";
 import type { FastifyInstance, FastifyRequest, FastifyReply } from "fastify";
 import { z } from "zod";
 import type { Db } from "../db.js";
@@ -62,6 +63,7 @@ import {
   toExpenseDto,
   toBalanceDtos,
   toMemberDto,
+  configureAvatars,
   toTransferDto,
   toSettlementDto,
   toSuggestionDto,
@@ -215,6 +217,22 @@ export async function registerApi(
   deps: ApiDeps,
 ): Promise<void> {
   const { db } = deps;
+  configureAvatars(deps.botToken);
+  const getAvatar = createAvatarFetcher(deps.botToken);
+
+  // Members' Telegram profile photos, by signed link only (see shared/avatar).
+  app.get("/avatars/:file", async (req, reply) => {
+    const id = (req.params as { file: string }).file.replace(/\.jpg$/, "");
+    if (!verifyAvatarSignature(deps.botToken, id, (req.query as { s?: string }).s)) {
+      return reply.code(404).send();
+    }
+    const img = await getAvatar(id);
+    if (!img) return reply.code(404).header("cache-control", "public, max-age=3600").send();
+    return reply
+      .header("content-type", img.contentType)
+      .header("cache-control", "public, max-age=86400")
+      .send(Buffer.from(img.body));
+  });
   const authDeps: AuthDeps = {
     db,
     botToken: deps.botToken,

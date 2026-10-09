@@ -2,6 +2,7 @@
  * Row -> DTO mappers. Centralizes the wire-format conventions (string ids,
  * decimal-string money, ISO timestamps).
  */
+import { avatarPath } from "@jemaw/shared/avatar";
 import { parseGroupAccess } from "@jemaw/shared/groupAccess";
 import type {
   Member,
@@ -24,8 +25,15 @@ import type { ExpenseWithShares } from "../repo.js";
 import type { MemberNet } from "../domain/balances.js";
 import type { Transfer } from "../domain/settle.js";
 
+// Signs profile photo links; set once by registerApi with the bot token.
+let avatarToken: string | undefined;
+export function configureAvatars(botToken: string | undefined): void {
+  avatarToken = botToken;
+}
+
 export function toMemberDto(m: Member): MemberDto {
   return {
+    photoUrl: avatarPath(avatarToken, m.telegramUserId),
     id: m.id,
     displayName: m.displayName,
     username: m.username,
