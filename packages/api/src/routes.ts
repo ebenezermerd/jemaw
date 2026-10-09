@@ -132,9 +132,14 @@ const designTestSchema = z.object({
   data: z.record(z.unknown()).optional(),
 });
 
+const releaseItems = z.array(z.string().trim().min(1).max(300)).max(20).default([]);
 const createAnnouncementSchema = z.object({
+  kind: z.enum(["announcement", "release"]).default("announcement"),
   title: z.string().min(1).max(120),
-  body: z.string().min(1).max(4000),
+  body: z.string().max(4000),
+  release: z
+    .object({ version: z.string().trim().max(30).optional(), added: releaseItems, improved: releaseItems, fixed: releaseItems })
+    .optional(),
   audience: z.enum(["all_groups", "group", "user"]),
   targetId: z.string().optional(),
   queue: z.boolean().optional().default(false),
@@ -230,7 +235,7 @@ export async function registerApi(
     });
   /** Send in the background; the row's status tells the console how it went. */
   const sendInBackground = (id: string) =>
-    void deliverAnnouncement(db, telegram, id).catch((err) =>
+    void deliverAnnouncement(db, telegram, id, { render: renderImage, openAppUrl: deps.openAppUrl }).catch((err) =>
       console.warn(`[announce] ${id} failed:`, err instanceof Error ? err.message : err),
     );
   const authDeps: AuthDeps = { db, verifier: deps.verifier };
@@ -668,7 +673,13 @@ export async function registerApi(
       if (!parsed.success) {
         return reply.code(400).send({ error: "invalid body", issues: parsed.error.issues });
       }
-      const { title, body, audience, targetId, queue } = parsed.data;
+      const { kind, title, body, release, audience, targetId, queue } = parsed.data;
+      if (kind === "announcement" && !body.trim()) {
+        return reply.code(400).send({ error: "an announcement needs a message" });
+      }
+      if (kind === "release" && !release?.added.length && !release?.improved.length && !release?.fixed.length && !body.trim()) {
+        return reply.code(400).send({ error: "a release needs at least one new, improved or fixed item" });
+      }
       if (audience !== "all_groups" && !targetId) {
         return reply.code(400).send({ error: "targetId required for this audience" });
       }
@@ -682,8 +693,10 @@ export async function registerApi(
         return reply.code(503).send({ error: "sending is not set up: TELEGRAM_BOT_TOKEN is missing on the API" });
       }
       const row = await createAnnouncement(db, {
+        kind,
         title,
         body,
+        release: kind === "release" ? (release ?? { added: [], improved: [], fixed: [] }) : null,
         audience,
         targetId: targetId ?? null,
         status: queue ? "queued" : "draft",
@@ -695,7 +708,7 @@ export async function registerApi(
         action: queue ? "announcement.queue" : "announcement.draft",
         targetType: "announcement",
         targetId: row.id,
-        detail: { audience, targetId: targetId ?? null },
+        detail: { kind, audience, targetId: targetId ?? null },
       });
       if (queue) sendInBackground(row.id);
       return reply.code(201).send(toAnnouncementDto(row));

@@ -38,6 +38,7 @@ const telegram: TelegramClient = {
   },
   async upload<T>(method: string, params: Record<string, unknown>, files: Record<string, Buffer>) {
     calls.push({ method, params: { ...params, files: Object.keys(files) } });
+    if (params.chat_id === "999") return { ok: false, error: "chat not found" };
     return { ok: true, result: { message_id: 1 } as T };
   },
 };
@@ -225,8 +226,29 @@ d("admin management routes", () => {
     const [row] = await db.select().from(announcements).where(eq(announcements.id, id));
     expect(row!.status).toBe("sent");
     expect(row!.stats).toMatchObject({ delivered: 1, failed: 0 });
-    const msg = calls.find((c) => c.method === "sendMessage" && c.params.chat_id === chatId.toString());
-    expect(msg?.params.text).toBe("<b>Hi &lt;all&gt;</b>\n\nNews");
+    // Sent in the saved announcement design: an article with the title as its heading.
+    const msg = calls.find((c) => c.method === "sendRichMessage" && c.params.chat_id === chatId.toString());
+    expect(msg?.params.rich_message).toMatchObject({ blocks: [{ type: "heading", text: "Hi <all>" }, { type: "paragraph", text: "News" }] });
+    expect(msg?.params.reply_markup).toMatchObject({ inline_keyboard: [[{ text: "Open Jemaw", url: `https://t.me/jemawsbot/app?startapp=${groupId}` }]] });
+
+    calls.length = 0;
+    const release = await inject("POST", "/api/admin/announcements", {
+      kind: "release",
+      title: "Jemaw 1.6",
+      body: "",
+      release: { version: "1.6", added: ["Weekly pictures"], improved: [], fixed: ["Removed members"] },
+      audience: "group",
+      targetId: groupId,
+      queue: true,
+    });
+    expect(release.json()).toMatchObject({ kind: "release", release: { version: "1.6", added: ["Weekly pictures"] } });
+    await new Promise((r) => setTimeout(r, 300));
+    const notes = calls.find((c) => c.method === "sendRichMessage");
+    const headings = (notes?.params.rich_message as { blocks: { type: string; text?: unknown }[] }).blocks
+      .filter((b) => b.type === "heading")
+      .map((b) => b.text);
+    expect(headings).toEqual(["Jemaw 1.6", "✨ New", "🛠 Fixed"]);
+    expect((await inject("POST", "/api/admin/announcements", { kind: "release", title: "Empty", body: "", audience: "all_groups" })).statusCode).toBe(400);
 
     const toUser = await inject("POST", "/api/admin/announcements", {
       title: "Hey",

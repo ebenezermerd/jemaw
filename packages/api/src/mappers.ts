@@ -8,6 +8,7 @@ import {
   type AdminUserDto,
   type AdminAuditEntryDto,
   type AnnouncementDto,
+  type ReleaseNotes,
   type AdminTopGroupDto,
 } from "@jemaw/shared/types";
 import type { AdminAuditLog, Announcement } from "@jemaw/shared/schema";
@@ -71,8 +72,10 @@ export function toAuditDto(row: AdminAuditLog): AdminAuditEntryDto {
 export function toAnnouncementDto(row: Announcement): AnnouncementDto {
   return {
     id: row.id,
+    kind: row.kind === "release" ? "release" : "announcement",
     title: row.title,
     body: row.body,
+    release: (row.release as ReleaseNotes | null) ?? null,
     audience: row.audience,
     targetId: row.targetId,
     status: row.status,
