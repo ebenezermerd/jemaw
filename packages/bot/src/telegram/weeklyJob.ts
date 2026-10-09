@@ -24,10 +24,10 @@ import {
   type ExpenseForDebt,
   type AllocationForDebt,
 } from "../domain/pairwiseDebt.js";
-import {
-  computeWeeklyKpis,
-  formatWeeklyDigest,
-} from "../domain/weeklyDigest.js";
+import { computeWeeklyKpis } from "../domain/weeklyDigest.js";
+import { composePost, DEFAULT_POST_DESIGNS, formatAmount } from "@jemaw/shared/posts";
+import { sendPost, type ImageRenderer } from "./sendPost.js";
+import { postContext, type PostLinks } from "./postLinks.js";
 import { generateWeeklyNarrative } from "../ai/digestNarrative.js";
 import type { ScanClient } from "../ai/geminiClient.js";
 import { decimalToCents } from "@jemaw/shared/types";
@@ -38,7 +38,14 @@ export interface WeeklyJobDeps {
   gemini?: ScanClient;
   /** Admin switch; the sweep skips every group while digests are off. */
   runtime?: import("../runtimeConfig.js").RuntimeConfigStore;
+  /** Targets for the post's "Open Jemaw" buttons. */
+  links?: PostLinks;
+  /** Image renderer override for tests. */
+  renderImage?: ImageRenderer;
 }
+
+const shortDate = (d: Date) =>
+  d.toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "Africa/Addis_Ababa" });
 
 const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
 const SWEEP_INTERVAL_MS = 60 * 60 * 1000; // hourly
@@ -121,17 +128,37 @@ export async function sendWeeklyDigest(
     openDebts,
   });
 
-  const html = formatWeeklyDigest({
-    groupName: group.name,
-    currency: group.defaultCurrency,
-    kpis,
-    standings,
-    openDebts,
-    narrative,
-  });
-  await deps.api.sendMessage(Number(group.telegramChatId), html, {
-    parse_mode: "HTML",
-  });
+  const now = new Date();
+  const thisWeek = liveExpenses
+    .filter((e) => e.expense.occurredAt >= since && e.expense.kind !== "loan")
+    .sort((a, b) => b.expense.occurredAt.getTime() - a.expense.occurredAt.getTime());
+  const post = composePost(
+    {
+      useCase: "weekly",
+      data: {
+        groupName: group.name,
+        currency: group.defaultCurrency,
+        periodLabel: `${shortDate(since)} – ${shortDate(now)}`,
+        spentCents: kpis.spentCents,
+        expenseCount: kpis.expenseCount,
+        settledCents: kpis.settledCents,
+        memberCount: members.filter((m) => m.isActive).length,
+        standings,
+        debts: openDebts.map((d) => ({ from: d.fromName, to: d.toName, cents: d.amountCents })),
+        expenses: thisWeek.map((e) => ({
+          description: e.expense.description,
+          cents: decimalToCents(e.expense.amount),
+          payer: nameOf(e.expense.payerMemberId),
+          date: shortDate(e.expense.occurredAt),
+        })),
+        narrative,
+      },
+    },
+    deps.runtime?.current().postDesigns.weekly ?? DEFAULT_POST_DESIGNS.weekly,
+    postContext(deps.links, group.id),
+  );
+  const sent = await sendPost(deps.api, Number(group.telegramChatId), post, { renderImage: deps.renderImage });
+  console.log(`[digest] group ${group.id}: ${sent.mode}, ${formatAmount(kpis.spentCents)} ${group.defaultCurrency}`);
   return "sent";
 }
 

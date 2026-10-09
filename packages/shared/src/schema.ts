@@ -425,6 +425,10 @@ export const announcements = pgTable("announcements", {
     .defaultNow(),
   sentAt: timestamp("sent_at", { withTimezone: true }),
   stats: jsonb("stats").notNull().default({}), // { delivered, failed }
+  /** "announcement" or "release" (feature release notes). */
+  kind: text("kind").notNull().default("announcement"),
+  /** Release notes: { version, added[], improved[], fixed[] }; the intro lives in body. */
+  release: jsonb("release"),
 });
 
 // ─── app_config ───────────────────────────────────────────────────────

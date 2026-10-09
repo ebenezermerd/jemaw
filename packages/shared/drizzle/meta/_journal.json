@@ -71,6 +71,13 @@
       "when": 1791478781208,
       "tag": "0009_admin_console",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1791550000000,
+      "tag": "0010_announcement_kind",
+      "breakpoints": true
     }
   ]
 }

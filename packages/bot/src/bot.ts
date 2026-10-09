@@ -327,6 +327,10 @@ export function createBot(token: string, deps: BotDeps): Bot {
         loading,
         humor: gate.blocked ? {} : (humor ?? {}),
         lead: opts.lead,
+        api: ctx.api,
+        chatId,
+        designs: runtime.current().postDesigns,
+        links: { botUsername, miniAppShortName, miniAppUrl },
       });
     })().catch((err) =>
       console.warn(`[ledger] answer failed:`, err instanceof Error ? err.message : err),
@@ -477,7 +481,7 @@ export function createBot(token: string, deps: BotDeps): Bot {
     if (!group) return;
     try {
       const result = await sendDigestNow(
-        { db, api: ctx.api, gemini },
+        { db, api: ctx.api, gemini, runtime, links: { botUsername, miniAppShortName, miniAppUrl } },
         group,
       );
       if (result === "quiet") {

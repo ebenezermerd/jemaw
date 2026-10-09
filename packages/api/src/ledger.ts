@@ -43,6 +43,7 @@ export const isManualId = (id: bigint) => id < 0n;
 
 interface LiveExpense {
   id: string;
+  description: string;
   payerMemberId: string;
   amountCents: number;
   kind: "expense" | "loan";
@@ -97,6 +98,7 @@ export async function loadGroupLedger(db: Db, groupId: string): Promise<GroupLed
   }
   const live: LiveExpense[] = expenseRows.map((e) => ({
     id: e.id,
+    description: e.description,
     payerMemberId: e.payerMemberId,
     amountCents: decimalToCents(e.amount),
     kind: e.kind,

@@ -1,3 +1,5 @@
+import { DEFAULT_POST_DESIGNS, parsePostDesigns, type PostDesigns } from "./posts/designs.js";
+
 /**
  * Bot-wide switches the admin console writes to app_config and the bot reads
  * (cached) at runtime. Each key maps to one row; a missing row means the
@@ -15,6 +17,8 @@ export interface BotRuntimeConfig {
   weeklyDigestEnabled: boolean;
   /** When set, commands answer with this instead of running. */
   maintenanceMessage: string | null;
+  /** Layout per kind of post (weekly report, AI answers, announcements). */
+  postDesigns: PostDesigns;
 }
 
 export const DEFAULT_BOT_RUNTIME_CONFIG: BotRuntimeConfig = {
@@ -24,6 +28,7 @@ export const DEFAULT_BOT_RUNTIME_CONFIG: BotRuntimeConfig = {
   scanCooldownSeconds: 10,
   weeklyDigestEnabled: true,
   maintenanceMessage: null,
+  postDesigns: DEFAULT_POST_DESIGNS,
 };
 
 /** app_config key for each field. */
@@ -34,6 +39,7 @@ export const BOT_RUNTIME_KEYS: Record<keyof BotRuntimeConfig, string> = {
   scanCooldownSeconds: "bot.ai.scanCooldownSeconds",
   weeklyDigestEnabled: "bot.weeklyDigest.enabled",
   maintenanceMessage: "bot.maintenanceMessage",
+  postDesigns: "bot.postDesigns",
 };
 
 /** app_config key the bot refreshes so the console can tell it is alive. */
@@ -56,6 +62,8 @@ export function parseRuntimeValue<K extends keyof BotRuntimeConfig>(
     case "model":
     case "maintenanceMessage":
       return nonEmpty(raw) as BotRuntimeConfig[K];
+    case "postDesigns":
+      return parsePostDesigns(raw) as BotRuntimeConfig[K];
     case "scanCooldownSeconds": {
       const n = Number(raw);
       return (Number.isFinite(n) && raw !== null ? Math.min(600, Math.max(5, Math.round(n))) : d) as BotRuntimeConfig[K];

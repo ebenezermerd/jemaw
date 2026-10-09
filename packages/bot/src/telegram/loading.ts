@@ -132,6 +132,11 @@ export interface LoadingHandle {
   readonly messageId: number | null;
   /** Replace the placeholder with the answer; returns the final message id. */
   finish(text: string, opts?: { parse_mode?: "HTML" }): Promise<number | null>;
+  /**
+   * Stop the spinner and hand the placeholder to `send`, which may edit it
+   * or post a new message. A placeholder that wasn't reused is removed.
+   */
+  finishWith(send: (placeholderId: number | null) => Promise<number | null>): Promise<number | null>;
   /** Remove the placeholder when there is nothing to say. */
   cancel(): Promise<void>;
 }
@@ -219,6 +224,12 @@ export async function startLoading(
         console.warn(`[loading] send failed:`, err instanceof Error ? err.message : err);
         return null;
       }
+    },
+    async finishWith(send) {
+      await stop();
+      const id = await send(messageId);
+      if (id != null && id !== messageId) await remove();
+      return id;
     },
     async cancel() {
       await stop();

@@ -13,7 +13,9 @@
     "./ledger": "./src/ledger/index.ts",
     "./runtimeConfig": "./src/runtimeConfig.ts",
     "./groupAccess": "./src/groupAccess.ts",
-    "./avatar": "./src/avatar.ts"
+    "./avatar": "./src/avatar.ts",
+    "./posts": "./src/posts/index.ts",
+    "./postImages": "./src/postImages/index.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",
@@ -23,8 +25,10 @@
     "db:migrate": "drizzle-kit migrate"
   },
   "dependencies": {
+    "@resvg/resvg-js": "2.6.2",
     "drizzle-orm": "^0.38.3",
-    "postgres": "^3.4.5"
+    "postgres": "^3.4.5",
+    "satori": "0.44.3"
   },
   "devDependencies": {
     "drizzle-kit": "^0.30.1",

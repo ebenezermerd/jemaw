@@ -26,6 +26,12 @@ async function main(): Promise<void> {
   const verifier = createFirebaseVerifier(env.FIREBASE_PROJECT_ID);
   const telegram = createTelegramClient(env.TELEGRAM_BOT_TOKEN);
   if (!telegram.configured) console.warn("[api] TELEGRAM_BOT_TOKEN not set: announcements and chat actions are off");
+  // The bot's @username, for the Mini App deep link on test posts.
+  let botUsername: string | null = null;
+  if (telegram.configured) {
+    const me = await telegram.call<{ username?: string }>("getMe");
+    botUsername = me.ok ? (me.result.username ?? null) : null;
+  }
   const app = await buildServer({
     api: {
       db,
@@ -34,6 +40,8 @@ async function main(): Promise<void> {
       telegram,
       botToken: env.TELEGRAM_BOT_TOKEN,
       groq: { apiKey: env.GROQ_API_KEY, model: env.GROQ_MODEL },
+      openAppUrl: (groupId) =>
+        botUsername ? `https://t.me/${botUsername}/${env.MINI_APP_SHORT_NAME}?startapp=${groupId}` : null,
     },
     corsOrigin: env.ADMIN_ORIGIN,
   });

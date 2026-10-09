@@ -617,10 +617,22 @@ export type AnnouncementStatus =
   | "sent"
   | "failed";
 
+export type AnnouncementKind = "announcement" | "release";
+
+/** What a feature release lists; the intro is the announcement body. */
+export interface ReleaseNotes {
+  version?: string;
+  added: string[];
+  improved: string[];
+  fixed: string[];
+}
+
 export interface AnnouncementDto {
   id: string;
+  kind: AnnouncementKind;
   title: string;
   body: string;
+  release: ReleaseNotes | null;
   audience: AnnouncementAudience;
   targetId: string | null;
   status: AnnouncementStatus;
@@ -630,8 +642,11 @@ export interface AnnouncementDto {
 }
 
 export interface CreateAnnouncementInput {
+  kind?: AnnouncementKind;
   title: string;
+  /** The message, or a release's intro (may be empty for a release). */
   body: string;
+  release?: ReleaseNotes;
   audience: AnnouncementAudience;
   targetId?: string;
   /** queue immediately, or save as draft */
