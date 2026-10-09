@@ -362,7 +362,7 @@ d("admin management routes", () => {
     const rich = calls.find((c) => c.method === "sendRichMessage")!;
     expect(rich.params.files).toEqual(["img0", "img1"]);
     expect(JSON.stringify(rich.params.rich_message)).toContain("attach://img1");
-    expect(rich.params.reply_markup).toMatchObject({ inline_keyboard: [[{ url: `https://t.me/jemawsbot/app?startapp=${groupId}` }], [{ copy_text: { text: "100" } }]] });
+    expect(rich.params.reply_markup).toMatchObject({ inline_keyboard: [[{ url: `https://t.me/jemawsbot/app?startapp=${groupId}` }, { copy_text: { text: "100" } }]] });
 
     const saved = await inject("PATCH", "/api/admin/bot/config", { postDesigns: { ai_payments: { checklistStyle: "table" } } });
     expect(saved.json().postDesigns.ai_payments).toMatchObject({ layout: "checklist", checklistStyle: "table" });

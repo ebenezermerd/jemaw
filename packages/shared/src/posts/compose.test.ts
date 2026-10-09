@@ -17,9 +17,11 @@ describe("composePost", () => {
     const table = post.rich!.find((b) => b.type === "table") as { cells: { text?: unknown; colspan?: number }[][] };
     expect(table.cells.at(-1)![0]!.colspan).toBe(3);
     expect(types(post.rich)).not.toContain("buttons");
+    // Side by side in one row.
+    expect(post.keyboard).toHaveLength(1);
     expect(post.keyboard[0]![0]).toMatchObject({ text: "Open Jemaw", url: ctx.openUrl, style: "primary" });
     // Copy buttons carry a plain label; Telegram adds its own copy icon.
-    expect(post.keyboard[1]![0]).toEqual({ text: "Copy total", copy_text: { text: "2050" } });
+    expect(post.keyboard[0]![1]).toEqual({ text: "Copy total", copy_text: { text: "2050" } });
   });
 
   it("weekly showcase: slideshow swipes the hero and one card per expense", () => {
@@ -28,10 +30,20 @@ describe("composePost", () => {
     expect(post.images.map((i) => i.kind)).toEqual(["hero", "expense", "expense", "expense"]);
   });
 
-  it("buttons inside the message become button blocks and leave the keyboard for the fallback only", () => {
+  it("buttons inside the message sit side by side in one block, centred from three up", () => {
     const post = composePost(SAMPLE_POST_DATA.weekly, design(DEFAULT_POST_DESIGNS.weekly, { buttonsPlacement: "inside" }), ctx);
-    expect(types(post.rich).filter((t) => t === "buttons")).toHaveLength(2);
+    const blocks = post.rich!.filter((b) => b.type === "buttons") as { buttons: unknown[]; align: string }[];
+    expect(blocks).toHaveLength(1);
+    expect(blocks[0]).toMatchObject({ align: "left" });
+    expect(blocks[0]!.buttons).toHaveLength(2);
     expect(post.buttonsPlacement).toBe("inside");
+
+    const three = design(DEFAULT_POST_DESIGNS.weekly, {
+      buttonsPlacement: "inside",
+      buttons: [[{ label: "A", action: "open_app", style: "default" }], [{ label: "B", action: "open_app", style: "default" }, { label: "C", action: "open_app", style: "default" }]],
+    });
+    const centred = composePost(SAMPLE_POST_DATA.weekly, three, ctx).rich!.filter((b) => b.type === "buttons");
+    expect(centred).toEqual([expect.objectContaining({ align: "center" })]);
   });
 
   it("payments checklist has a checkbox per payback and no quotes", () => {
@@ -71,7 +83,7 @@ describe("composePost", () => {
     expect(post.photo?.kind).toBe("hero");
     expect(post.html).toContain("<b>Weekly report</b>");
     expect(post.html).toContain("<pre>");
-    expect(post.keyboard).toHaveLength(2);
+    expect(post.keyboard).toHaveLength(1);
   });
 
   it("drops open buttons when there is no link", () => {

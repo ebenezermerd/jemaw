@@ -402,12 +402,21 @@ const listBlock = (items: RichText[]): RichBlock => ({
   items: items.map((text) => ({ blocks: [{ type: "paragraph" as const, text }] })),
 });
 
-const richButtons = (rows: KeyboardButton[][]): RichBlock[] =>
-  rows.map((row) => ({
-    type: "buttons" as const,
-    align: "center" as const,
-    buttons: row.map((b): RichButton => ({ text: b.text, ...(b.style ? { style: b.style } : {}), ...(b.url ? { url: b.url } : {}), ...(b.copy_text ? { copy_text: b.copy_text } : {}) })),
-  }));
+/**
+ * Buttons inside the message sit side by side in one row (Telegram allows up
+ * to 8); three or more are centred, one or two start at the left edge.
+ */
+function richButtons(rows: KeyboardButton[][]): RichBlock[] {
+  const all = rows.flat().slice(0, 8);
+  if (all.length === 0) return [];
+  return [
+    {
+      type: "buttons",
+      align: all.length > 2 ? "center" : "left",
+      buttons: all.map((b): RichButton => ({ text: b.text, ...(b.style ? { style: b.style } : {}), ...(b.url ? { url: b.url } : {}), ...(b.copy_text ? { copy_text: b.copy_text } : {}) })),
+    },
+  ];
+}
 
 function heroBlocks(doc: Doc, design: PostDesign, images: ImageSpec[]): RichBlock[] {
   const photo = (spec: ImageSpec): RichPhotoBlock => {
