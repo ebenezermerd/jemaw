@@ -24,6 +24,7 @@ import {
   type HumorRuntime,
 } from "./ai/humor/deliver.js";
 import {
+  mentionsJemaw,
   classifyJemawIntent,
   chatLoadingTopic,
   parseLedgerQuery,
@@ -43,8 +44,6 @@ import { startLoading, type LoadingHandle, type LoadingTopic } from "./telegram/
 import { staticRuntimeConfig, type RuntimeConfigStore } from "./runtimeConfig.js";
 import { parseGroupAccess, type GroupAccessV1 } from "@jemaw/shared/groupAccess";
 
-/** Word-boundary, case-insensitive "jemaw" trigger (plan §10). */
-const JEMAW_RE = /(?<![a-z0-9])jemaw(?![a-z0-9])/i;
 
 // ─── Reply copy (pure, testable) ──────────────────────────────────────
 /** Fallback reply, used only when the pinned message can't be posted. */
@@ -383,7 +382,7 @@ export function createBot(token: string, deps: BotDeps): Bot {
     }
     if (cached.access.status !== "suspended") return next();
     const text = ctx.message.text ?? "";
-    if (!text.startsWith("/") && !JEMAW_RE.test(text)) return;
+    if (!text.startsWith("/") && !mentionsJemaw(text, botUsername)) return;
     if (Date.now() - (noticeAt.get(key) ?? 0) < 6 * 60 * 60_000) return;
     noticeAt.set(key, Date.now());
     await ctx.reply(suspendedNotice(cached.access)).catch(() => {});
@@ -542,7 +541,7 @@ export function createBot(token: string, deps: BotDeps): Bot {
       new Date(ctx.message.date * 1000),
     ).catch(() => {});
 
-    if (JEMAW_RE.test(text)) {
+    if (mentionsJemaw(text, botUsername)) {
       const notice = runtime.current().maintenanceMessage;
       if (notice) {
         await ctx

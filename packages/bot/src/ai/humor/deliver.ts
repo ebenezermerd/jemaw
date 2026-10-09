@@ -24,7 +24,7 @@ import {
   buildScanOutcomePacket,
 } from "./factPacket.js";
 import { composeHumorReply } from "./service.js";
-import { sanitizeAddressedUtterance } from "./intent.js";
+import { JEMAW_MENTION_RE, sanitizeAddressedUtterance } from "./intent.js";
 import {
   buildConversationFlow,
   isChatSulking,
@@ -525,7 +525,7 @@ async function loadHumorGroupContext(input: {
   const pokeCount1h = msgs.filter(
     (m) =>
       m.sentAt.getTime() >= hourAgo &&
-      /(?<![a-z0-9])jemaw(?![a-z0-9])/i.test(m.text),
+      JEMAW_MENTION_RE.test(m.text),
   ).length;
   const recentMessages = msgs.map((m) => ({ text: m.text, sentAt: m.sentAt }));
 

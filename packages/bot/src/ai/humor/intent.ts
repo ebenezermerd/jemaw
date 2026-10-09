@@ -70,10 +70,25 @@ const MONEY_RE =
 const SOCIAL_RE =
   /\b(hey|hi|hello|yo|sup|hii+|heya|what'?s\s*up|wassup|how\s*are|how'?s\s*it|how\s*you|cooking|doing|miss\s*you|love\s*you|bored|joke|funny|roast\s*me|tell\s*me|you\s+good|u\s+good|wyd|what\s*are\s*you|are\s*you\s*(there|alive|ok|around)|missed\s*you|good\s*(morning|night|evening)|gn|gm)\b/i;
 
+/**
+ * "jemaw" as a word, or the bot's @username ("@jemawsbot"), so tagging the
+ * bot works the same as calling it by name.
+ */
+const JEMAW_MENTION = String.raw`(?<![a-z0-9_])@?jemaw(?:[a-z0-9_]*bot)?(?![a-z0-9_])`;
+export const JEMAW_MENTION_RE = new RegExp(JEMAW_MENTION, "i");
+
+/** Whether a message addresses Jemaw, by name or by @username. */
+export function mentionsJemaw(text: string, botUsername?: string): boolean {
+  if (JEMAW_MENTION_RE.test(text)) return true;
+  if (!botUsername) return false;
+  const at = `@${botUsername.replace(/^@/, "").toLowerCase()}`;
+  return text.toLowerCase().split(/[^a-z0-9_@]+/).includes(at);
+}
+
 /** Strip the jemaw token so we classify the rest of the utterance. */
 export function stripJemawToken(text: string): string {
   return text
-    .replace(/(?<![a-z0-9])jemaw(?![a-z0-9])/gi, " ")
+    .replace(new RegExp(JEMAW_MENTION, "gi"), " ")
     .replace(/\s+/g, " ")
     .trim();
 }
