@@ -31,7 +31,7 @@ vi.mock("../telegram.js", async (orig) => ({ ...(await orig<typeof import("../te
 const { ExpenseDetail } = await import("./ExpenseDetail.js");
 
 describe("ExpenseDetail with a removed member", () => {
-  it("still lists a removed member who shares the expense, and hides unrelated removed members", () => {
+  it("shows a removed member only in the role they had: in the split, not as a payer option", () => {
     render(
       <MemoryRouter initialEntries={["/expense/e1"]}>
         <Routes>
@@ -39,7 +39,10 @@ describe("ExpenseDetail with a removed member", () => {
         </Routes>
       </MemoryRouter>,
     );
-    expect(screen.getAllByText("Sami (removed)").length).toBeGreaterThan(0);
+    // Sami is in the split, so shows there, but is not offered as the payer.
+    expect(screen.getAllByText("Sami (removed)")).toHaveLength(1);
+    expect(screen.getByText("Sami (removed)").closest("button")?.textContent).toContain("Sami");
     expect(screen.queryByText(/Abel/)).toBeNull();
+    expect(screen.getAllByText("Hana").length).toBe(2); // payer chip + split row
   });
 });

@@ -27,14 +27,13 @@ export function ExpenseDetail() {
   const edit = useEditExpense();
   const voidExpense = useVoidExpense();
 
-  // Active members, plus anyone already on this expense even if they were
-  // removed since: their share still counts and must stay visible.
-  const involved = new Set([
-    expense.data?.payerMemberId,
-    ...(expense.data?.shares.map((s) => s.memberId) ?? []),
-  ]);
-  const members =
-    group.data?.members.filter((m) => m.isActive || involved.has(m.id)) ?? [];
+  // Removed members appear only in the role they already have on this
+  // expense (payer, or one of the shares); they are never offered elsewhere.
+  const all = group.data?.members ?? [];
+  const active = all.filter((m) => m.isActive);
+  const originalShares = new Set(expense.data?.shares.map((s) => s.memberId) ?? []);
+  const payerOptions = all.filter((m) => m.isActive || m.id === expense.data?.payerMemberId);
+  const shareOptions = all.filter((m) => m.isActive || originalShares.has(m.id));
   const label = (m: { displayName: string; isActive: boolean }) =>
     `${formatDisplayName(m.displayName)}${m.isActive ? "" : " (removed)"}`;
 
@@ -56,10 +55,10 @@ export function ExpenseDetail() {
   }, [expense.data]);
 
   useEffect(() => {
-    if (kind !== "loan" || !payer || members.length < 2) return;
+    if (kind !== "loan" || !payer || active.length < 2) return;
     const current = [...splitWith][0];
     if (splitWith.size === 1 && current && current !== payer) return;
-    const next = members.find((m) => m.id !== payer)?.id;
+    const next = active.find((m) => m.id !== payer)?.id;
     if (next) setSplitWith(new Set([next]));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [kind, payer, group.data]);
@@ -133,7 +132,7 @@ export function ExpenseDetail() {
 
       <Field label={kind === "loan" ? "Lent by" : "Paid by"}>
         <div style={{ display: "flex", gap: 8, overflowX: "auto", paddingBottom: 4 }}>
-          {members.map((m) => (
+          {payerOptions.map((m) => (
             <Chip key={m.id} active={payer === m.id} onClick={() => setPayer(m.id)} name={label(m)} />
           ))}
         </div>
@@ -142,7 +141,7 @@ export function ExpenseDetail() {
       {kind === "loan" ? (
         <Field label="Borrower">
           <div style={{ display: "flex", gap: 8, overflowX: "auto", paddingBottom: 4 }}>
-            {members
+            {shareOptions
               .filter((m) => m.id !== payer)
               .map((m) => (
                 <Chip
@@ -157,7 +156,7 @@ export function ExpenseDetail() {
       ) : (
         <Field label="Split between (equal)">
           <div style={{ display: "grid", gap: 8 }}>
-            {members.map((m) => {
+            {shareOptions.map((m) => {
               const on = splitWith.has(m.id);
               return (
                 <button
