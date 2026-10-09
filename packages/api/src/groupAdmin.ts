@@ -15,6 +15,7 @@ import {
   suggestions,
   aiRuns,
   messages,
+  chatActions,
   type Group,
   type Member,
 } from "@jemaw/shared/schema";
@@ -160,5 +161,6 @@ async function deleteLedgerRows(t: Db, groupId: string): Promise<Record<string, 
   counts.suggestions = n(await t.delete(suggestions).where(eq(suggestions.groupId, groupId)).returning({ id: suggestions.id }));
   counts.ai_runs = n(await t.delete(aiRuns).where(eq(aiRuns.groupId, groupId)).returning({ id: aiRuns.id }));
   counts.messages = n(await t.delete(messages).where(eq(messages.groupId, groupId)).returning({ id: messages.id }));
+  counts.chat_actions = n(await t.delete(chatActions).where(eq(chatActions.groupId, groupId)).returning({ id: chatActions.id }));
   return counts;
 }

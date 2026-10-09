@@ -127,8 +127,8 @@ describe("computeLedgerSnapshot", () => {
     expect(snap.pending).toEqual({
       count: 2,
       drafts: [
-        { label: "Coffee", cents: 9000 },
-        { label: "Snacks", cents: null },
+        { label: "Coffee", cents: 9000, payer: null },
+        { label: "Snacks", cents: null, payer: null },
       ],
     });
   });

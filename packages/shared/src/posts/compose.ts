@@ -49,6 +49,9 @@ export interface PaymentsPostData {
   debts?: { from: string; to: string; cents: number }[];
   /** The member those debts were narrowed to, when the question named one. */
   person?: string | null;
+  /** Drafts not in the ledger yet; when set, the post lists these instead. */
+  drafts?: { label: string; cents: number | null; payer: string | null }[];
+  draftCount?: number;
   note: string | null;
   lead?: string | null;
 }
@@ -230,6 +233,7 @@ function weeklyDoc(d: WeeklyPostData, design: PostDesign): Doc {
 }
 
 function paymentsDoc(d: PaymentsPostData, design: PostDesign): Doc {
+  if (d.drafts) return draftsDoc(d, d.drafts, design);
   if (d.debts) return groupPaymentsDoc(d, d.debts, design);
   const doc = emptyDoc("Your open payments");
   if (d.lead) doc.lead.push(d.lead);
@@ -282,6 +286,27 @@ function groupPaymentsDoc(d: PaymentsPostData, debts: NonNullable<PaymentsPostDa
     })),
     empty: d.person ? `${d.person} is all square.` : "All square. Nobody owes anybody.",
   };
+  if (design.sections.note && d.note) doc.note = d.note;
+  return doc;
+}
+
+function draftsDoc(d: PaymentsPostData, drafts: NonNullable<PaymentsPostData["drafts"]>, design: PostDesign): Doc {
+  const count = d.draftCount ?? drafts.length;
+  const doc = emptyDoc("Drafts waiting");
+  if (d.lead) doc.lead.push(d.lead);
+  doc.checklist = {
+    title: `Drafts waiting · ${count}`,
+    items: drafts.map((x) => ({
+      who: x.payer ? [bold(x.label), ` · by ${x.payer}`] : [bold(x.label)],
+      amount: x.cents == null ? "no amount" : `${formatAmount(x.cents)} ${d.currency}`,
+      checked: false,
+    })),
+    empty: "No drafts waiting. Everything found in the chat is already in the ledger.",
+  };
+  if (drafts.length) {
+    const more = count - drafts.length;
+    doc.lead.push(`Not in the ledger until someone approves them.${more > 0 ? ` ${more} more in the app.` : ""}`);
+  }
   if (design.sections.note && d.note) doc.note = d.note;
   return doc;
 }

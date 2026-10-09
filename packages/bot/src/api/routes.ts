@@ -21,7 +21,6 @@ import {
   groupHasNewMessages,
   listSettlements,
   getSettlement,
-  createSettlementWithAllocations,
   deleteSettlement,
   listPendingSuggestions,
   getSuggestion,
@@ -39,7 +38,6 @@ import {
   resetGroupData,
   getGroupById,
   mergeGroupSettings,
-  type AllocationInput,
 } from "../repo.js";
 import { computeSplit } from "../domain/splits.js";
 import {
@@ -47,6 +45,8 @@ import {
   type AllocationForDebt,
 } from "../domain/pairwiseDebt.js";
 import { loadLedger } from "../domain/ledger.js";
+import { recordSettlement } from "../domain/recordSettlement.js";
+import { confirmSuggestion } from "../domain/confirmSuggestion.js";
 import { refreshGroupSummarySafe } from "../ai/summary.js";
 import {
   decimalToCents,
@@ -57,8 +57,7 @@ import {
   type SettlePlanResponse,
   type ExpenseDto,
 } from "@jemaw/shared/types";
-import type { Group, Member, Settlement } from "@jemaw/shared/schema";
-import { formatSettlementAnnouncement } from "../telegram/announcements.js";
+import type { Group, Member } from "@jemaw/shared/schema";
 import {
   toGroupDto,
   toExpenseDto,
@@ -480,238 +479,11 @@ export async function registerApi(
     },
   );
 
-  async function recordSettlementFromInput(
+  const recordSettlementFromInput = (
     group: Group,
     member: Member,
     input: z.infer<typeof createSettlementSchema>,
-  ): Promise<
-    | { settlement: Settlement }
-    | { error: string; status?: number; extra?: Record<string, unknown> }
-  > {
-    const fromMemberId = input.fromMemberId ?? member.id;
-    const { toMemberId, expenseIds } = input;
-
-    const { members, expensesForDebt, allocations, transfers } = await loadLedger(db, group.id);
-
-    const hasDebt = transfers.some(
-      (t) => t.fromMemberId === fromMemberId && t.toMemberId === toMemberId,
-    );
-    if (!hasDebt) {
-      return {
-        error: "no current debt between these members",
-        status: 409,
-        extra: { transfers: transfers.map(toTransferDto) },
-      };
-    }
-
-    const liveExpenses = await listLiveExpenses(db, group.id);
-    const expensesForDebtMap = new Map(expensesForDebt.map((e) => [e.expenseId, e]));
-
-    // Residual the from member still owes on an expense (share minus allocations).
-    const residualFor = (expenseId: string): number => {
-      const efd = expensesForDebtMap.get(expenseId);
-      const share = efd?.shares.find((s) => s.memberId === fromMemberId);
-      if (!share) return 0;
-      const allocated = allocations
-        .filter((a) => a.expenseId === expenseId && a.memberId === fromMemberId)
-        .reduce((sum, a) => sum + a.allocatedCents, 0);
-      return Math.max(0, share.shareCents - allocated);
-    };
-
-    const namedExpenses = expenseIds
-      .map((id) => liveExpenses.find((e) => e.expense.id === id))
-      .filter((e): e is NonNullable<typeof e> => e !== undefined);
-
-    // Validate the named expenses first, so genuine mistakes (wrong payer, no
-    // share) surface a precise error before we drop any already-settled ones.
-    for (const e of namedExpenses) {
-      if (e.expense.payerMemberId !== toMemberId) {
-        return {
-          error: `expense "${e.expense.description}" was not paid by the payee`,
-          status: 409,
-        };
-      }
-      if (!e.shares.some((s) => s.memberId === fromMemberId)) {
-        return {
-          error: `you have no share in "${e.expense.description}"`,
-          status: 409,
-        };
-      }
-    }
-
-    // Drop expenses the from member has already settled (residual within
-    // tolerance). A stale suggestion may still carry them; recording would
-    // either over-pay or re-touch a cleared share.
-    const selectedExpenses = namedExpenses.filter(
-      (e) => residualFor(e.expense.id) > COVERAGE_TOLERANCE_CENTS,
-    );
-
-    // After dropping settled entries, nothing remains to record.
-    if (selectedExpenses.length === 0) {
-      return {
-        error: "these expenses are already settled",
-        status: 409,
-      };
-    }
-
-    let maxAllocatableCents = 0;
-    for (const e of selectedExpenses) {
-      const efd = expensesForDebtMap.get(e.expense.id);
-      if (!efd) continue;
-      const share = efd.shares.find((s) => s.memberId === fromMemberId);
-      if (!share) continue;
-      const allocated = allocations
-        .filter((a) => a.expenseId === e.expense.id && a.memberId === fromMemberId)
-        .reduce((sum, a) => sum + a.allocatedCents, 0);
-      maxAllocatableCents += Math.max(0, share.shareCents - allocated);
-    }
-
-    // Reverse debts (to → from) available to net against this payment. The
-    // settle plan shows the NETTED pair amount, so paying it must also retire
-    // the counter debts — otherwise both directions dangle as uncovered
-    // leftovers the plan can never surface again.
-    const counterDebts: { expenseId: string; residual: number; occurredAt: Date }[] = [];
-    for (const e of expensesForDebt) {
-      if (e.payerMemberId !== fromMemberId) continue;
-      const share = e.shares.find((s) => s.memberId === toMemberId);
-      if (!share) continue;
-      const allocated = allocations
-        .filter((a) => a.expenseId === e.expenseId && a.memberId === toMemberId)
-        .reduce((sum, a) => sum + a.allocatedCents, 0);
-      const residual = share.shareCents - allocated;
-      if (residual > 0) {
-        counterDebts.push({ expenseId: e.expenseId, residual, occurredAt: e.occurredAt });
-      }
-    }
-    counterDebts.sort((a, b) => a.occurredAt.getTime() - b.occurredAt.getTime());
-    const counterTotalCents = counterDebts.reduce((s, d) => s + d.residual, 0);
-
-    const requestedCents = input.amount
-      ? decimalToCents(input.amount)
-      : Math.max(0, maxAllocatableCents - counterTotalCents);
-
-    if (requestedCents > maxAllocatableCents + COVERAGE_TOLERANCE_CENTS) {
-      return {
-        error: "amount exceeds what you owe on the selected expenses",
-        status: 409,
-        extra: { maxAllocatable: centsToDecimal(maxAllocatableCents) },
-      };
-    }
-    const paidCents = Math.min(requestedCents, maxAllocatableCents);
-    // Offset: the slice of the selected shares settled by what `to` owes
-    // `from` rather than by cash.
-    const offsetCents = Math.min(
-      counterTotalCents,
-      Math.max(0, maxAllocatableCents - paidCents),
-    );
-
-    // "Leave it": when cash plus offset falls just short of the full owed
-    // amount by a sub-tolerance remainder (e.g. rounding cents), treat the
-    // selected expenses as fully covered and allocate each one's full residual.
-    // The recorded settlement amount still reflects what was actually paid.
-    const coversInFull =
-      maxAllocatableCents - (requestedCents + offsetCents) <=
-      COVERAGE_TOLERANCE_CENTS;
-
-    const sortedExpenses = [...selectedExpenses].sort(
-      (a, b) => a.expense.occurredAt.getTime() - b.expense.occurredAt.getTime(),
-    );
-    const allocationInputs: AllocationInput[] = [];
-    let remaining = paidCents + offsetCents;
-    let allocatedOnSelected = 0;
-    for (const e of sortedExpenses) {
-      if (!coversInFull && remaining <= 0) break;
-      const efd = expensesForDebtMap.get(e.expense.id);
-      const share = efd?.shares.find((s) => s.memberId === fromMemberId);
-      if (!share) continue;
-      const allocated = allocations
-        .filter((a) => a.expenseId === e.expense.id && a.memberId === fromMemberId)
-        .reduce((sum, a) => sum + a.allocatedCents, 0);
-      const residual = Math.max(0, share.shareCents - allocated);
-      const give = coversInFull ? residual : Math.min(remaining, residual);
-      if (give > 0) {
-        allocationInputs.push({
-          expenseId: e.expense.id,
-          memberId: fromMemberId,
-          allocatedAmount: centsToDecimal(give),
-        });
-        remaining -= give;
-        allocatedOnSelected += give;
-      }
-    }
-
-    // Retire the counter debts consumed by the offset (the netted slice), so
-    // both directions close together. Sub-tolerance leftovers complete fully.
-    let offsetToConsume = Math.max(0, allocatedOnSelected - paidCents);
-    if (
-      offsetToConsume > 0 &&
-      counterTotalCents - offsetToConsume <= COVERAGE_TOLERANCE_CENTS
-    ) {
-      offsetToConsume = counterTotalCents;
-    }
-    for (const d of counterDebts) {
-      if (offsetToConsume <= 0) break;
-      const give = Math.min(offsetToConsume, d.residual);
-      allocationInputs.push({
-        expenseId: d.expenseId,
-        memberId: toMemberId,
-        allocatedAmount: centsToDecimal(give),
-      });
-      offsetToConsume -= give;
-    }
-
-    const { settlement } = await createSettlementWithAllocations(
-      db,
-      {
-        groupId: group.id,
-        fromMemberId,
-        toMemberId,
-        amount: centsToDecimal(paidCents),
-        currency: group.defaultCurrency,
-        method: input.method ?? "cash",
-        description: input.description ?? null,
-        occurredAt: input.occurredAt ? new Date(input.occurredAt) : new Date(),
-        markedPaidAt: new Date(),
-        markedPaidByMemberId: member.id,
-      },
-      allocationInputs,
-    );
-
-    // Announce in the group chat (best effort) so settles recorded in the app
-    // are visible without opening it.
-    if (deps.botApi) {
-      const nameOf = (id: string) =>
-        members.find((m) => m.id === id)?.displayName ?? "Member";
-      // The plan's pair amount is already netted, so cash paid is what moves
-      // it; offset allocations retire equal debt on both sides and cancel out.
-      const pairOwed =
-        transfers.find(
-          (t) => t.fromMemberId === fromMemberId && t.toMemberId === toMemberId,
-        )?.amountCents ?? 0;
-      const remainingCents = pairOwed - paidCents;
-      const html = formatSettlementAnnouncement({
-        fromName: nameOf(fromMemberId),
-        toName: nameOf(toMemberId),
-        amount: centsToDecimal(paidCents),
-        currency: group.defaultCurrency,
-        method: input.method ?? "cash",
-        expenseDescriptions: sortedExpenses.map((e) => e.expense.description),
-        remaining:
-          remainingCents > COVERAGE_TOLERANCE_CENTS
-            ? centsToDecimal(remainingCents)
-            : null,
-      });
-      void deps.botApi
-        .sendMessage(Number(group.telegramChatId), html, { parse_mode: "HTML" })
-        .catch((err: unknown) =>
-          console.warn(
-            `[announce] settlement message failed: ${err instanceof Error ? err.message : err}`,
-          ),
-        );
-    }
-
-    return { settlement };
-  }
+  ) => recordSettlement(db, group, member.id, input, { botApi: deps.botApi });
 
 
   app.get(
@@ -1612,93 +1384,18 @@ export async function registerApi(
         return reply.code(409).send({ error: "already resolved" });
       }
 
-      // ── settlement suggestion → record via allocation-based create ──
-      if (s.kind === "settlement") {
-        if (!s.fromMemberId || !s.toMemberId) {
-          return reply.code(400).send({ error: "settlement is missing parties" });
-        }
-        if (!s.amount) {
-          return reply
-            .code(400)
-            .send({ error: "amount required for this settlement; edit it" });
-        }
-        // Suggestions need expenseIds to allocate. If none attached (e.g. AI
-        // didn't match any expense yet), require the user to open the form.
-        const suggestionExpenseIds = (s.expenseIds as string[] | null) ?? [];
-        if (suggestionExpenseIds.length === 0) {
-          return reply.code(400).send({
-            error: "select the expenses this settlement covers — open the form to edit",
-          });
-        }
-        const body = (req.body ?? {}) as { amount?: string };
-        const result = await recordSettlementFromInput(group, member, {
-          fromMemberId: s.fromMemberId,
-          toMemberId: s.toMemberId,
-          amount: body.amount ?? s.amount,
-          expenseIds: suggestionExpenseIds,
-        });
-        if ("error" in result) {
-          return reply.code(result.status ?? 409).send({ error: result.error, ...result.extra });
-        }
-        await resolveSuggestion(db, s.id, "confirmed", member.id, new Date());
-        await refreshGroupSummarySafe(db, group.id);
-        return reply.code(201).send(toSettlementDto(result.settlement));
+      const body = (req.body ?? {}) as { amount?: string };
+      const result = await confirmSuggestion(db, group, member.id, s, {
+        amount: body.amount,
+        botApi: deps.botApi,
+      });
+      if ("error" in result) {
+        return reply.code(result.status).send({ error: result.error, ...result.extra });
       }
-
-      // ── expense or loan suggestion → create a ledger entry ──
-      if (!s.payerMemberId) {
-        return reply.code(400).send({ error: "suggestion has no payer; edit it" });
-      }
-      if (!s.amount) {
-        return reply.code(400).send({ error: "suggestion has no amount; edit it" });
-      }
-
-      const splitWith = (s.splitWith as string[]) ?? [];
-      const totalCents = decimalToCents(s.amount);
-      let shares: { memberId: string; shareAmount: string }[];
-      try {
-        if (s.kind === "loan") {
-          if (splitWith.length !== 1 || splitWith[0] === s.payerMemberId) {
-            return reply.code(400).send({ error: "loan suggestion has invalid parties" });
-          }
-          shares = [{ memberId: splitWith[0]!, shareAmount: centsToDecimal(totalCents) }];
-        } else {
-          const computed = computeSplit({
-            totalCents,
-            splitType: s.splitType,
-            memberIds: splitWith,
-            shares: (s.shares as Record<string, number> | null) ?? undefined,
-          });
-          shares = computed.map((c) => ({
-            memberId: c.memberId,
-            shareAmount: centsToDecimal(c.shareCents),
-          }));
-        }
-      } catch (err) {
-        return reply
-          .code(400)
-          .send({ error: err instanceof Error ? err.message : "bad split" });
-      }
-
-      const created = await createExpenseWithShares(
-        db,
-        {
-          groupId: group.id,
-          payerMemberId: s.payerMemberId,
-          amount: centsToDecimal(totalCents),
-          kind: s.kind,
-          currency: group.defaultCurrency,
-          description: s.description,
-          createdByMemberId: member.id,
-          source: "ai_confirmed",
-          sourceSuggestionId: s.id,
-          occurredAt: new Date(),
-        },
-        shares,
-      );
-      await resolveSuggestion(db, s.id, "confirmed", member.id, new Date());
       await refreshGroupSummarySafe(db, group.id);
-      return reply.code(201).send(toExpenseDto(created));
+      return reply
+        .code(201)
+        .send("settlement" in result ? toSettlementDto(result.settlement) : toExpenseDto(result.expense));
     },
   );
 

@@ -20,6 +20,8 @@ import { sendPost } from "../../telegram/sendPost.js";
 import type { BossTone } from "@jemaw/shared/boss";
 import { postContext, type PostLinks } from "../../telegram/postLinks.js";
 
+export const APPROVE_DRAFTS_DATA = "ad";
+
 const REPORT_TITLE: Record<LedgerQuery["kind"], string> = {
   whoami: "About you",
   leaderboard: "Who paid the most",
@@ -44,6 +46,8 @@ export async function deliverLedgerAnswer(input: {
   questionText?: string;
   /** Set when a super admin asked: how gently the joke line treats them. */
   bossTone?: BossTone;
+  /** The asker may change the books from chat, so drafts get an approve button. */
+  canAct?: boolean;
   /** Where the post goes and how it looks; defaults keep tests simple. */
   api?: Api;
   chatId?: number;
@@ -64,7 +68,8 @@ export async function deliverLedgerAnswer(input: {
     const facts = renderLedgerFacts(query, snapshot);
     // Everyone's open payments by default; the asker's own only when they asked about themselves.
     const mine = input.query.kind === "my_balance";
-    const payments = mine || input.query.kind === "who_owes";
+    const drafts = input.query.kind === "pending";
+    const payments = mine || drafts || input.query.kind === "who_owes";
     const design = (input.designs ?? DEFAULT_POST_DESIGNS)[payments ? "ai_payments" : "ai_report"];
     const banterAsked = input.query.kind === "leaderboard";
     const persona =
@@ -97,7 +102,11 @@ export async function deliverLedgerAnswer(input: {
                 name: snapshot.asker?.name ?? null,
                 owes: snapshot.asker?.owes ?? [],
                 owedBy: snapshot.asker?.owedBy ?? [],
-                ...(mine ? {} : { debts: openDebtsFor(snapshot, query.person), person: query.person ?? null }),
+                ...(drafts
+                  ? { drafts: snapshot.pending.drafts, draftCount: snapshot.pending.count }
+                  : mine
+                    ? {}
+                    : { debts: openDebtsFor(snapshot, query.person), person: query.person ?? null }),
                 note,
                 lead: input.lead ?? null,
               },
@@ -109,6 +118,9 @@ export async function deliverLedgerAnswer(input: {
         design,
         postContext(input.links, input.group.id),
       );
+      if (drafts && input.canAct && snapshot.pending.count > 0) {
+        post.keyboard = [...post.keyboard, [{ text: "Approve some…", callback_data: APPROVE_DRAFTS_DATA, style: "success" }]];
+      }
       const { api, chatId } = input;
       text = post.html;
       // A failed send throws to the catch below, which apologises in the placeholder.

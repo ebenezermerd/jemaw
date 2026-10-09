@@ -84,6 +84,21 @@ describe("composePost", () => {
     expect(post.html).toContain("Tsin's open payments");
   });
 
+  it("drafts list what isn't in the ledger yet", () => {
+    const data = {
+      useCase: "ai_payments" as const,
+      data: {
+        ...SAMPLE_POST_DATA.ai_payments.data,
+        drafts: [{ label: "Groceries", cents: 30000, payer: "Pomi" }, { label: "Taxi", cents: null, payer: null }],
+        draftCount: 3,
+      },
+    };
+    const post = composePost(data, DEFAULT_POST_DESIGNS.ai_payments, ctx);
+    expect(post.html).toContain("Drafts waiting · 3");
+    expect(post.html).toContain("Not in the ledger until someone approves them. 1 more in the app.");
+    expect(post.html).toContain("no amount");
+  });
+
   it("payments as a table has no header row", () => {
     const post = composePost(SAMPLE_POST_DATA.ai_payments, design(DEFAULT_POST_DESIGNS.ai_payments, { checklistStyle: "table" }), ctx);
     const table = post.rich!.find((b) => b.type === "table") as { cells: { is_header?: boolean }[][] };

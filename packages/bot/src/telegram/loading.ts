@@ -133,7 +133,12 @@ export interface LoadingHandle {
   /** Replace the placeholder with the answer; returns the final message id. */
   finish(
     text: string,
-    opts?: { parse_mode?: "HTML"; reply_markup?: { inline_keyboard: { text: string; url: string }[][] } },
+    opts?: {
+      parse_mode?: "HTML";
+      reply_markup?: {
+        inline_keyboard: ({ text: string; style?: "primary" | "success" | "danger" } & ({ url: string } | { callback_data: string }))[][];
+      };
+    },
   ): Promise<number | null>;
   /**
    * Stop the spinner and hand the placeholder to `send`, which may edit it

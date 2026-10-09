@@ -44,6 +44,21 @@ describe("understandMessage", () => {
     expect(await asked("who am i jemaw")).toBe("whoami");
   });
 
+  it("reads an action command with its words", async () => {
+    const u = await understandMessage({
+      client: replying({
+        intent: "action",
+        action: { action: "add_expense", from: null, to: null, amount: "600 birr", description: "lunch", participants: ["aman", "pomi"], match: null },
+      }),
+      text: "jemaw put down 600 birr lunch for me aman and pomi",
+    });
+    expect(u).toEqual({
+      intent: "action",
+      action: { action: "add_expense", amount: "600", description: "lunch", participants: ["aman", "pomi"] },
+    });
+    expect(await understandMessage({ client: replying({ intent: "action", action: null }), text: "jemaw do it" })).toBeNull();
+  });
+
   it("passes the previous question so a complaint can be re-answered", async () => {
     let prompt = "";
     const u = await understandMessage({
