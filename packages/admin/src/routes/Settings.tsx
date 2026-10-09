@@ -12,6 +12,7 @@ import { Loader, SkeletonList } from "../ui/Loader.js";
 import { Card, PrimaryButton } from "../ui/primitives.js";
 import { ago, statusDetail, useBotStatus } from "../ui/BotStatus.js";
 import { NumberField, ToggleRow } from "./GroupManage.js";
+import { AiUsageCard } from "./AiUsage.js";
 
 const errText = (e: unknown) => (e instanceof Error ? e.message : "Something went wrong.");
 
@@ -19,6 +20,7 @@ export function Settings() {
   return (
     <div style={{ display: "grid", gridTemplateColumns: "1.2fr 1fr", gap: 16, alignItems: "start" }}>
       <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+        <AiUsageCard />
         <BotSwitches />
       </div>
       <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
@@ -89,6 +91,7 @@ function BotSwitches() {
       qc.setQueryData(["bot-config"], next);
       void qc.invalidateQueries({ queryKey: ["config"] });
       void qc.invalidateQueries({ queryKey: ["activity"] });
+      void qc.invalidateQueries({ queryKey: ["ai-usage"] });
     },
     onSettled: () => setPending(null),
   });
