@@ -46,6 +46,7 @@ import {
 } from "../domain/pairwiseDebt.js";
 import { loadLedger } from "../domain/ledger.js";
 import { recordSettlement } from "../domain/recordSettlement.js";
+import { confirmSuggestion } from "../domain/confirmSuggestion.js";
 import { refreshGroupSummarySafe } from "../ai/summary.js";
 import {
   decimalToCents,
@@ -1383,93 +1384,18 @@ export async function registerApi(
         return reply.code(409).send({ error: "already resolved" });
       }
 
-      // ── settlement suggestion → record via allocation-based create ──
-      if (s.kind === "settlement") {
-        if (!s.fromMemberId || !s.toMemberId) {
-          return reply.code(400).send({ error: "settlement is missing parties" });
-        }
-        if (!s.amount) {
-          return reply
-            .code(400)
-            .send({ error: "amount required for this settlement; edit it" });
-        }
-        // Suggestions need expenseIds to allocate. If none attached (e.g. AI
-        // didn't match any expense yet), require the user to open the form.
-        const suggestionExpenseIds = (s.expenseIds as string[] | null) ?? [];
-        if (suggestionExpenseIds.length === 0) {
-          return reply.code(400).send({
-            error: "select the expenses this settlement covers — open the form to edit",
-          });
-        }
-        const body = (req.body ?? {}) as { amount?: string };
-        const result = await recordSettlementFromInput(group, member, {
-          fromMemberId: s.fromMemberId,
-          toMemberId: s.toMemberId,
-          amount: body.amount ?? s.amount,
-          expenseIds: suggestionExpenseIds,
-        });
-        if ("error" in result) {
-          return reply.code(result.status ?? 409).send({ error: result.error, ...result.extra });
-        }
-        await resolveSuggestion(db, s.id, "confirmed", member.id, new Date());
-        await refreshGroupSummarySafe(db, group.id);
-        return reply.code(201).send(toSettlementDto(result.settlement));
+      const body = (req.body ?? {}) as { amount?: string };
+      const result = await confirmSuggestion(db, group, member.id, s, {
+        amount: body.amount,
+        botApi: deps.botApi,
+      });
+      if ("error" in result) {
+        return reply.code(result.status).send({ error: result.error, ...result.extra });
       }
-
-      // ── expense or loan suggestion → create a ledger entry ──
-      if (!s.payerMemberId) {
-        return reply.code(400).send({ error: "suggestion has no payer; edit it" });
-      }
-      if (!s.amount) {
-        return reply.code(400).send({ error: "suggestion has no amount; edit it" });
-      }
-
-      const splitWith = (s.splitWith as string[]) ?? [];
-      const totalCents = decimalToCents(s.amount);
-      let shares: { memberId: string; shareAmount: string }[];
-      try {
-        if (s.kind === "loan") {
-          if (splitWith.length !== 1 || splitWith[0] === s.payerMemberId) {
-            return reply.code(400).send({ error: "loan suggestion has invalid parties" });
-          }
-          shares = [{ memberId: splitWith[0]!, shareAmount: centsToDecimal(totalCents) }];
-        } else {
-          const computed = computeSplit({
-            totalCents,
-            splitType: s.splitType,
-            memberIds: splitWith,
-            shares: (s.shares as Record<string, number> | null) ?? undefined,
-          });
-          shares = computed.map((c) => ({
-            memberId: c.memberId,
-            shareAmount: centsToDecimal(c.shareCents),
-          }));
-        }
-      } catch (err) {
-        return reply
-          .code(400)
-          .send({ error: err instanceof Error ? err.message : "bad split" });
-      }
-
-      const created = await createExpenseWithShares(
-        db,
-        {
-          groupId: group.id,
-          payerMemberId: s.payerMemberId,
-          amount: centsToDecimal(totalCents),
-          kind: s.kind,
-          currency: group.defaultCurrency,
-          description: s.description,
-          createdByMemberId: member.id,
-          source: "ai_confirmed",
-          sourceSuggestionId: s.id,
-          occurredAt: new Date(),
-        },
-        shares,
-      );
-      await resolveSuggestion(db, s.id, "confirmed", member.id, new Date());
       await refreshGroupSummarySafe(db, group.id);
-      return reply.code(201).send(toExpenseDto(created));
+      return reply
+        .code(201)
+        .send("settlement" in result ? toSettlementDto(result.settlement) : toExpenseDto(result.expense));
     },
   );
 
