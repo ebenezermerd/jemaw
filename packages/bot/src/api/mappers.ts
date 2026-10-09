@@ -2,6 +2,7 @@
  * Row -> DTO mappers. Centralizes the wire-format conventions (string ids,
  * decimal-string money, ISO timestamps).
  */
+import { parseGroupAccess } from "@jemaw/shared/groupAccess";
 import type {
   Member,
   Group,
@@ -43,7 +44,10 @@ export function toGroupDto(
   canScan: boolean,
   /** the calling member, to expose their own admin flag */
   caller: Member,
+  /** AI calls since 00:00 UTC, for the daily AI limit */
+  aiCallsToday = 0,
 ): GroupDto {
+  const access = parseGroupAccess((g.settings as Record<string, unknown> | null)?.access);
   const humorRaw = (g.settings as Record<string, unknown> | null)?.humor;
   return {
     id: g.id,
@@ -54,6 +58,13 @@ export function toGroupDto(
     canScan,
     isAdmin: caller.role === "admin",
     humor: toHumorSettingsDto(parseHumorSettings(humorRaw)),
+    access: {
+      status: access.status,
+      until: access.until,
+      reason: access.reason,
+      aiDailyLimit: access.aiDailyLimit,
+      aiCallsToday,
+    },
   };
 }
 

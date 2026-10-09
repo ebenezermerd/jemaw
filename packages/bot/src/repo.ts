@@ -2,7 +2,8 @@
  * Data-access layer. Thin typed queries over Drizzle so routes and Telegram
  * handlers share one set of operations.
  */
-import { and, eq, desc, gt, isNull, inArray } from "drizzle-orm";
+import { and, eq, desc, gt, isNull, isNotNull, inArray, sql } from "drizzle-orm";
+import { aiBlocked, aiDayStart, parseGroupAccess, type GroupAccessV1 } from "@jemaw/shared/groupAccess";
 import type { Db } from "./db.js";
 import {
   groups,
@@ -59,6 +60,39 @@ export async function upsertGroup(
 /** Every group the bot knows (weekly digest sweep). */
 export async function listAllGroups(db: Db): Promise<Group[]> {
   return db.select().from(groups);
+}
+
+export async function getGroupByChatId(db: Db, telegramChatId: bigint): Promise<Group | null> {
+  const rows = await db.select().from(groups).where(eq(groups.telegramChatId, telegramChatId)).limit(1);
+  return rows[0] ?? null;
+}
+
+/**
+ * AI calls a group made since `since`: every scan plus every reply that used
+ * a model (template replies are free). Counts toward its daily AI limit.
+ */
+export async function countAiCallsSince(db: Db, groupId: string, since: Date): Promise<number> {
+  const [scans] = await db
+    .select({ n: sql<number>`count(*)::int` })
+    .from(aiRuns)
+    .where(and(eq(aiRuns.groupId, groupId), gt(aiRuns.createdAt, since)));
+  const [replies] = await db
+    .select({ n: sql<number>`count(*)::int` })
+    .from(botReplies)
+    .where(and(eq(botReplies.groupId, groupId), gt(botReplies.createdAt, since), isNotNull(botReplies.model)));
+  return Number(scans?.n ?? 0) + Number(replies?.n ?? 0);
+}
+
+/** The group's access settings and whether its AI must stay quiet right now. */
+export async function groupAiGate(
+  db: Db,
+  group: Group,
+  now: Date = new Date(),
+): Promise<{ access: GroupAccessV1; blocked: ReturnType<typeof aiBlocked>; aiCallsToday: number }> {
+  const access = parseGroupAccess((group.settings as Record<string, unknown> | null)?.access, now);
+  const aiCallsToday =
+    access.aiDailyLimit != null ? await countAiCallsSince(db, group.id, aiDayStart(now)) : 0;
+  return { access, blocked: aiBlocked(access, aiCallsToday), aiCallsToday };
 }
 
 export async function getGroupById(db: Db, id: string): Promise<Group | null> {

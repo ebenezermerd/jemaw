@@ -16,6 +16,7 @@ import {
   voidExpense,
   getExpense,
   groupHasExpenses,
+  groupAiGate,
   groupHasNewMessages,
   listSettlements,
   getSettlement,
@@ -260,10 +261,11 @@ export async function registerApi(
       const { group, member } = req.jemaw!;
       const members = await listMembers(db, group.id);
       const hasExpenses = await groupHasExpenses(db, group.id);
-      const canScan = deps.gemini && deps.runtime?.current().scanEnabled !== false
+      const gate = await groupAiGate(db, group);
+      const canScan = deps.gemini && deps.runtime?.current().scanEnabled !== false && !gate.blocked
         ? await groupHasNewMessages(db, group.id)
         : false;
-      return toGroupDto(group, members, hasExpenses, canScan, member);
+      return toGroupDto(group, members, hasExpenses, canScan, member, gate.aiCallsToday);
     },
   );
 
@@ -1261,6 +1263,15 @@ export async function registerApi(
       }
       if (deps.runtime && !deps.runtime.current().scanEnabled) {
         return reply.code(503).send({ error: "AI scanning is paused by the Jemaw team" });
+      }
+      const gate = await groupAiGate(db, group);
+      if (gate.blocked) {
+        return reply.code(503).send({
+          error:
+            gate.blocked === "limit"
+              ? "This group has used today's AI allowance. It refills at midnight UTC."
+              : "AI is paused for this group by the Jemaw team",
+        });
       }
       if (!deps.scanLimiter.tryAcquire(group.id)) {
         console.log(`[scan] manual rate-limited for group ${group.id}`);
