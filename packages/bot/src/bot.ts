@@ -7,6 +7,7 @@ import {
   rememberSeenUser,
   groupAiGate,
   captureMessage,
+  captureEditedMessage,
   countPendingSuggestions,
   findMemberByTelegramId,
   setMemberRole,
@@ -367,7 +368,7 @@ export function createBot(token: string, deps: BotDeps): Bot {
   // answers a command or a mention with a short notice, at most every 6 hours.
   const accessCache = new Map<string, { access: GroupAccessV1; at: number }>();
   const noticeAt = new Map<string, number>();
-  bot.on("message", async (ctx, next) => {
+  bot.on(["message", "edited_message"], async (ctx, next) => {
     const chat = ctx.chat;
     if (!GROUP_TYPES.has(chat.type)) return next();
     const key = String(chat.id);
@@ -381,7 +382,8 @@ export function createBot(token: string, deps: BotDeps): Bot {
       accessCache.set(key, cached);
     }
     if (cached.access.status !== "suspended") return next();
-    const text = ctx.message.text ?? "";
+    if (ctx.editedMessage) return;
+    const text = ctx.msg?.text ?? "";
     if (!text.startsWith("/") && !mentionsJemaw(text, botUsername)) return;
     if (Date.now() - (noticeAt.get(key) ?? 0) < 6 * 60 * 60_000) return;
     noticeAt.set(key, Date.now());
@@ -524,34 +526,35 @@ export function createBot(token: string, deps: BotDeps): Bot {
   );
 
   // Capture plain group text + register the speaker; trigger a scan on "jemaw".
-  bot.on("message:text", async (ctx) => {
+  // A recent message edited to mention Jemaw counts as a fresh mention.
+  bot.on(["message:text", "edited_message:text"], async (ctx) => {
     const chat = ctx.chat;
-    if (!chat || !GROUP_TYPES.has(chat.type)) return;
-    const text = ctx.message.text;
+    const msg = ctx.msg;
+    if (!chat || !msg?.text || !GROUP_TYPES.has(chat.type)) return;
+    const text = msg.text;
     if (text.startsWith("/")) return; // commands handled above
     const groupId = await ensureGroup(ctx);
     if (!groupId) return;
     if (ctx.from) await registerUser(db, groupId, ctx.from).catch(() => {});
-    await captureMessage(
-      db,
-      groupId,
-      BigInt(ctx.message.message_id),
-      BigInt(ctx.from?.id ?? 0),
-      text,
-      new Date(ctx.message.date * 1000),
-    ).catch(() => {});
+    const capture = [db, groupId, BigInt(msg.message_id), BigInt(ctx.from?.id ?? 0), text, new Date(msg.date * 1000)] as const;
+    if (ctx.editedMessage) {
+      const before = await captureEditedMessage(...capture).catch(() => undefined);
+      if (!editNowMentions({ before, after: text, sentAt: msg.date, now: Date.now(), botUsername })) return;
+    } else {
+      await captureMessage(...capture).catch(() => {});
+    }
 
     if (mentionsJemaw(text, botUsername)) {
       const notice = runtime.current().maintenanceMessage;
       if (notice) {
         await ctx
-          .reply(notice, { reply_parameters: { message_id: ctx.message.message_id, allow_sending_without_reply: true } })
+          .reply(notice, { reply_parameters: { message_id: msg.message_id, allow_sending_without_reply: true } })
           .catch(() => {});
         return;
       }
       const chatEnabled = runtime.current().chatEnabled;
       const askerTelegramId = ctx.from ? BigInt(ctx.from.id) : null;
-      const replyTo = ctx.message.message_id;
+      const replyTo = msg.message_id;
       void (async () => {
         const g = await getGroupById(db, groupId);
         if (!g) return;
@@ -633,6 +636,28 @@ export function createBot(token: string, deps: BotDeps): Bot {
   });
 
   return bot;
+}
+
+/** How long after sending an edit that adds a mention still gets an answer. */
+export const EDIT_MENTION_WINDOW_MS = 30 * 60_000;
+
+/**
+ * An edit wakes Jemaw only when it adds the mention (the message didn't
+ * mention Jemaw before, so it was never answered) and the message is recent.
+ * `before` is undefined when the lookup failed, which counts as unknown.
+ */
+export function editNowMentions(input: {
+  before: string | null | undefined;
+  after: string;
+  /** Telegram's unix seconds for when the message was first sent. */
+  sentAt: number;
+  now: number;
+  botUsername?: string;
+}): boolean {
+  if (input.before === undefined) return false;
+  if (!mentionsJemaw(input.after, input.botUsername)) return false;
+  if (input.before != null && mentionsJemaw(input.before, input.botUsername)) return false;
+  return input.now - input.sentAt * 1000 <= EDIT_MENTION_WINDOW_MS;
 }
 
 /** Resolve a Telegram user to a member id for ai_runs attribution. */

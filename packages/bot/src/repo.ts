@@ -864,6 +864,30 @@ export async function captureMessage(
     .onConflictDoNothing();
 }
 
+/**
+ * Store an edited message's new text and return what it said before, or
+ * null when the original never reached us.
+ */
+export async function captureEditedMessage(
+  db: Db,
+  groupId: string,
+  telegramMessageId: bigint,
+  senderTelegramUserId: bigint,
+  text: string,
+  sentAt: Date,
+): Promise<string | null> {
+  const [before] = await db
+    .select({ text: messages.text })
+    .from(messages)
+    .where(and(eq(messages.groupId, groupId), eq(messages.telegramMessageId, telegramMessageId)))
+    .limit(1);
+  await db
+    .insert(messages)
+    .values({ groupId, telegramMessageId, senderTelegramUserId, text, sentAt })
+    .onConflictDoUpdate({ target: [messages.groupId, messages.telegramMessageId], set: { text } });
+  return before?.text ?? null;
+}
+
 /** Recent messages for a scan: after `sinceMessageId` (if any), up to `limit`. */
 export async function recentMessages(
   db: Db,

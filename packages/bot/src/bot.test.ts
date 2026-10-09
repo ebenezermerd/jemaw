@@ -5,6 +5,7 @@ import {
   createBot,
   scanResultLine,
   understandByRules,
+  editNowMentions,
 } from "./bot.js";
 
 describe("bot copy", () => {
@@ -131,5 +132,29 @@ describe("group access notices", () => {
       suspendedNotice({ status: "suspended", until: "2026-10-12T09:00:00Z", reason: "Spam", aiDailyLimit: null }),
     ).toBe("Jemaw is paused in this group by the Jemaw team until Oct 12, 9:00 AM UTC. Reason: Spam Your records are safe.");
     expect(aiBlockedLine("limit")).toContain("today's AI allowance");
+  });
+});
+
+describe("editNowMentions", () => {
+  const now = Date.UTC(2026, 9, 9, 17, 0);
+  const sentAt = (minutesAgo: number) => Math.floor((now - minutesAgo * 60_000) / 1000);
+
+  it("answers a recent message edited to add jemaw or the @username", () => {
+    expect(editNowMentions({ before: "how much does aman owe", after: "how much does aman owe jemaw", sentAt: sentAt(2), now })).toBe(true);
+    expect(editNowMentions({ before: "who are you", after: "who are you @jemawsbot", sentAt: sentAt(10), now })).toBe(true);
+  });
+
+  it("stays quiet when the message already mentioned jemaw, so it isn't answered twice", () => {
+    expect(editNowMentions({ before: "jemaw how much", after: "jemaw how much do i owe", sentAt: sentAt(1), now })).toBe(false);
+  });
+
+  it("stays quiet for old messages, edits without a mention, or an unknown original", () => {
+    expect(editNowMentions({ before: "hi", after: "hi jemaw", sentAt: sentAt(45), now })).toBe(false);
+    expect(editNowMentions({ before: "hi", after: "hello", sentAt: sentAt(1), now })).toBe(false);
+    expect(editNowMentions({ before: undefined, after: "hi jemaw", sentAt: sentAt(1), now })).toBe(false);
+  });
+
+  it("answers when the original never reached the bot", () => {
+    expect(editNowMentions({ before: null, after: "hi jemaw", sentAt: sentAt(1), now })).toBe(true);
   });
 });
