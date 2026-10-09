@@ -45,6 +45,8 @@ export interface PaymentsPostData {
   name: string | null;
   owes: { name: string; cents: number }[];
   owedBy: { name: string; cents: number }[];
+  /** Every open payment in the group; when set, the post lists these instead of the asker's own. */
+  debts?: { from: string; to: string; cents: number }[];
   note: string | null;
   lead?: string | null;
 }
@@ -226,6 +228,7 @@ function weeklyDoc(d: WeeklyPostData, design: PostDesign): Doc {
 }
 
 function paymentsDoc(d: PaymentsPostData, design: PostDesign): Doc {
+  if (d.debts) return groupPaymentsDoc(d, d.debts, design);
   const doc = emptyDoc("Your open payments");
   if (d.lead) doc.lead.push(d.lead);
   if (!d.name) {
@@ -251,6 +254,32 @@ function paymentsDoc(d: PaymentsPostData, design: PostDesign): Doc {
   };
   if (design.sections.note && d.note) doc.note = d.note;
   if (d.owes[0]) doc.copyAmount = centsToDecimal(d.owes[0].cents).replace(/\.00$/, "");
+  return doc;
+}
+
+function groupPaymentsDoc(d: PaymentsPostData, debts: NonNullable<PaymentsPostData["debts"]>, design: PostDesign): Doc {
+  const doc = emptyDoc("Open payments");
+  if (d.lead) doc.lead.push(d.lead);
+  const total = debts.reduce((a, x) => a + x.cents, 0);
+  const people = new Set(debts.flatMap((x) => [x.from, x.to])).size;
+  doc.hero = {
+    kind: "hero",
+    eyebrow: "Open payments",
+    badge: `${debts.length} open`,
+    amount: formatAmount(total),
+    currency: d.currency,
+    subline: `${debts.length} payment${debts.length === 1 ? "" : "s"} between ${people} people`,
+  };
+  doc.checklist = {
+    title: `Open payments · ${formatAmount(total)} ${d.currency}`,
+    items: debts.map((x) => ({
+      who: [bold(x.from), " → ", bold(x.to)] as RichText,
+      amount: `${formatAmount(x.cents)} ${d.currency}`,
+      checked: false,
+    })),
+    empty: "All square. Nobody owes anybody.",
+  };
+  if (design.sections.note && d.note) doc.note = d.note;
   return doc;
 }
 

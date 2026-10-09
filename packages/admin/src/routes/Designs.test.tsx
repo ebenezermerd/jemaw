@@ -50,7 +50,7 @@ describe("Message designs", () => {
 
   it("shows payments as a checklist or a headerless table", async () => {
     renderPage();
-    fireEvent.click(await screen.findByRole("tab", { name: "AI: my payments" }));
+    fireEvent.click(await screen.findByRole("tab", { name: "AI: payments" }));
     const preview = screen.getByTestId("post-preview");
     expect(within(preview).getAllByLabelText("unchecked")).toHaveLength(2);
     fireEvent.click(screen.getByRole("radio", { name: "Table, no header" }));

@@ -60,8 +60,8 @@ export const POST_USE_CASE_META: Record<PostUseCase, PostUseCaseMeta> = {
     sections: ["stats", "expenses", "standings", "debts", "note"],
   },
   ai_payments: {
-    label: "AI: my payments",
-    description: "When someone asks what they still owe or who owes them.",
+    label: "AI: payments",
+    description: "Open payments when someone asks what's unsettled; only the asker's own when they ask about themselves.",
     sections: ["note"],
   },
   ai_report: {

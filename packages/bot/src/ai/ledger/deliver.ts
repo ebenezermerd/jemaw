@@ -23,7 +23,7 @@ const REPORT_TITLE: Record<LedgerQuery["kind"], string> = {
   whoami: "About you",
   leaderboard: "Who fronted the most",
   my_balance: "Your open payments",
-  who_owes: "Open debts",
+  who_owes: "Open payments",
   expense_list: "Expenses",
   totals: "Spending",
   pending: "Drafts waiting",
@@ -52,7 +52,9 @@ export async function deliverLedgerAnswer(input: {
   try {
     const snapshot = await buildLedgerSnapshot(input.db, input.group, input.askerTelegramId);
     const facts = renderLedgerFacts(input.query, snapshot);
-    const payments = input.query.kind === "my_balance";
+    // Everyone's open payments by default; the asker's own only when they asked about themselves.
+    const mine = input.query.kind === "my_balance";
+    const payments = mine || input.query.kind === "who_owes";
     const design = (input.designs ?? DEFAULT_POST_DESIGNS)[payments ? "ai_payments" : "ai_report"];
     const banterAsked = input.query.kind === "leaderboard";
     const persona =
@@ -84,6 +86,7 @@ export async function deliverLedgerAnswer(input: {
                 name: snapshot.asker?.name ?? null,
                 owes: snapshot.asker?.owes ?? [],
                 owedBy: snapshot.asker?.owedBy ?? [],
+                ...(mine ? {} : { debts: snapshot.openDebts }),
                 note,
                 lead: input.lead ?? null,
               },

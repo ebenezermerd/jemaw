@@ -96,7 +96,7 @@ function whoOwes(s: LedgerSnapshot, limit = MAX_LINES): string {
     .map((d) => `• ${b(d.from)} → ${b(d.to)} · ${money(s, d.cents)}`);
   const more = s.openDebts.length - limit;
   if (more > 0) lines.push(`…and ${more} more in the app.`);
-  return [`<b>Open debts</b>`, ...lines].join("\n");
+  return [`<b>Open payments</b>`, ...lines].join("\n");
 }
 
 function inPeriod(date: Date, period: LedgerPeriod, now: Date): boolean {
