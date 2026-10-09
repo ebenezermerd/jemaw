@@ -75,3 +75,57 @@ export function runtimeConfigFromRows(rows: { key: string; value: unknown }[]): 
   }
   return out;
 }
+
+// ─── AI provider limits ────────────────────────────────────────────────
+/** app_config key holding the latest Groq rate-limit snapshot. */
+export const BOT_AI_LIMITS_KEY = "bot.ai.limits";
+
+export interface RateWindow {
+  limit: number;
+  remaining: number;
+  /** seconds until the window refills, when Groq says */
+  resetSeconds: number | null;
+}
+
+/**
+ * What Groq reported on its last reply. `requests` is the per-day request
+ * budget; `tokens` is the per-minute token budget.
+ */
+export interface AiLimitsSnapshot {
+  at: string; // ISO
+  provider: "groq";
+  model: string;
+  source: "bot" | "check";
+  requests: RateWindow | null;
+  tokens: RateWindow | null;
+}
+
+/** Groq writes resets like "2m59.56s", "7.66s" or "120ms". */
+export function parseResetSeconds(raw: string | null | undefined): number | null {
+  if (!raw) return null;
+  let total = 0;
+  let matched = false;
+  for (const m of raw.matchAll(/(\d+(?:\.\d+)?)(ms|h|m|s)/g)) {
+    matched = true;
+    const n = Number(m[1]);
+    total += m[2] === "h" ? n * 3600 : m[2] === "m" ? n * 60 : m[2] === "s" ? n : n / 1000;
+  }
+  return matched ? Math.round(total * 10) / 10 : null;
+}
+
+/** Build a snapshot from Groq's x-ratelimit-* response headers. Null when absent. */
+export function limitsFromHeaders(
+  get: (name: string) => string | null,
+  meta: { model: string; source: AiLimitsSnapshot["source"]; now: Date },
+): AiLimitsSnapshot | null {
+  const window = (kind: "requests" | "tokens"): RateWindow | null => {
+    const limit = Number(get(`x-ratelimit-limit-${kind}`));
+    const remaining = Number(get(`x-ratelimit-remaining-${kind}`));
+    if (!get(`x-ratelimit-limit-${kind}`) || !Number.isFinite(limit) || !Number.isFinite(remaining)) return null;
+    return { limit, remaining, resetSeconds: parseResetSeconds(get(`x-ratelimit-reset-${kind}`)) };
+  };
+  const requests = window("requests");
+  const tokens = window("tokens");
+  if (!requests && !tokens) return null;
+  return { at: meta.now.toISOString(), provider: "groq", model: meta.model, source: meta.source, requests, tokens };
+}
