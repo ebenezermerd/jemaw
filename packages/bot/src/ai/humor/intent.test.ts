@@ -56,8 +56,22 @@ describe("classifyLedgerQuestion", () => {
     expect(classifyLedgerQuestion("what is the expenses list look like?")).toBe("expense_list");
     expect(classifyLedgerQuestion("how much did we spend this month")).toBe("totals");
     expect(classifyLedgerQuestion("who spent the most")).toBe("totals");
-    expect(classifyLedgerQuestion("what's pending?")).toBe("pending");
+    expect(classifyLedgerQuestion("any drafts waiting for review?")).toBe("pending");
     expect(classifyLedgerQuestion("give me a summary")).toBe("overview");
+  });
+
+  it("reads pending and unsettled money as everyone's open payments", () => {
+    expect(classifyLedgerQuestion("what's pending?")).toBe("who_owes");
+    expect(classifyLedgerQuestion("Lists of pending settlements jemaw")).toBe("who_owes");
+    expect(classifyLedgerQuestion("Owned payments left unsettled jemaw")).toBe("who_owes");
+    expect(classifyLedgerQuestion("how much do gemechis own jemaw")).toBe("who_owes");
+    expect(classifyLedgerQuestion("show me the outstanding payments")).toBe("who_owes");
+  });
+
+  it("only answers with the asker's payments when they ask about themselves", () => {
+    expect(classifyLedgerQuestion("hey jemaw how much do i own")).toBe("my_balance");
+    expect(classifyLedgerQuestion("what payments do I have left to settle")).toBe("my_balance");
+    expect(classifyLedgerQuestion("my outstanding payments")).toBe("my_balance");
   });
 });
 

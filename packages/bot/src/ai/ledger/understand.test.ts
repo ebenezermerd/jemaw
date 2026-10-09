@@ -15,6 +15,24 @@ describe("understandMessage", () => {
     });
   });
 
+  it("answers with everyone's open payments when the model picks the asker's or the drafts unasked", async () => {
+    const mine = await understandMessage({
+      client: replying({ intent: "ledger", kind: "my_balance", period: "all" }),
+      text: "how much do gemechis own jemaw",
+    });
+    expect(mine?.query?.kind).toBe("who_owes");
+    const drafts = await understandMessage({
+      client: replying({ intent: "ledger", kind: "pending", period: "all" }),
+      text: "Owned payments left unsettled jemaw",
+    });
+    expect(drafts?.query?.kind).toBe("who_owes");
+    const own = await understandMessage({
+      client: replying({ intent: "ledger", kind: "my_balance", period: "all" }),
+      text: "how much do i owe jemaw",
+    });
+    expect(own?.query?.kind).toBe("my_balance");
+  });
+
   it("passes the previous question so a complaint can be re-answered", async () => {
     let prompt = "";
     const u = await understandMessage({

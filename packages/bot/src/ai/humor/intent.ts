@@ -34,7 +34,13 @@ export interface LedgerQuery {
 }
 
 /** Owe words, forgiving the common "own" typo. */
-const OWE_RE = /\b(owe|owes|owed|owing|own|debts?|balances?)\b/i;
+const OWE_RE = /\b(owe|owes|owed|owing|own|owned|debts?|balances?|payments?|paybacks?|settle|settles|settled|settlements?|unsettled|unpaid|outstanding|due|hasn'?t\s+paid|not\s+paid)\b/i;
+/** Drafts are expenses the app found but nobody confirmed yet; "pending payments" are debts, not drafts. */
+const DRAFT_RE = /\b(drafts?|unconfirmed|review|suggestions?)\b/i;
+/** The asker means themselves; "show me" and "tell me" don't count. */
+export function isAboutMe(text: string): boolean {
+  return /\b(i|me|my|mine|i'?m|i'?ve|myself)\b/i.test(text.replace(/\b(show|tell|give|let|send)\s+me\b/gi, ""));
+}
 const WHOAMI_RE = /\bwho\s+am\s+i\b/i;
 /** Who is rich, broke, cheap: a ranking read from spending, not real wealth. */
 const LEADERBOARD_RE =
@@ -46,7 +52,7 @@ const EXPLICIT_SCAN_RE =
   /\b(scan|check|refresh|update|find|search|catch\s*up|look\s*(into|for)|any\s+new\s+(expenses?|drafts?)|any\s+(expenses?|drafts?))\b/i;
 
 const LEDGER_TOPIC_RE =
-  /\b(rich|richest|baller|broke|poor|cheap|cheapest|stingy|generous|freeloader|spender|leaderboard|owe|owes|owed|owing|own|latest|recent|balances?|debts?|pending|drafts?|waiting|expenses?|spent|spend|spending|total|totals|stats|summary|ledger|books?|settle|paid|history|list|biggest|most)\b/i;
+  /\b(rich|richest|baller|broke|poor|cheap|cheapest|stingy|generous|freeloader|spender|leaderboard|owe|owes|owed|owing|own|owned|payments?|unsettled|unpaid|outstanding|settlements?|latest|recent|balances?|debts?|pending|drafts?|waiting|expenses?|spent|spend|spending|total|totals|stats|summary|ledger|books?|settle|paid|history|list|biggest|most)\b/i;
 
 const QUESTION_START_RE =
   /^(are|is|am|do|does|did|can|could|will|what|what'?s|why|when|who|whom|whose|where|how|which|list|show|tell|give|summari[sz]e|any)\b/i;
@@ -131,12 +137,9 @@ export function classifyLedgerQuestion(text: string): LedgerQuestionKind {
   const t = stripJemawToken(text).toLowerCase();
   if (WHOAMI_RE.test(t)) return "whoami";
   if (LEADERBOARD_RE.test(t)) return "leaderboard";
-  if (/\b(pending|drafts?|waiting|unconfirmed|review)\b/.test(t)) return "pending";
-  if (/\b(hasn'?t\s+paid|not\s+paid|unpaid|settle)\b/.test(t)) return "who_owes";
-  if (OWE_RE.test(t)) {
-    const aboutMe = /\b(i|me|my|mine)\b/.test(t.replace(/\b(show|tell|give|let)\s+me\b/g, ""));
-    return aboutMe ? "my_balance" : "who_owes";
-  }
+  if (DRAFT_RE.test(t)) return "pending";
+  // Pending, waiting or unsettled money means open payments: everyone's unless they ask about their own.
+  if (OWE_RE.test(t) || /\b(pending|waiting)\b/.test(t)) return isAboutMe(t) ? "my_balance" : "who_owes";
   if (/\b(total|totals|how\s+much|stats|most|biggest|top)\b/.test(t)) return "totals";
   if (/\b(list|latest|recent|history|expenses?|purchases?|spent\s+on|bought|paid)\b/.test(t)) {
     return "expense_list";
