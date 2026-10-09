@@ -9,8 +9,8 @@ const usage: AdminAiUsageDto = {
   days: Array.from({ length: 14 }, (_, i) => ({ date: `2026-09-${String(26 + i).padStart(2, "0")}`, scans: i, replies: i, tokens: i * 1000 })),
   byModel: [{ model: "openai/gpt-oss-120b", calls: 30, tokens: 40_000 }],
   groups: [
-    { groupId: "g1", groupName: "Jemaw", mode: "roast", repliesToday: 46, maxPerDay: 50, mutedUntil: null },
-    { groupId: "g2", groupName: "Quiet", mode: "off", repliesToday: 0, maxPerDay: 0, mutedUntil: null },
+    { groupId: "g1", groupName: "Jemaw", access: "active", aiCallsToday: 9, aiDailyLimit: 10, mode: "roast", repliesToday: 46, maxPerDay: 50, mutedUntil: null },
+    { groupId: "g2", groupName: "Quiet", access: "ai_paused", aiCallsToday: 0, aiDailyLimit: null, mode: "off", repliesToday: 0, maxPerDay: 0, mutedUntil: null },
   ],
   limits: {
     at: new Date().toISOString(),
@@ -43,6 +43,8 @@ describe("AiUsageCard", () => {
     expect(screen.getByText("AI calls today · 12 scans, 30 replies")).toBeTruthy();
     expect(screen.getByText("46 / 50")).toBeTruthy();
     expect(screen.getByText("humor off")).toBeTruthy();
+    expect(screen.getByText("9 / 10 AI")).toBeTruthy();
+    expect(screen.getByText("AI paused")).toBeTruthy();
     fireEvent.click(screen.getByText("Check now"));
     await waitFor(() => expect(post).toHaveBeenCalledWith("/api/admin/ai/limits/check"));
   });

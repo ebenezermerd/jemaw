@@ -77,6 +77,7 @@ const detail: AdminGroupDetailDto = {
     },
     currencyLocked: true,
     telegramChatId: "-1003",
+    access: { status: "active", until: null, reason: null, aiDailyLimit: 30, aiCallsToday: 12 },
   },
   members: [
     {
@@ -212,7 +213,10 @@ describe("Groups", () => {
     expect(screen.getByText("added by hand")).toBeTruthy();
     expect(screen.getByText("1,388 ETB")).toBeTruthy();
     expect(screen.getByText("Edit group")).toBeTruthy();
-    expect(screen.getByText("Delete group", { selector: "button" })).toBeTruthy();
+    expect(screen.queryByText("Delete group")).toBeNull();
+    expect(screen.getByText("Clear expenses", { selector: "button" })).toBeTruthy();
+    expect(screen.getByText("12 AI calls today of 30")).toBeTruthy();
+    expect(screen.getByRole("radio", { name: /Suspended/ })).toBeTruthy();
     expect(screen.getByRole("switch", { name: "Brag & roast with real numbers" }).getAttribute("aria-checked")).toBe("true");
     expect(get).toHaveBeenCalledWith(`/api/admin/groups/${group.id}`);
   });

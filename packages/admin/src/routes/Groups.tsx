@@ -8,7 +8,7 @@ import { BackLink, fromState, useBackTo } from "../ui/BackLink.js";
 import { Busy, Skeleton, SkeletonList, SkeletonRows } from "../ui/Loader.js";
 import { DEFAULT_PAGE_SIZE, TableFooter, pageSlice } from "../ui/Pager.js";
 import { CenteredMessage } from "../ui/primitives.js";
-import { DangerZone, EditGroupDialog, GroupBotCard, MemberActions } from "./GroupManage.js";
+import { DangerZone, EditGroupDialog, GroupAccessCard, GroupBotCard, MemberActions } from "./GroupManage.js";
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
 
@@ -481,7 +481,10 @@ export function GroupDetailPage() {
 
       <div style={{ display: "grid", gridTemplateColumns: "1.5fr 1fr", gap: 18, alignItems: "start" }}>
         <GroupBotCard detail={data} />
-        <DangerZone detail={data} />
+        <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
+          <GroupAccessCard detail={data} />
+          <DangerZone detail={data} />
+        </div>
       </div>
     </div>
   );
