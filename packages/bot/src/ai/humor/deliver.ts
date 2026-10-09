@@ -315,8 +315,9 @@ export async function maybeDeliverDirectChat(input: {
 }
 
 /**
- * The plain rule under the ultimatum joke, written by code so it always says
- * what to do, for how long, and that money questions still work.
+ * The serious last word before chat goes quiet. The jokes come in the pokes
+ * before it; this one is written by code so it always says what is waiting,
+ * what to do, until when, and that money questions still work.
  */
 export function sulkWarning(input: {
   pendingCount: number;
@@ -324,20 +325,21 @@ export function sulkWarning(input: {
   until: Date;
 }): string {
   const first = input.drafts[0];
-  const what =
+  const waiting =
     input.pendingCount === 1 && first
-      ? `the waiting expense (${first.label}${first.amount ? ` · ${formatAmount(first.amount)}${first.currency ? ` ${first.currency}` : ""}` : ""})`
-      : `the ${input.pendingCount} waiting expenses`;
+      ? `1 expense is waiting for approval: ${first.label}${first.amount ? ` · ${formatAmount(first.amount)}${first.currency ? ` ${first.currency}` : ""}` : ""}.`
+      : `${input.pendingCount} expenses are waiting for approval.`;
+  const it = input.pendingCount === 1 ? "it" : "them";
   const time = input.until.toLocaleTimeString("en-US", {
     hour: "numeric",
     minute: "2-digit",
     timeZone: "Africa/Addis_Ababa",
   });
   return [
-    `⏸ I'm going quiet until ${time} (${CHAT_SULK_MINUTES} minutes).`,
-    `Approve or dismiss ${what} in the app and I'm back right away.`,
+    `Okay, serious now. ${waiting}`,
+    `⏸ I'm pausing chat until ${time} (${CHAT_SULK_MINUTES} minutes). Approve or dismiss ${it} in the app and I'm back right away.`,
     "Money questions still get answered.",
-  ].join("\n");
+  ].join("\n\n");
 }
 
 function formatAmount(amount: string): string {
@@ -412,14 +414,13 @@ async function composeAndSend(input: {
     input.applySulkIfHardNudge === true &&
     input.packet.conversation_flow?.will_sulk_after === true &&
     (input.pendingCountForSulk ?? 0) > 0;
-  const joke = cleanReplyPunctuation(composed.text);
   const text = willSulk
-    ? `${joke}\n\n${sulkWarning({
+    ? sulkWarning({
         pendingCount: input.pendingCountForSulk ?? 0,
         drafts: input.sulkDrafts ?? [],
         until: new Date(Date.now() + CHAT_SULK_MINUTES * 60_000),
-      })}`
-    : joke;
+      })
+    : cleanReplyPunctuation(composed.text);
   const sendOpts =
     willSulk && input.openUrl
       ? { reply_markup: { inline_keyboard: [[{ text: "Review in Jemaw", url: input.openUrl }]] } }

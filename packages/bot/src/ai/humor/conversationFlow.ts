@@ -90,11 +90,15 @@ export function buildConversationFlow(input: {
     phase = "bored_nudge";
     money = "prefer";
     directive =
-      "You're getting bored. Group keeps poking but backlog sits. Playful meddler energy: call out that open drafts still need a decision. One concrete draft/amount max if useful. Group benefit, not personal attack.";
+      "You're getting bored. Group keeps poking but backlog sits. Playful meddler energy: call out that open drafts still need a decision. One concrete draft/amount max if useful. Group benefit, not personal attack." +
+      (input.pokeCount1h === 4
+        ? " Jokingly warn that one more poke and you'll go quiet until someone deals with the waiting expense."
+        : "");
   } else {
     phase = "hard_nudge";
     money = "require_light";
-    directive = `Hard ultimatum — LAST social reply before you go quiet for ~${CHAT_SULK_MINUTES} minutes. One short line of playful annoyance that the group keeps chatting while an expense waits for approval. A plain notice with the rules, the time and an app button is added under your line by the backend, so do not explain the pause, the timing or the app yourself. Never invent balances. Protect GROUP process, not personal attacks.`;
+    // The backend replaces this reply with a fixed, serious notice; no joke here.
+    directive = `LAST reply before you go quiet for ~${CHAT_SULK_MINUTES} minutes. Be serious and plain, no jokes.`;
   }
 
   if (nearCap) {
