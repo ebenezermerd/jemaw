@@ -131,7 +131,13 @@ async function main(): Promise<void> {
   }
 
   // Hourly sweep that posts each group's weekly summary when it's due.
-  const stopDigest = startWeeklyDigestScheduler({ db, api: bot.api, gemini, runtime });
+  const stopDigest = startWeeklyDigestScheduler({
+    db,
+    api: bot.api,
+    gemini,
+    runtime,
+    links: { botUsername: env.BOT_USERNAME, miniAppShortName: env.MINI_APP_SHORT_NAME, miniAppUrl: env.MINI_APP_URL },
+  });
   const stopHeartbeat = startHeartbeat(db, process.env.RENDER_GIT_COMMIT?.slice(0, 7) ?? null);
   app.log.info("Weekly digest scheduler started");
 

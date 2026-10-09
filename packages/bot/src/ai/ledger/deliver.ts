@@ -3,6 +3,7 @@
  * plus one persona line when humor is on and ledger banter is allowed.
  * Explicit questions skip the humor quota and cooldown: someone asked.
  */
+import type { Api } from "grammy";
 import type { Db } from "../../db.js";
 import type { Group } from "@jemaw/shared/schema";
 import { parseHumorSettings } from "@jemaw/shared/humor";
@@ -14,6 +15,20 @@ import type { LedgerQuery } from "../humor/intent.js";
 import { buildLedgerSnapshot } from "./snapshot.js";
 import { renderLedgerFacts } from "./answer.js";
 import { composeLedgerPersonaLine } from "./persona.js";
+import { composePost, DEFAULT_POST_DESIGNS, type PostDesigns } from "@jemaw/shared/posts";
+import { sendPost } from "../../telegram/sendPost.js";
+import { postContext, type PostLinks } from "../../telegram/postLinks.js";
+
+const REPORT_TITLE: Record<LedgerQuery["kind"], string> = {
+  whoami: "About you",
+  leaderboard: "Who fronted the most",
+  my_balance: "Your open payments",
+  who_owes: "Open debts",
+  expense_list: "Expenses",
+  totals: "Spending",
+  pending: "Drafts waiting",
+  overview: "Group overview",
+};
 
 export async function deliverLedgerAnswer(input: {
   db: Db;
@@ -24,6 +39,11 @@ export async function deliverLedgerAnswer(input: {
   humor: HumorRuntime;
   /** Plain line shown above the answer, e.g. an apology when redoing one. */
   lead?: string;
+  /** Where the post goes and how it looks; defaults keep tests simple. */
+  api?: Api;
+  chatId?: number;
+  designs?: PostDesigns;
+  links?: PostLinks;
 }): Promise<void> {
   const started = Date.now();
   const settings = parseHumorSettings(
@@ -32,8 +52,11 @@ export async function deliverLedgerAnswer(input: {
   try {
     const snapshot = await buildLedgerSnapshot(input.db, input.group, input.askerTelegramId);
     const facts = renderLedgerFacts(input.query, snapshot);
+    const payments = input.query.kind === "my_balance";
+    const design = (input.designs ?? DEFAULT_POST_DESIGNS)[payments ? "ai_payments" : "ai_report"];
+    const banterAsked = input.query.kind === "leaderboard";
     const persona =
-      settings.mode !== "off" && settings.ledgerBanter
+      settings.mode !== "off" && settings.ledgerBanter && (banterAsked || design.sections.note)
         ? await composeLedgerPersonaLine({
             client: input.humor.client,
             mode: settings.mode,
@@ -42,11 +65,43 @@ export async function deliverLedgerAnswer(input: {
           })
         : null;
     // A brag question is banter: the persona line is the reply, with no table above it.
-    const banter = input.query.kind === "leaderboard" && persona != null;
-    const answer = banter ? escapeHtml(persona.text) : facts;
-    const body = input.lead ? `${escapeHtml(input.lead)}\n\n${answer}` : answer;
-    const text = persona && !banter ? `${body}\n\n<i>${escapeHtml(persona.text)}</i>` : body;
-    const messageId = await input.loading.finish(text, { parse_mode: "HTML" });
+    const banter = banterAsked && persona != null;
+    let text: string;
+    let messageId: number | null;
+    if (banter || !input.api || input.chatId == null) {
+      const answer = banter ? escapeHtml(persona.text) : facts;
+      const body = input.lead ? `${escapeHtml(input.lead)}\n\n${answer}` : answer;
+      text = persona && !banter ? `${body}\n\n<i>${escapeHtml(persona.text)}</i>` : body;
+      messageId = await input.loading.finish(text, { parse_mode: "HTML" });
+    } else {
+      const note = persona?.text ?? null;
+      const post = composePost(
+        payments
+          ? {
+              useCase: "ai_payments",
+              data: {
+                currency: snapshot.currency,
+                name: snapshot.asker?.name ?? null,
+                owes: snapshot.asker?.owes ?? [],
+                owedBy: snapshot.asker?.owedBy ?? [],
+                note,
+                lead: input.lead ?? null,
+              },
+            }
+          : {
+              useCase: "ai_report",
+              data: { title: REPORT_TITLE[input.query.kind], html: facts, note, lead: input.lead ?? null },
+            },
+        design,
+        postContext(input.links, input.group.id),
+      );
+      const { api, chatId } = input;
+      text = post.html;
+      // A failed send throws to the catch below, which apologises in the placeholder.
+      messageId = await input.loading.finishWith(
+        async (placeholder) => (await sendPost(api, chatId, post, { editMessageId: placeholder })).messageId,
+      );
+    }
     console.log(
       `[ledger] answered group=${input.group.id} query=${JSON.stringify(input.query)} persona=${persona?.source ?? "none"}`,
     );

@@ -88,4 +88,14 @@ describe("startLoading", () => {
     for (const lines of Object.values(OPENERS)) expect(lines.length).toBeGreaterThanOrEqual(3);
     expect(SPIRIT_LINES.length).toBeGreaterThanOrEqual(30);
   });
+
+  it("finishWith keeps a reused placeholder and removes one that was replaced", async () => {
+    const api = fakeApi();
+    const kept = await startLoading(api as never, 7, { topic: "my_balance" });
+    expect(await kept.finishWith(async (id) => id)).toBe(77);
+    expect(api.deleteMessage).not.toHaveBeenCalled();
+    const replaced = await startLoading(api as never, 7, { topic: "my_balance" });
+    expect(await replaced.finishWith(async () => 99)).toBe(99);
+    expect(api.deleteMessage).toHaveBeenCalledWith(7, 77);
+  });
 });
