@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { renderLedgerFacts } from "./answer.js";
+import { namedMember, renderLedgerFacts } from "./answer.js";
 import type { LedgerSnapshot } from "./snapshot.js";
 
 const snap: LedgerSnapshot = {
@@ -83,6 +83,23 @@ describe("renderLedgerFacts", () => {
     const html = renderLedgerFacts({ kind: "who_owes", period: "all" }, snap, now);
     expect(html).toContain("<b>Sami</b> → <b>Abenezer</b> · 900 ETB");
     expect(html).toContain("<b>Hana</b> → <b>Sami</b> · 150 ETB");
+  });
+
+  it("narrows open payments to the member a question names", () => {
+    const html = renderLedgerFacts({ kind: "who_owes", period: "all", person: "Hana" }, snap, now);
+    expect(html).toContain("<b>Hana's open payments</b>");
+    expect(html).toContain("<b>Hana</b> → <b>Sami</b> · 150 ETB");
+    expect(html).not.toContain("900 ETB");
+    const square = renderLedgerFacts({ kind: "who_owes", period: "all", person: "Abebe" }, { ...snap, openDebts: [] }, now);
+    expect(square).toContain("<b>Abebe</b> is all square.");
+  });
+
+  it("finds the one member a question names", () => {
+    const names = ["Amanuel M", "Ebenezer Merdekios", "Pomi"];
+    expect(namedMember("how much does aman owe jemaw", names)).toBe("Amanuel M");
+    expect(namedMember("any unpaid payments for POMI", names)).toBe("Pomi");
+    expect(namedMember("does the other guy have unsettled expenses", names)).toBeNull();
+    expect(namedMember("does pomi owe ebenezer", names)).toBeNull();
   });
 
   it("filters the expense list by period", () => {

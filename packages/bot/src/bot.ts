@@ -327,6 +327,7 @@ export function createBot(token: string, deps: BotDeps): Bot {
         loading,
         humor: gate.blocked ? {} : (humor ?? {}),
         lead: opts.lead,
+        questionText: opts.questionText,
         api: ctx.api,
         chatId,
         designs: runtime.current().postDesigns,

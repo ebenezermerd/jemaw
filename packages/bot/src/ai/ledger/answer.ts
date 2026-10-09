@@ -30,7 +30,7 @@ export function renderLedgerFacts(
     case "my_balance":
       return myBalance(s);
     case "who_owes":
-      return whoOwes(s);
+      return whoOwes(s, MAX_LINES, q.person);
     case "expense_list":
       return expenseList(s, q, now);
     case "totals":
@@ -89,14 +89,41 @@ function myBalance(s: LedgerSnapshot): string {
   return lines.join("\n");
 }
 
-function whoOwes(s: LedgerSnapshot, limit = MAX_LINES): string {
-  if (s.openDebts.length === 0) return "✅ All square. Nobody owes anybody.";
-  const lines = s.openDebts
+/** Open payments, or only the ones a named member pays or receives. */
+export function openDebtsFor(s: LedgerSnapshot, person?: string): LedgerSnapshot["openDebts"] {
+  return person ? s.openDebts.filter((d) => d.from === person || d.to === person) : s.openDebts;
+}
+
+function whoOwes(s: LedgerSnapshot, limit = MAX_LINES, person?: string): string {
+  const debts = openDebtsFor(s, person);
+  if (debts.length === 0) {
+    return person ? `✅ ${b(person)} is all square.` : "✅ All square. Nobody owes anybody.";
+  }
+  const lines = debts
     .slice(0, limit)
     .map((d) => `• ${b(d.from)} → ${b(d.to)} · ${money(s, d.cents)}`);
-  const more = s.openDebts.length - limit;
+  const more = debts.length - limit;
   if (more > 0) lines.push(`…and ${more} more in the app.`);
-  return [`<b>Open payments</b>`, ...lines].join("\n");
+  const title = person ? `${escapeHtml(person)}'s open payments` : "Open payments";
+  return [`<b>${title}</b>`, ...lines].join("\n");
+}
+
+const NAME_IGNORE = new Set(["jemaw", "the", "any", "and", "for", "owe", "own", "how", "who", "what", "much", "does", "have"]);
+
+/**
+ * The one member a question names, matched on a whole name word or a prefix
+ * of four letters or more ("aman" finds "Amanuel M"). Null when nobody or
+ * more than one member is named.
+ */
+export function namedMember(text: string, names: string[]): string | null {
+  const words = (text.toLowerCase().match(/[\p{L}]+/gu) ?? []).filter((w) => !NAME_IGNORE.has(w));
+  const found = new Set<string>();
+  for (const name of names) {
+    const parts = name.toLowerCase().match(/[\p{L}]+/gu) ?? [];
+    const hit = words.some((w) => parts.some((p) => p === w || (w.length >= 4 && p.startsWith(w))));
+    if (hit) found.add(name);
+  }
+  return found.size === 1 ? [...found][0]! : null;
 }
 
 function inPeriod(date: Date, period: LedgerPeriod, now: Date): boolean {

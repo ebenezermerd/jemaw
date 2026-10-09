@@ -31,6 +31,8 @@ export interface LedgerQuery {
   limit?: number;
   /** Only the asker's expenses: ones they paid, or ones they paid or shared. */
   mine?: "paid" | "involved";
+  /** The member the question names, as their display name; narrows open payments to them. */
+  person?: string;
 }
 
 /** Owe words, forgiving the common "own" typo. */

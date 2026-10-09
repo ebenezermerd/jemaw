@@ -13,7 +13,7 @@ import { escapeHtml } from "../../telegram/announcements.js";
 import type { HumorRuntime } from "../humor/deliver.js";
 import type { LedgerQuery } from "../humor/intent.js";
 import { buildLedgerSnapshot } from "./snapshot.js";
-import { renderLedgerFacts } from "./answer.js";
+import { namedMember, openDebtsFor, renderLedgerFacts } from "./answer.js";
 import { composeLedgerPersonaLine } from "./persona.js";
 import { composePost, DEFAULT_POST_DESIGNS, type PostDesigns } from "@jemaw/shared/posts";
 import { sendPost } from "../../telegram/sendPost.js";
@@ -39,6 +39,8 @@ export async function deliverLedgerAnswer(input: {
   humor: HumorRuntime;
   /** Plain line shown above the answer, e.g. an apology when redoing one. */
   lead?: string;
+  /** What was asked, to find a member the question names. */
+  questionText?: string;
   /** Where the post goes and how it looks; defaults keep tests simple. */
   api?: Api;
   chatId?: number;
@@ -51,7 +53,12 @@ export async function deliverLedgerAnswer(input: {
   );
   try {
     const snapshot = await buildLedgerSnapshot(input.db, input.group, input.askerTelegramId);
-    const facts = renderLedgerFacts(input.query, snapshot);
+    const person =
+      input.query.kind === "who_owes" && input.questionText
+        ? namedMember(input.questionText, snapshot.balances.map((m) => m.name))
+        : null;
+    const query: LedgerQuery = person ? { ...input.query, person } : input.query;
+    const facts = renderLedgerFacts(query, snapshot);
     // Everyone's open payments by default; the asker's own only when they asked about themselves.
     const mine = input.query.kind === "my_balance";
     const payments = mine || input.query.kind === "who_owes";
@@ -63,7 +70,7 @@ export async function deliverLedgerAnswer(input: {
             client: input.humor.client,
             mode: settings.mode,
             snapshot,
-            query: input.query,
+            query,
           })
         : null;
     // A brag question is banter: the persona line is the reply, with no table above it.
@@ -86,7 +93,7 @@ export async function deliverLedgerAnswer(input: {
                 name: snapshot.asker?.name ?? null,
                 owes: snapshot.asker?.owes ?? [],
                 owedBy: snapshot.asker?.owedBy ?? [],
-                ...(mine ? {} : { debts: snapshot.openDebts }),
+                ...(mine ? {} : { debts: openDebtsFor(snapshot, query.person), person: query.person ?? null }),
                 note,
                 lead: input.lead ?? null,
               },
@@ -106,7 +113,7 @@ export async function deliverLedgerAnswer(input: {
       );
     }
     console.log(
-      `[ledger] answered group=${input.group.id} query=${JSON.stringify(input.query)} persona=${persona?.source ?? "none"}`,
+      `[ledger] answered group=${input.group.id} query=${JSON.stringify(query)} persona=${persona?.source ?? "none"}`,
     );
     await insertBotReply(input.db, {
       groupId: input.group.id,
@@ -117,7 +124,7 @@ export async function deliverLedgerAnswer(input: {
       templateId: persona?.source === "template" ? "ledger_persona" : null,
       provider: persona?.source === "model" ? (input.humor.provider ?? null) : null,
       model: persona?.source === "model" ? (input.humor.model ?? null) : null,
-      factPacketRedacted: input.query,
+      factPacketRedacted: query,
       selectedText: text,
       riskClass: "green",
       telegramMessageId: messageId == null ? null : BigInt(messageId),

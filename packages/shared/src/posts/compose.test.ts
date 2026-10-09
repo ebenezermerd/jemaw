@@ -75,6 +75,15 @@ describe("composePost", () => {
     expect(post.html).not.toContain("→ you");
   });
 
+  it("group payments narrowed to one member carry their name", () => {
+    const data = {
+      useCase: "ai_payments" as const,
+      data: { ...SAMPLE_POST_DATA.ai_payments.data, debts: [{ from: "Pomi", to: "Tsin", cents: 16600 }], person: "Tsin" },
+    };
+    const post = composePost(data, DEFAULT_POST_DESIGNS.ai_payments, ctx);
+    expect(post.html).toContain("Tsin's open payments");
+  });
+
   it("payments as a table has no header row", () => {
     const post = composePost(SAMPLE_POST_DATA.ai_payments, design(DEFAULT_POST_DESIGNS.ai_payments, { checklistStyle: "table" }), ctx);
     const table = post.rich!.find((b) => b.type === "table") as { cells: { is_header?: boolean }[][] };
