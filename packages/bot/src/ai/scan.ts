@@ -89,7 +89,9 @@ export async function scanGroup(
     promptIdByMemberId.set(m.id, promptId);
   }
   const memberByTgId = memberByPromptId;
-  const allMemberIds = members.map((m) => m.id);
+  // Default splits only ever land on current members; removed ones keep their
+  // past shares but are not dragged into new expenses.
+  const allMemberIds = members.filter((m) => m.isActive).map((m) => m.id);
 
   // Read the persisted group-state summary (balances, open debts, recent items)
   // instead of recomputing the whole ledger here. Verify its stamp against the
@@ -267,7 +269,7 @@ export async function scanGroup(
       (splitMemberIds.length === 0 ||
         (splitMemberIds.length === 1 && payer != null && splitMemberIds[0] === payer.id));
     if (noParticipantsNamed) {
-      const primaryIds = members.filter((m) => m.isPrimary).map((m) => m.id);
+      const primaryIds = members.filter((m) => m.isPrimary && m.isActive).map((m) => m.id);
       splitMemberIds.length = 0;
       splitMemberIds.push(...(primaryIds.length ? primaryIds : allMemberIds));
       sawUnknownSplit = true;
