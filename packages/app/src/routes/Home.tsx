@@ -18,6 +18,7 @@ import { SummaryCard } from "../ui/SummaryCard.js";
 import { MemberAvatar } from "../ui/MemberAvatar.js";
 import { Money, Pill, Button } from "../ui/primitives.js";
 import { EmptyState } from "../ui/EmptyState.js";
+import { AiAccessNotice } from "../ui/GroupAccess.js";
 import { Modal } from "../motion/Modal.js";
 import { Skeleton } from "../motion/Skeleton.js";
 import { useReducedMotion } from "../motion/useReducedMotion.js";
@@ -63,6 +64,7 @@ export function Home() {
   return (
     <div style={{ paddingBottom: 8, overflowX: "hidden" }}>
       <div style={{ padding: 16, paddingBottom: 8, display: "grid", gap: 12 }}>
+        <AiAccessNotice access={group.data?.access} />
         {/* greeting */}
         {summary.data && (
           <div
