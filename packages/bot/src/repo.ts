@@ -193,6 +193,12 @@ export async function upsertMember(
   telegramUserId: bigint,
   displayName: string,
   username: string | null,
+  /**
+   * Treat `username` as current, e.g. read from a message the person just
+   * sent: a changed or removed @username replaces the stored one. The display
+   * name is never touched, since admins may have renamed the member in-app.
+   */
+  opts: { refreshUsername?: boolean } = {},
 ): Promise<Member> {
   const existing = await db
     .select()
@@ -204,7 +210,15 @@ export async function upsertMember(
       ),
     )
     .limit(1);
-  if (existing[0]) return existing[0];
+  if (existing[0]) {
+    if (!opts.refreshUsername || existing[0].username === username) return existing[0];
+    const [updated] = await db
+      .update(members)
+      .set({ username })
+      .where(eq(members.id, existing[0].id))
+      .returning();
+    return updated ?? existing[0];
+  }
   const inserted = await db
     .insert(members)
     .values({ groupId, telegramUserId, displayName, username })

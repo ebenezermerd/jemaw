@@ -38,6 +38,8 @@ export async function registerUser(
     BigInt(user.id),
     displayNameOf(user),
     user.username ?? null,
+    // Identity is the numeric id; keep the @username current when it changes.
+    { refreshUsername: true },
   );
 }
 
