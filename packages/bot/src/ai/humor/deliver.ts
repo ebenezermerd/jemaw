@@ -16,13 +16,15 @@ import {
 import type { ScanClient } from "../geminiClient.js";
 import type { LoadingHandle } from "../../telegram/loading.js";
 import { cleanReplyPunctuation } from "./punctuation.js";
+import { postContext, type PostLinks } from "../../telegram/postLinks.js";
+import { groupDigits } from "../../telegram/announcements.js";
 import { buildLedgerSnapshot, ledgerHighlights } from "../ledger/snapshot.js";
 import {
   buildDirectChatPacket,
   buildScanOutcomePacket,
 } from "./factPacket.js";
 import { composeHumorReply } from "./service.js";
-import { sanitizeAddressedUtterance } from "./intent.js";
+import { JEMAW_MENTION_RE, sanitizeAddressedUtterance } from "./intent.js";
 import {
   buildConversationFlow,
   isChatSulking,
@@ -158,6 +160,8 @@ export async function maybeDeliverDirectChat(input: {
   askerTelegramId?: bigint | null;
   /** Placeholder to edit into the reply instead of sending a new message. */
   loading?: LoadingHandle;
+  /** Where the app opens, for the button under a going-quiet warning. */
+  links?: PostLinks;
 }): Promise<boolean> {
   const started = Date.now();
   const settingsRaw = input.group.settings as Record<string, unknown> | null;
@@ -304,8 +308,42 @@ export async function maybeDeliverDirectChat(input: {
     prefetched: { publicRepliesToday, recentTexts },
     applySulkIfHardNudge: true,
     pendingCountForSulk: ctx.pendingCount,
+    sulkDrafts: ctx.drafts,
+    openUrl: postContext(input.links, input.group.id).openUrl,
     loading: input.loading,
   });
+}
+
+/**
+ * The serious last word before chat goes quiet. The jokes come in the pokes
+ * before it; this one is written by code so it always says what is waiting,
+ * what to do, until when, and that money questions still work.
+ */
+export function sulkWarning(input: {
+  pendingCount: number;
+  drafts: { label: string; amount?: string; currency?: string }[];
+  until: Date;
+}): string {
+  const first = input.drafts[0];
+  const waiting =
+    input.pendingCount === 1 && first
+      ? `1 expense is waiting for approval: ${first.label}${first.amount ? ` · ${formatAmount(first.amount)}${first.currency ? ` ${first.currency}` : ""}` : ""}.`
+      : `${input.pendingCount} expenses are waiting for approval.`;
+  const it = input.pendingCount === 1 ? "it" : "them";
+  const time = input.until.toLocaleTimeString("en-US", {
+    hour: "numeric",
+    minute: "2-digit",
+    timeZone: "Africa/Addis_Ababa",
+  });
+  return [
+    `Okay, serious now. ${waiting}`,
+    `⏸ I'm pausing chat until ${time} (${CHAT_SULK_MINUTES} minutes). Approve or dismiss ${it} in the app and I'm back right away.`,
+    "Money questions still get answered.",
+  ].join("\n\n");
+}
+
+function formatAmount(amount: string): string {
+  return groupDigits(amount.replace(/\.00$/, ""));
 }
 
 async function composeAndSend(input: {
@@ -323,6 +361,8 @@ async function composeAndSend(input: {
   /** After hard_nudge send, arm chat sulk so threats have teeth. */
   applySulkIfHardNudge?: boolean;
   pendingCountForSulk?: number;
+  sulkDrafts?: { label: string; amount?: string; currency?: string }[];
+  openUrl?: string | null;
   loading?: LoadingHandle;
 }): Promise<boolean> {
   const dayStart = new Date();
@@ -370,11 +410,25 @@ async function composeAndSend(input: {
     return false;
   }
 
-  const text = cleanReplyPunctuation(composed.text);
+  const willSulk =
+    input.applySulkIfHardNudge === true &&
+    input.packet.conversation_flow?.will_sulk_after === true &&
+    (input.pendingCountForSulk ?? 0) > 0;
+  const text = willSulk
+    ? sulkWarning({
+        pendingCount: input.pendingCountForSulk ?? 0,
+        drafts: input.sulkDrafts ?? [],
+        until: new Date(Date.now() + CHAT_SULK_MINUTES * 60_000),
+      })
+    : cleanReplyPunctuation(composed.text);
+  const sendOpts =
+    willSulk && input.openUrl
+      ? { reply_markup: { inline_keyboard: [[{ text: "Review in Jemaw", url: input.openUrl }]] } }
+      : {};
   try {
     const messageId = input.loading
-      ? await input.loading.finish(text)
-      : (await input.api.sendMessage(Number(input.group.telegramChatId), text)).message_id;
+      ? await input.loading.finish(text, sendOpts)
+      : (await input.api.sendMessage(Number(input.group.telegramChatId), text, sendOpts)).message_id;
     if (messageId == null) throw new Error("send_failed");
     console.log(
       `[humor] sent group=${input.group.id} source=${composed.source} event=${input.packet.event} text_len=${text.length}`,
@@ -401,11 +455,7 @@ async function composeAndSend(input: {
     });
 
     // Ultimatum has teeth: social chat goes quiet until backlog moves or timer ends.
-    if (
-      input.applySulkIfHardNudge &&
-      input.packet.conversation_flow?.will_sulk_after &&
-      (input.pendingCountForSulk ?? 0) > 0
-    ) {
+    if (willSulk) {
       await armChatSulk(
         input.db,
         input.group.id,
@@ -475,7 +525,7 @@ async function loadHumorGroupContext(input: {
   const pokeCount1h = msgs.filter(
     (m) =>
       m.sentAt.getTime() >= hourAgo &&
-      /(?<![a-z0-9])jemaw(?![a-z0-9])/i.test(m.text),
+      JEMAW_MENTION_RE.test(m.text),
   ).length;
   const recentMessages = msgs.map((m) => ({ text: m.text, sentAt: m.sentAt }));
 

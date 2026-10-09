@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import {
+  mentionsJemaw,
   classifyJemawIntent,
   classifyLedgerQuestion,
   chatLoadingTopic,
@@ -188,5 +189,24 @@ describe("leaderboard questions", () => {
 
   it("keeps plain spending totals as totals", () => {
     expect(parseLedgerQuery("who spent the most this month").kind).toBe("totals");
+  });
+});
+
+describe("@username mentions", () => {
+  it("counts tagging the bot the same as saying jemaw", () => {
+    expect(mentionsJemaw("who hell are you @jemawsbot")).toBe(true);
+    expect(mentionsJemaw("@JemawsBot how much do i owe")).toBe(true);
+    expect(mentionsJemaw("hey jemaw")).toBe(true);
+    expect(mentionsJemaw("hello @otherbot")).toBe(false);
+    expect(mentionsJemaw("jemaws are great")).toBe(false);
+    expect(mentionsJemaw("yo @my_ledger_bot", "my_ledger_bot")).toBe(true);
+  });
+
+  it("routes an @ question exactly like the named one", () => {
+    expect(stripJemawToken("@jemawsbot how much do i owe")).toBe("how much do i owe");
+    expect(parseLedgerQuery("@jemawsbot how much does aman owe").kind).toBe(
+      parseLedgerQuery("jemaw how much does aman owe").kind,
+    );
+    expect(classifyJemawIntent("who hell are you @jemawsbot")).toBe(classifyJemawIntent("who hell are you jemaw"));
   });
 });

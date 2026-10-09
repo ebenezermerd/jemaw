@@ -131,7 +131,10 @@ export interface LoadingHandle {
   /** Placeholder message id, or null if it could not be posted. */
   readonly messageId: number | null;
   /** Replace the placeholder with the answer; returns the final message id. */
-  finish(text: string, opts?: { parse_mode?: "HTML" }): Promise<number | null>;
+  finish(
+    text: string,
+    opts?: { parse_mode?: "HTML"; reply_markup?: { inline_keyboard: { text: string; url: string }[][] } },
+  ): Promise<number | null>;
   /**
    * Stop the spinner and hand the placeholder to `send`, which may edit it
    * or post a new message. A placeholder that wasn't reused is removed.

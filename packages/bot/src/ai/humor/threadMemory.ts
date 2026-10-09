@@ -2,8 +2,7 @@
  * Build a short interleaved jemaw conversation thread for follow-up replies.
  */
 import type { ConversationThreadTurn } from "@jemaw/shared/humor";
-
-const JEMAW_RE = /(?<![a-z0-9])jemaw(?![a-z0-9])/i;
+import { JEMAW_MENTION_RE as JEMAW_RE } from "./intent.js";
 
 export function buildThreadTurns(input: {
   /** Recent group messages, any order; we sort by time. */
