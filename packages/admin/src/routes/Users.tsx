@@ -5,6 +5,7 @@ import type { AdminGroupDetailDto, AdminGroupDto, AdminUserDetailDto, AdminUserD
 import { useNavigate, useParams } from "react-router-dom";
 import { fmtMoney, fmtNet, scrollAfter, titleCase } from "../lib/format.js";
 import { BackLink, fromState, useBackTo } from "../ui/BackLink.js";
+import { PhotoFill } from "../ui/Photo.js";
 import { Busy, Loader, PageLoader, SkeletonList, SkeletonRows } from "../ui/Loader.js";
 import { DEFAULT_PAGE_SIZE, TableFooter } from "../ui/Pager.js";
 import { StatusPill, CenteredMessage } from "../ui/primitives.js";
@@ -205,6 +206,8 @@ function MessageDialog({
                 width: 36,
                 height: 36,
                 borderRadius: "50%",
+                position: "relative",
+                overflow: "hidden",
                 background: getAvatarStyle(user.displayName).bg,
                 display: "flex",
                 alignItems: "center",
@@ -216,6 +219,8 @@ function MessageDialog({
               }}
             >
               {initials(user.displayName)}
+            <PhotoFill path={user.photoUrl} />
+              <PhotoFill path={user.photoUrl} />
             </div>
             <div>
               <div style={{ fontSize: 15, fontWeight: 700 }}>Message {user.displayName}</div>
@@ -724,6 +729,8 @@ function UserDetail({
             style={{
               width: 64,
               height: 64,
+              position: "relative",
+              overflow: "hidden",
               borderRadius: "50%",
               background: bg,
               display: "flex",
@@ -1263,6 +1270,8 @@ export function Users() {
                       width: 36,
                       height: 36,
                       borderRadius: 10,
+                      position: "relative",
+                      overflow: "hidden",
                       background: bg,
                       display: "flex",
                       alignItems: "center",
@@ -1274,6 +1283,7 @@ export function Users() {
                     }}
                   >
                     {initials(u.displayName)}
+                    <PhotoFill path={u.photoUrl} />
                   </div>
                   <div>
                     <div style={{ fontSize: 14, fontWeight: 600 }}>{titleCase(u.displayName)}</div>

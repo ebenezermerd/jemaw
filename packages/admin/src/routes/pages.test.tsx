@@ -15,6 +15,7 @@ import type {
 
 const get = vi.fn();
 vi.mock("../lib/api.js", () => ({
+  apiUrl: (p: string) => `https://api.test${p}`,
   api: { get: (p: string) => get(p), post: vi.fn(), patch: vi.fn(), delete: vi.fn() },
 }));
 
@@ -82,6 +83,7 @@ const detail: AdminGroupDetailDto = {
   members: [
     {
       memberId: "m1",
+      photoUrl: "/avatars/1468513798.jpg?s=sig",
       displayName: "Gemechis",
       username: "Chisa_1959",
       telegramUserId: "1468513798",
@@ -96,6 +98,7 @@ const detail: AdminGroupDetailDto = {
     },
     {
       memberId: "m2",
+      photoUrl: null,
       displayName: "Ayenew",
       username: null,
       telegramUserId: "-814490836",
@@ -125,6 +128,7 @@ const user: AdminUserDto = {
   lastActiveAt: "2026-10-08T14:48:23.126Z",
   status: "active",
   isManual: false,
+  photoUrl: "/avatars/1468513798.jpg?s=sig",
 };
 
 const userDetail: AdminUserDetailDto = {
@@ -219,6 +223,10 @@ describe("Groups", () => {
     expect(screen.getByRole("radio", { name: /Suspended/ })).toBeTruthy();
     expect(screen.getByRole("switch", { name: "Brag & roast with real numbers" }).getAttribute("aria-checked")).toBe("true");
     expect(get).toHaveBeenCalledWith(`/api/admin/groups/${group.id}`);
+    // Real Telegram members get their profile photo; manual ones keep the letter.
+    const photos = within(screen.getByTestId("group-members")).getAllByRole("presentation");
+    expect(photos).toHaveLength(1);
+    expect(photos[0]!.getAttribute("src")).toContain("/avatars/1468513798.jpg?s=sig");
   });
 
   it("opens a member's profile and comes back to the group, not the user list", async () => {

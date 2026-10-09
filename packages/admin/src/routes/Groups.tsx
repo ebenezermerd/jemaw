@@ -5,6 +5,7 @@ import { api } from "../lib/api.js";
 import type { AdminExpensePageDto, AdminGroupDetailDto, AdminGroupDto } from "@jemaw/shared/types";
 import { fmtCompact, fmtMoney, fmtNet, scrollAfter, titleCase } from "../lib/format.js";
 import { BackLink, fromState, useBackTo } from "../ui/BackLink.js";
+import { PhotoFill } from "../ui/Photo.js";
 import { Busy, Skeleton, SkeletonList, SkeletonRows } from "../ui/Loader.js";
 import { DEFAULT_PAGE_SIZE, TableFooter, pageSlice } from "../ui/Pager.js";
 import { CenteredMessage } from "../ui/primitives.js";
@@ -140,7 +141,7 @@ function Pill({ text, color, bg }: { text: string; color: string; bg: string }) 
   );
 }
 
-function MemberAvatar({ name }: { name: string }) {
+function MemberAvatar({ name, photo }: { name: string; photo?: string | null }) {
   const g = getGG(name);
   return (
     <div
@@ -158,9 +159,12 @@ function MemberAvatar({ name }: { name: string }) {
         fontSize: 13,
         color: g.text ?? "#fff",
         flex: "none",
+        position: "relative",
+        overflow: "hidden",
       }}
     >
       {name[0]?.toUpperCase() ?? "?"}
+      <PhotoFill path={photo} />
     </div>
   );
 }
@@ -332,7 +336,7 @@ export function GroupDetailPage() {
                   }}
                 >
                   <div style={{ display: "flex", alignItems: "center", gap: 11, minWidth: 0 }}>
-                    <MemberAvatar name={m.displayName} />
+                    <MemberAvatar name={m.displayName} photo={m.photoUrl} />
                     <div style={{ minWidth: 0 }}>
                       <div style={{ fontSize: 14, fontWeight: 600, display: "flex", gap: 6, alignItems: "center" }}>
                         {titleCase(m.displayName)}

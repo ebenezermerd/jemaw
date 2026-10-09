@@ -7,6 +7,7 @@ const get = vi.fn();
 const put = vi.fn();
 const del = vi.fn();
 vi.mock("../lib/api.js", () => ({
+  apiUrl: (p: string) => `https://api.test${p}`,
   api: { get: (p: string) => get(p), put: (p: string, b: unknown) => put(p, b), delete: (p: string) => del(p), post: vi.fn(), patch: vi.fn() },
 }));
 const logout = vi.fn(async () => {});

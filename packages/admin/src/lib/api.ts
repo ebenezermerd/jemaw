@@ -14,6 +14,11 @@ export class ApiError extends Error {
   }
 }
 
+/** Absolute URL for a path the API returned, such as a member's photo. */
+export function apiUrl(path: string): string {
+  return `${BASE}${path}`;
+}
+
 const BASE = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8090";
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {

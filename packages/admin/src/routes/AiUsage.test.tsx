@@ -25,7 +25,8 @@ const usage: AdminAiUsageDto = {
 };
 
 const post = vi.fn(async (_p: string) => ({}));
-vi.mock("../lib/api.js", () => ({ api: { get: async () => usage, post: (p: string) => post(p) } }));
+vi.mock("../lib/api.js", () => ({
+  apiUrl: (p: string) => `https://api.test${p}`, api: { get: async () => usage, post: (p: string) => post(p) } }));
 const { AiUsageCard } = await import("./AiUsage.js");
 
 describe("AiUsageCard", () => {
