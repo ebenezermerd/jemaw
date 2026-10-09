@@ -1,4 +1,5 @@
 import { DEFAULT_POST_DESIGNS, parsePostDesigns, type PostDesigns } from "./posts/designs.js";
+import { DEFAULT_BOSS_CONFIG, parseBossConfig, type BossConfig } from "./boss.js";
 
 /**
  * Bot-wide switches the admin console writes to app_config and the bot reads
@@ -19,6 +20,8 @@ export interface BotRuntimeConfig {
   maintenanceMessage: string | null;
   /** Layout per kind of post (weekly report, AI answers, announcements). */
   postDesigns: PostDesigns;
+  /** How the bot treats Jemaw's super admins in group chats. */
+  boss: BossConfig;
 }
 
 export const DEFAULT_BOT_RUNTIME_CONFIG: BotRuntimeConfig = {
@@ -29,6 +32,7 @@ export const DEFAULT_BOT_RUNTIME_CONFIG: BotRuntimeConfig = {
   weeklyDigestEnabled: true,
   maintenanceMessage: null,
   postDesigns: DEFAULT_POST_DESIGNS,
+  boss: DEFAULT_BOSS_CONFIG,
 };
 
 /** app_config key for each field. */
@@ -40,6 +44,7 @@ export const BOT_RUNTIME_KEYS: Record<keyof BotRuntimeConfig, string> = {
   weeklyDigestEnabled: "bot.weeklyDigest.enabled",
   maintenanceMessage: "bot.maintenanceMessage",
   postDesigns: "bot.postDesigns",
+  boss: "bot.boss",
 };
 
 /** app_config key the bot refreshes so the console can tell it is alive. */
@@ -64,6 +69,8 @@ export function parseRuntimeValue<K extends keyof BotRuntimeConfig>(
       return nonEmpty(raw) as BotRuntimeConfig[K];
     case "postDesigns":
       return parsePostDesigns(raw) as BotRuntimeConfig[K];
+    case "boss":
+      return parseBossConfig(raw) as BotRuntimeConfig[K];
     case "scanCooldownSeconds": {
       const n = Number(raw);
       return (Number.isFinite(n) && raw !== null ? Math.min(600, Math.max(5, Math.round(n))) : d) as BotRuntimeConfig[K];

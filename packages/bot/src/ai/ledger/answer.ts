@@ -51,9 +51,9 @@ const NOT_FOUND =
  */
 function leaderboard(s: LedgerSnapshot): string {
   const rich = s.stats.paidByMember[0];
-  if (!rich) return "Nobody has fronted anything yet.";
+  if (!rich) return "Nobody has paid for anything yet.";
   const owing = [...s.balances].sort((a, z) => a.netCents - z.netCents)[0];
-  const first = `${escapeHtml(rich.name)} has fronted the most, ${money(s, rich.cents)}.`;
+  const first = `${escapeHtml(rich.name)} has paid for the most, ${money(s, rich.cents)}.`;
   return owing && owing.netCents < 0
     ? `${first} ${escapeHtml(owing.name)} owes the most, ${money(s, -owing.netCents)}.`
     : `${first} Nobody owes anybody right now.`;
@@ -64,8 +64,8 @@ function whoAmI(s: LedgerSnapshot): string {
   const a = s.asker;
   const paid =
     a.paidCount === 0
-      ? "You haven't fronted any expenses here yet."
-      : `You've fronted ${a.paidCount} expense${a.paidCount === 1 ? "" : "s"} (${money(s, a.paidCents)}).`;
+      ? "You haven't paid for any expenses here yet."
+      : `You've paid for ${a.paidCount} expense${a.paidCount === 1 ? "" : "s"} (${money(s, a.paidCents)}).`;
   return [`You're ${b(a.name)}.`, paid, myBalance(s)].join("\n");
 }
 

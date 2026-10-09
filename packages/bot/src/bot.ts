@@ -7,6 +7,8 @@ import {
   rememberSeenUser,
   groupAiGate,
   captureMessage,
+  captureEditedMessage,
+  mergeGroupSettings,
   countPendingSuggestions,
   findMemberByTelegramId,
   setMemberRole,
@@ -43,6 +45,9 @@ import {
 import { startLoading, type LoadingHandle, type LoadingTopic } from "./telegram/loading.js";
 import { staticRuntimeConfig, type RuntimeConfigStore } from "./runtimeConfig.js";
 import { parseGroupAccess, type GroupAccessV1 } from "@jemaw/shared/groupAccess";
+import { isBoss } from "@jemaw/shared/boss";
+import type { Group } from "@jemaw/shared/schema";
+import { parseBossCommand, type BossCommand } from "./ai/humor/boss.js";
 
 
 // ─── Reply copy (pure, testable) ──────────────────────────────────────
@@ -303,8 +308,10 @@ export function createBot(token: string, deps: BotDeps): Bot {
     opts: { loading?: LoadingHandle; lead?: string; questionText?: string } = {},
   ): void {
     const chatId = ctx.chat!.id;
-    const replyTo = ctx.message?.message_id;
+    const replyTo = ctx.msg?.message_id;
     const askerTelegramId = ctx.from ? BigInt(ctx.from.id) : null;
+    const boss = runtime.current().boss;
+    const bossTone = isBoss(boss, askerTelegramId) ? boss.tone : undefined;
     void (async () => {
       const g = await getGroupById(db, groupId);
       if (!g) {
@@ -327,6 +334,7 @@ export function createBot(token: string, deps: BotDeps): Bot {
         humor: gate.blocked ? {} : (humor ?? {}),
         lead: opts.lead,
         questionText: opts.questionText,
+        bossTone,
         api: ctx.api,
         chatId,
         designs: runtime.current().postDesigns,
@@ -367,7 +375,7 @@ export function createBot(token: string, deps: BotDeps): Bot {
   // answers a command or a mention with a short notice, at most every 6 hours.
   const accessCache = new Map<string, { access: GroupAccessV1; at: number }>();
   const noticeAt = new Map<string, number>();
-  bot.on("message", async (ctx, next) => {
+  bot.on(["message", "edited_message"], async (ctx, next) => {
     const chat = ctx.chat;
     if (!GROUP_TYPES.has(chat.type)) return next();
     const key = String(chat.id);
@@ -381,7 +389,8 @@ export function createBot(token: string, deps: BotDeps): Bot {
       accessCache.set(key, cached);
     }
     if (cached.access.status !== "suspended") return next();
-    const text = ctx.message.text ?? "";
+    if (ctx.editedMessage) return;
+    const text = ctx.msg?.text ?? "";
     if (!text.startsWith("/") && !mentionsJemaw(text, botUsername)) return;
     if (Date.now() - (noticeAt.get(key) ?? 0) < 6 * 60 * 60_000) return;
     noticeAt.set(key, Date.now());
@@ -524,37 +533,49 @@ export function createBot(token: string, deps: BotDeps): Bot {
   );
 
   // Capture plain group text + register the speaker; trigger a scan on "jemaw".
-  bot.on("message:text", async (ctx) => {
+  // A recent message edited to mention Jemaw counts as a fresh mention.
+  bot.on(["message:text", "edited_message:text"], async (ctx) => {
     const chat = ctx.chat;
-    if (!chat || !GROUP_TYPES.has(chat.type)) return;
-    const text = ctx.message.text;
+    const msg = ctx.msg;
+    if (!chat || !msg?.text || !GROUP_TYPES.has(chat.type)) return;
+    const text = msg.text;
     if (text.startsWith("/")) return; // commands handled above
     const groupId = await ensureGroup(ctx);
     if (!groupId) return;
     if (ctx.from) await registerUser(db, groupId, ctx.from).catch(() => {});
-    await captureMessage(
-      db,
-      groupId,
-      BigInt(ctx.message.message_id),
-      BigInt(ctx.from?.id ?? 0),
-      text,
-      new Date(ctx.message.date * 1000),
-    ).catch(() => {});
+    const capture = [db, groupId, BigInt(msg.message_id), BigInt(ctx.from?.id ?? 0), text, new Date(msg.date * 1000)] as const;
+    if (ctx.editedMessage) {
+      const before = await captureEditedMessage(...capture).catch(() => undefined);
+      if (!editNowMentions({ before, after: text, sentAt: msg.date, now: Date.now(), botUsername })) return;
+    } else {
+      await captureMessage(...capture).catch(() => {});
+    }
 
     if (mentionsJemaw(text, botUsername)) {
       const notice = runtime.current().maintenanceMessage;
       if (notice) {
         await ctx
-          .reply(notice, { reply_parameters: { message_id: ctx.message.message_id, allow_sending_without_reply: true } })
+          .reply(notice, { reply_parameters: { message_id: msg.message_id, allow_sending_without_reply: true } })
           .catch(() => {});
         return;
       }
       const chatEnabled = runtime.current().chatEnabled;
       const askerTelegramId = ctx.from ? BigInt(ctx.from.id) : null;
-      const replyTo = ctx.message.message_id;
+      const replyTo = msg.message_id;
+      const bossConfig = runtime.current().boss;
+      const asBoss = isBoss(bossConfig, askerTelegramId);
       void (async () => {
         const g = await getGroupById(db, groupId);
         if (!g) return;
+        const command = asBoss && bossConfig.commands ? parseBossCommand(text) : null;
+        if (command) {
+          const line = await runBossCommand(db, g, command);
+          await ctx
+            .reply(line, { reply_parameters: { message_id: replyTo, allow_sending_without_reply: true } })
+            .catch(() => {});
+          console.log(`[boss] ${command} group=${groupId}`);
+          return;
+        }
         const gate = await groupAiGate(db, g);
         const aiOk = chatEnabled && !gate.blocked;
         const previous = recallLedgerQuestion(groupId, askerTelegramId);
@@ -621,6 +642,8 @@ export function createBot(token: string, deps: BotDeps): Bot {
           askerTelegramId,
           loading,
           links: { botUsername, miniAppShortName, miniAppUrl },
+          boss: asBoss ? bossConfig : undefined,
+          bossIds: bossConfig.people.map((p) => p.telegramUserId),
         });
         if (!delivered) await loading.cancel();
       })().catch((err) =>
@@ -633,6 +656,47 @@ export function createBot(token: string, deps: BotDeps): Bot {
   });
 
   return bot;
+}
+
+/**
+ * A boss switching the group's humor from chat. Turning it off remembers the
+ * mode so turning it back on restores it.
+ */
+async function runBossCommand(db: Db, g: Group, command: BossCommand): Promise<string> {
+  const raw = (g.settings as Record<string, unknown> | null) ?? {};
+  const humor = parseHumorSettings(raw.humor);
+  if (command === "humor_off") {
+    if (humor.mode === "off") return "Humor is already off here. Say \"jemaw humor on\" to bring it back.";
+    await mergeGroupSettings(db, g.id, { humor: { ...humor, mode: "off" }, humorModeBeforeBoss: humor.mode });
+    return "Done, humor is off in this group. I'll still answer money questions. Say \"jemaw humor on\" to bring it back.";
+  }
+  if (humor.mode !== "off") return "Humor is already on here.";
+  const before = raw.humorModeBeforeBoss;
+  const mode = before === "roast" || before === "chaos" || before === "jemaw_dry" ? before : "jemaw_dry";
+  await mergeGroupSettings(db, g.id, { humor: { ...humor, mode, enabledAt: new Date().toISOString() } });
+  return "Humor is back on. Good to be back, boss.";
+}
+
+/** How long after sending an edit that adds a mention still gets an answer. */
+export const EDIT_MENTION_WINDOW_MS = 30 * 60_000;
+
+/**
+ * An edit wakes Jemaw only when it adds the mention (the message didn't
+ * mention Jemaw before, so it was never answered) and the message is recent.
+ * `before` is undefined when the lookup failed, which counts as unknown.
+ */
+export function editNowMentions(input: {
+  before: string | null | undefined;
+  after: string;
+  /** Telegram's unix seconds for when the message was first sent. */
+  sentAt: number;
+  now: number;
+  botUsername?: string;
+}): boolean {
+  if (input.before === undefined) return false;
+  if (!mentionsJemaw(input.after, input.botUsername)) return false;
+  if (input.before != null && mentionsJemaw(input.before, input.botUsername)) return false;
+  return input.now - input.sentAt * 1000 <= EDIT_MENTION_WINDOW_MS;
 }
 
 /** Resolve a Telegram user to a member id for ai_runs attribution. */

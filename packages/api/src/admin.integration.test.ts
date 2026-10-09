@@ -383,6 +383,22 @@ d("admin management routes", () => {
     expect(saved.json().postDesigns.ai_payments).toMatchObject({ layout: "checklist", checklistStyle: "table" });
   });
 
+  it("lets only super admins set how the bot treats super admins", async () => {
+    const boss = { people: [{ telegramUserId: "9100001", name: "Ada" }], tone: "gentle", skipPause: true };
+    const saved = await inject("PATCH", "/api/admin/bot/config", { boss });
+    expect(saved.statusCode).toBe(200);
+    expect(saved.json().boss).toMatchObject({ people: [{ telegramUserId: "9100001", name: "Ada" }], tone: "gentle", canEndPause: true });
+
+    await db.update(appConfig).set({ value: { emails: [ADMIN], supers: [] } }).where(eq(appConfig.key, "admins"));
+    try {
+      expect((await inject("PATCH", "/api/admin/bot/config", { boss: { people: [] } })).statusCode).toBe(403);
+      expect((await inject("PATCH", "/api/admin/bot/config", { scanCooldownSeconds: 10 })).statusCode).toBe(200);
+    } finally {
+      await db.update(appConfig).set({ value: { emails: [ADMIN], supers: [ADMIN] } }).where(eq(appConfig.key, "admins"));
+      await db.delete(appConfig).where(eq(appConfig.key, "bot.boss"));
+    }
+  });
+
   it("clears a group's expenses but keeps the group and its members", async () => {
     const res = await inject("POST", `/api/admin/groups/${groupId}/reset`);
     expect(res.json().deleted).toMatchObject({ expenses: 1, expense_shares: 2, settlements: 1 });

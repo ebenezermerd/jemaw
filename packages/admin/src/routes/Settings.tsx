@@ -13,6 +13,7 @@ import { Card, PrimaryButton } from "../ui/primitives.js";
 import { ago, statusDetail, useBotStatus } from "../ui/BotStatus.js";
 import { NumberField, ToggleRow } from "./GroupManage.js";
 import { AiUsageCard } from "./AiUsage.js";
+import { BossModeCard } from "./BossMode.js";
 
 const errText = (e: unknown) => (e instanceof Error ? e.message : "Something went wrong.");
 
@@ -22,6 +23,7 @@ export function Settings() {
       <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
         <AiUsageCard />
         <BotSwitches />
+        <BossModeCard />
       </div>
       <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
         <BotHealth />

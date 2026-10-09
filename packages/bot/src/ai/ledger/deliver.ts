@@ -17,11 +17,12 @@ import { namedMember, openDebtsFor, renderLedgerFacts } from "./answer.js";
 import { composeLedgerPersonaLine } from "./persona.js";
 import { composePost, DEFAULT_POST_DESIGNS, type PostDesigns } from "@jemaw/shared/posts";
 import { sendPost } from "../../telegram/sendPost.js";
+import type { BossTone } from "@jemaw/shared/boss";
 import { postContext, type PostLinks } from "../../telegram/postLinks.js";
 
 const REPORT_TITLE: Record<LedgerQuery["kind"], string> = {
   whoami: "About you",
-  leaderboard: "Who fronted the most",
+  leaderboard: "Who paid the most",
   my_balance: "Your open payments",
   who_owes: "Open payments",
   expense_list: "Expenses",
@@ -41,6 +42,8 @@ export async function deliverLedgerAnswer(input: {
   lead?: string;
   /** What was asked, to find a member the question names. */
   questionText?: string;
+  /** Set when a super admin asked: how gently the joke line treats them. */
+  bossTone?: BossTone;
   /** Where the post goes and how it looks; defaults keep tests simple. */
   api?: Api;
   chatId?: number;
@@ -71,6 +74,7 @@ export async function deliverLedgerAnswer(input: {
             mode: settings.mode,
             snapshot,
             query,
+            bossTone: input.bossTone,
           })
         : null;
     // A brag question is banter: the persona line is the reply, with no table above it.
