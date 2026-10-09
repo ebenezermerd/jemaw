@@ -61,6 +61,8 @@ export interface MemberDto {
   isActive: boolean;
   /** Default-included in expense splits; secondary members are added explicitly. */
   isPrimary: boolean;
+  /** Path of the member's Telegram profile photo on the API, or null (manual members). */
+  photoUrl?: string | null;
 }
 
 export interface GroupDto {
@@ -449,6 +451,8 @@ export interface AdminUserDto {
   status: "active" | "idle" | "new" | "suspended";
   /** added by hand in the app, not a real Telegram account */
   isManual: boolean;
+  /** path of their Telegram profile photo on the API, or null */
+  photoUrl: string | null;
 }
 
 export interface AdminGroupDto {
@@ -466,6 +470,8 @@ export interface AdminGroupDto {
 
 /** One member of a group with their ledger position, computed like the bot does. */
 export interface AdminGroupMemberDto {
+  /** path of their Telegram profile photo on the API, or null */
+  photoUrl: string | null;
   memberId: string;
   displayName: string;
   username: string | null;

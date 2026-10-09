@@ -12,7 +12,8 @@
     "./humor": "./src/humor.ts",
     "./ledger": "./src/ledger/index.ts",
     "./runtimeConfig": "./src/runtimeConfig.ts",
-    "./groupAccess": "./src/groupAccess.ts"
+    "./groupAccess": "./src/groupAccess.ts",
+    "./avatar": "./src/avatar.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",
