@@ -18,6 +18,8 @@ import {
   botReplies,
   botReplyFeedback,
   humorMemberPreferences,
+  chatActions,
+  type ChatAction,
   type Group,
   type Member,
   type Settlement,
@@ -1085,6 +1087,7 @@ export async function resetGroupData(db: Db, groupId: string): Promise<void> {
     await tx.delete(suggestions).where(eq(suggestions.groupId, groupId));
     await tx.delete(aiRuns).where(eq(aiRuns.groupId, groupId));
     await tx.delete(messages).where(eq(messages.groupId, groupId));
+    await tx.delete(chatActions).where(eq(chatActions.groupId, groupId));
     await tx
       .update(groups)
       .set({ lastScanMessageId: null })
@@ -1258,4 +1261,46 @@ export async function upsertHumorMemberPrefs(
     })
     .returning();
   return inserted[0]!;
+}
+
+// ─── Chat actions (super admin changes waiting on Confirm) ────────────
+export async function insertChatAction(
+  db: Db,
+  values: typeof chatActions.$inferInsert,
+): Promise<ChatAction> {
+  const [row] = await db.insert(chatActions).values(values).returning();
+  return row!;
+}
+
+/** Find a chat action by the start of its id, as carried in button data. */
+export async function findChatAction(db: Db, idPrefix: string): Promise<ChatAction | null> {
+  if (!/^[0-9a-f]{8}$/.test(idPrefix)) return null;
+  const [row] = await db
+    .select()
+    .from(chatActions)
+    .where(sql`${chatActions.id}::text like ${`${idPrefix}%`}`)
+    .orderBy(desc(chatActions.createdAt))
+    .limit(1);
+  return row ?? null;
+}
+
+export async function updateChatAction(
+  db: Db,
+  id: string,
+  patch: Partial<Pick<ChatAction, "selected" | "status" | "result" | "messageId">>,
+): Promise<void> {
+  await db.update(chatActions).set(patch).where(eq(chatActions.id, id));
+}
+
+/**
+ * Move a pending action to a final status, once. Returns false when another
+ * press already finished it, so a double tap can't write twice.
+ */
+export async function claimChatAction(db: Db, id: string, status: "done" | "cancelled" | "expired" | "failed"): Promise<boolean> {
+  const rows = await db
+    .update(chatActions)
+    .set({ status })
+    .where(and(eq(chatActions.id, id), eq(chatActions.status, "pending")))
+    .returning({ id: chatActions.id });
+  return rows.length > 0;
 }

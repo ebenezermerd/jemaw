@@ -431,6 +431,40 @@ export const announcements = pgTable("announcements", {
   release: jsonb("release"),
 });
 
+// ─── chat_actions ─────────────────────────────────────────────────────
+// A change a super admin asked for in group chat ("settle mine to pomi"),
+// waiting on the Confirm button. The row is also the audit trail: who asked,
+// what was offered, what they picked, and what was written.
+export const chatActions = pgTable("chat_actions", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  groupId: uuid("group_id")
+    .notNull()
+    .references(() => groups.id),
+  requestedByTelegramId: bigint("requested_by_telegram_id", { mode: "bigint" }).notNull(),
+  actorMemberId: uuid("actor_member_id")
+    .notNull()
+    .references(() => members.id),
+  /** settle | approve_drafts | dismiss_drafts | add_expense | delete_expense | delete_payment */
+  kind: text("kind").notNull(),
+  /** Resolved inputs the executor needs (member ids, amounts, split). */
+  payload: jsonb("payload").notNull().default({}),
+  /** The choices shown as buttons: [{ id, label }]. */
+  options: jsonb("options").notNull().default([]),
+  /** Indexes into options that are ticked. */
+  selected: jsonb("selected").notNull().default([]),
+  /** pending | done | cancelled | expired | failed */
+  status: text("status").notNull().default("pending"),
+  result: jsonb("result"),
+  chatId: bigint("chat_id", { mode: "bigint" }).notNull(),
+  messageId: bigint("message_id", { mode: "bigint" }),
+  createdAt: timestamp("created_at", { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+  expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+});
+
+export type ChatAction = typeof chatActions.$inferSelect;
+
 // ─── app_config ───────────────────────────────────────────────────────
 // Key/value settings for the bot + console: the admin allowlist (`admins`),
 // feature flags, and tunables. The bot may read these additively.
