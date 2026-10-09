@@ -15,7 +15,7 @@ import { listPendingSuggestions, type ExpenseWithShares } from "../../repo.js";
 import { groupDigits } from "../../telegram/announcements.js";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
-const PENDING_DRAFTS = 5;
+const PENDING_DRAFTS = 10;
 
 export interface NamedAmount {
   name: string;
@@ -58,7 +58,7 @@ export interface LedgerSnapshot {
     paidByMember: NamedAmount[];
     biggest: { description: string; cents: number; payer: string } | null;
   };
-  pending: { count: number; drafts: { label: string; cents: number | null }[] };
+  pending: { count: number; drafts: { label: string; cents: number | null; payer: string | null }[] };
 }
 
 export interface LedgerSnapshotInput {
@@ -173,6 +173,7 @@ export function computeLedgerSnapshot(i: LedgerSnapshotInput): LedgerSnapshot {
       drafts: i.pending.slice(0, PENDING_DRAFTS).map((s) => ({
         label: s.description,
         cents: s.amount == null ? null : decimalToCents(s.amount),
+        payer: s.kind === "settlement" ? null : s.payerMemberId ? nameOf(s.payerMemberId) : null,
       })),
     },
   };

@@ -57,7 +57,7 @@ const snap: LedgerSnapshot = {
     ],
     biggest: { description: "Old trip", cents: 500000, payer: "Hana" },
   },
-  pending: { count: 2, drafts: [{ label: "Coffee", cents: 9000 }, { label: "Snacks", cents: null }] },
+  pending: { count: 2, drafts: [{ label: "Coffee", cents: 9000, payer: null }, { label: "Snacks", cents: null, payer: null }] },
 };
 
 const now = new Date("2026-10-08T12:00:00Z");

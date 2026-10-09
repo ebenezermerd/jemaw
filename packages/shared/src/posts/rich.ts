@@ -56,6 +56,7 @@ export type RichBlock =
 export interface KeyboardButton {
   text: string;
   url?: string;
+  callback_data?: string;
   copy_text?: { text: string };
   style?: "primary" | "success" | "danger";
 }
