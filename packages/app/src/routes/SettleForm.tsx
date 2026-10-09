@@ -51,7 +51,10 @@ export function SettleForm() {
   const nav = useNavigate();
   const suggestionId = params.get("suggestion") ?? undefined;
 
-  const members = group.data?.members.filter((m) => m.isActive) ?? [];
+  // Everyone, removed members included: a removed member can still owe or be
+  // owed, and their name must show when settling with them.
+  const members = group.data?.members ?? [];
+  const activeMembers = members.filter((m) => m.isActive);
   const currency = group.data?.defaultCurrency ?? "EUR";
   const expenses = expensesQ.data ?? [];
   const settlementSuggestion = useMemo(
@@ -67,9 +70,9 @@ export function SettleForm() {
   const me = useMemo(() => {
     const tg = currentTelegramId();
     return (
-      members.find((m) => m.telegramUserId === tg)?.id ??
+      activeMembers.find((m) => m.telegramUserId === tg)?.id ??
       params.get("from") ??
-      members[0]?.id ??
+      activeMembers[0]?.id ??
       ""
     );
     // eslint-disable-next-line react-hooks/exhaustive-deps

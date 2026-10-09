@@ -27,7 +27,11 @@ export function Add() {
     ? suggestions.data?.suggestions.find((s) => s.id === fromSuggestionId)
     : undefined;
 
-  const members = group.data?.members.filter((m) => m.isActive) ?? [];
+  // New expenses go to active members. A suggestion may still name someone
+  // who was removed since; keep them visible so nobody is split in unseen.
+  const fromSource = new Set([source?.payerMemberId, ...(source?.splitWith ?? [])]);
+  const members =
+    group.data?.members.filter((m) => m.isActive || fromSource.has(m.id)) ?? [];
 
   const [description, setDescription] = useState("");
   const [amount, setAmount] = useState("");
