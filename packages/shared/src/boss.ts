@@ -23,6 +23,8 @@ export interface BossConfig {
   canEndPause: boolean;
   /** "jemaw humor off" and "jemaw humor on" from them switch the group's humor. */
   commands: boolean;
+  /** Settle, approve or dismiss drafts, add and delete from chat, behind a Confirm button. */
+  actions: boolean;
 }
 
 export const DEFAULT_BOSS_CONFIG: BossConfig = {
@@ -31,6 +33,7 @@ export const DEFAULT_BOSS_CONFIG: BossConfig = {
   skipPause: true,
   canEndPause: true,
   commands: true,
+  actions: true,
 };
 
 export const BOSS_TONE_META: Record<BossTone, { label: string; hint: string }> = {
@@ -64,6 +67,7 @@ export function parseBossConfig(raw: unknown): BossConfig {
     skipPause: bool(r.skipPause, d.skipPause),
     canEndPause: bool(r.canEndPause, d.canEndPause),
     commands: bool(r.commands, d.commands),
+    actions: bool(r.actions, d.actions),
   };
 }
 

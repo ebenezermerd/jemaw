@@ -7,11 +7,13 @@
 import { z } from "zod";
 import type { ScanClient } from "../geminiClient.js";
 import { classifyLedgerQuestion, isAboutMe, type LedgerQuery, type LedgerQuestionKind } from "../humor/intent.js";
+import { ACTION_KINDS, type ActionRequest } from "../../actions/types.js";
 
 export interface Understanding {
-  intent: "ledger" | "scan" | "chat" | "correction";
+  intent: "ledger" | "scan" | "chat" | "correction" | "action";
   /** Present for ledger and correction. */
   query?: LedgerQuery;
+  action?: ActionRequest;
 }
 
 const KINDS = [
@@ -25,8 +27,20 @@ const KINDS = [
   "overview",
 ] as const satisfies readonly LedgerQuestionKind[];
 
+const optText = z.string().max(200).nullable().optional();
+const actionSchema = z.object({
+  action: z.enum(ACTION_KINDS),
+  from: optText,
+  to: optText,
+  amount: z.union([z.string().max(20), z.number()]).nullable().optional(),
+  description: optText,
+  participants: z.array(z.string().max(60)).max(20).nullable().optional(),
+  match: optText,
+});
+
 const schema = z.object({
-  intent: z.enum(["ledger", "scan", "chat", "correction"]),
+  intent: z.enum(["ledger", "scan", "chat", "correction", "action"]),
+  action: actionSchema.nullable().optional(),
   kind: z.enum(KINDS).nullable().optional(),
   period: z.enum(["week", "month", "all"]).nullable().optional(),
   days: z.number().nullable().optional(),
@@ -36,10 +50,12 @@ const schema = z.object({
 
 const SYSTEM_PROMPT = [
   "You route messages that address Jemaw, the expense bot of a Telegram friend group.",
-  'Return JSON only: {"intent":"ledger|scan|chat|correction","kind":"whoami|leaderboard|my_balance|who_owes|expense_list|totals|pending|overview|null","period":"week|month|all","days":number|null,"limit":number|null,"mine":"paid|involved|null"}.',
+  'Return JSON only: {"intent":"ledger|scan|chat|correction|action","action":{"action":"settle|approve_drafts|dismiss_drafts|add_expense|delete_expense|delete_payment","from":string|null,"to":string|null,"amount":string|null,"description":string|null,"participants":[string]|null,"match":string|null}|null,"kind":"whoami|leaderboard|my_balance|who_owes|expense_list|totals|pending|overview|null","period":"week|month|all","days":number|null,"limit":number|null,"mine":"paid|involved|null"}.',
   "ledger: a question or request about the group's records: who am I, who is the rich or broke one, my balance, who owes whom, open or unsettled payments, listing expenses, totals or who spent most, drafts waiting for review, a summary.",
   "scan: the message reports a NEW money event to record (someone paid, spent, lent or paid back) or explicitly asks to scan or check the chat.",
   "correction: the user says Jemaw's previous answer was wrong or not what they asked. Use previous_question to fill kind, days, limit and mine with what they really wanted.",
+  "action: a command telling Jemaw to change the books now: settle or mark a payment, approve or dismiss drafts, add an expense, delete an expense or a payment. Questions are never actions, and a plain report like 'I paid 600 for lunch' is scan unless they tell Jemaw to add it.",
+  "action fields: from and to are names as typed, or 'me' for the sender ('settle mine to pomi' is from me to pomi). amount is digits only. participants are the names to split with, empty for everyone. match is the words that identify the drafts, expense or payment ('groceries', 'yesterday lunch').",
   "chat: greetings, banter and everything else.",
   "kind: whoami ONLY when the sender asks who they are ('who am I'); questions about another person's debts, payments or expenses are who_owes, expense_list or totals, never whoami. leaderboard for who is rich, broke, cheap, generous, the biggest spender or who owes the most. my_balance ONLY when the sender asks about their own money with I, me or my ('what do I owe', 'who owes me'). who_owes for open, pending, unsettled or outstanding payments, settlements or debts in general, and for what a named person owes. pending ONLY for drafts or expenses waiting for review in the app, never for payments or settlements. expense_list for listing expenses. totals for sums and top spenders.",
   "mine: paid when they mean expenses they paid ('my expenses', 'what I paid'); involved when they mean everything they were part of; otherwise null.",
@@ -96,6 +112,18 @@ export async function understandMessage(input: {
     }
     const o = parsed.data;
     if (o.intent === "chat" || o.intent === "scan") return { intent: o.intent };
+    if (o.intent === "action") {
+      if (!o.action) return null;
+      const a = o.action;
+      const action: ActionRequest = { action: a.action };
+      if (a.from) action.from = a.from;
+      if (a.to) action.to = a.to;
+      if (a.amount != null && String(a.amount).trim()) action.amount = String(a.amount).replace(/[^\d.]/g, "");
+      if (a.description) action.description = a.description;
+      if (a.participants?.length) action.participants = a.participants;
+      if (a.match) action.match = a.match;
+      return { intent: "action", action };
+    }
     if (!o.kind) return null;
     const query: LedgerQuery = { kind: o.intent === "ledger" ? guardKind(o.kind, input.text) : o.kind, period: o.period ?? "all" };
     if (o.days != null && o.days >= 1) query.days = Math.min(365, Math.round(o.days));

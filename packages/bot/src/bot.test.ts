@@ -158,3 +158,13 @@ describe("editNowMentions", () => {
     expect(editNowMentions({ before: null, after: "hi jemaw", sentAt: sentAt(1), now })).toBe(true);
   });
 });
+
+describe("understandByRules actions", () => {
+  it("routes a clear command to an action before any question rules", () => {
+    expect(understandByRules("Settle mine to pomi jemaw", null)).toEqual({
+      intent: "action",
+      action: { action: "settle", from: "me", to: "pomi" },
+    });
+    expect(understandByRules("show drafts jemaw", null)).toMatchObject({ intent: "ledger", query: { kind: "pending" } });
+  });
+});

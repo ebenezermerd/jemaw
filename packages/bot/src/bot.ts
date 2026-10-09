@@ -9,6 +9,10 @@ import {
   captureMessage,
   captureEditedMessage,
   mergeGroupSettings,
+  insertChatAction,
+  findChatAction,
+  updateChatAction,
+  claimChatAction,
   countPendingSuggestions,
   findMemberByTelegramId,
   setMemberRole,
@@ -34,7 +38,7 @@ import {
   type LedgerQuery,
 } from "./ai/humor/intent.js";
 import { parseHumorSettings } from "@jemaw/shared/humor";
-import { deliverLedgerAnswer } from "./ai/ledger/deliver.js";
+import { APPROVE_DRAFTS_DATA, deliverLedgerAnswer } from "./ai/ledger/deliver.js";
 import { understandMessage, type Understanding } from "./ai/ledger/understand.js";
 import {
   CORRECTION_LINES,
@@ -48,6 +52,12 @@ import { parseGroupAccess, type GroupAccessV1 } from "@jemaw/shared/groupAccess"
 import { isBoss } from "@jemaw/shared/boss";
 import type { Group } from "@jemaw/shared/schema";
 import { parseBossCommand, type BossCommand } from "./ai/humor/boss.js";
+import { parseActionByRules } from "./actions/parse.js";
+import { planAction } from "./actions/plan.js";
+import { executeAction } from "./actions/execute.js";
+import type { ActionRequest } from "./actions/types.js";
+import { parseCardData, renderActionCard, toggleSelection } from "./telegram/actionCard.js";
+import { postContext } from "./telegram/postLinks.js";
 
 
 // ─── Reply copy (pure, testable) ──────────────────────────────────────
@@ -101,6 +111,8 @@ export function understandByRules(
   text: string,
   previous: RememberedQuestion | null,
 ): Understanding {
+  const action = parseActionByRules(text);
+  if (action) return { intent: "action", action };
   const intent: JemawIntent = classifyJemawIntent(text, { hasPrevious: previous != null });
   if (intent === "ledger") return { intent, query: parseLedgerQuery(text) };
   if (intent === "correction" && previous) {
@@ -312,6 +324,7 @@ export function createBot(token: string, deps: BotDeps): Bot {
     const askerTelegramId = ctx.from ? BigInt(ctx.from.id) : null;
     const boss = runtime.current().boss;
     const bossTone = isBoss(boss, askerTelegramId) ? boss.tone : undefined;
+    const canAct = bossTone != null && boss.actions;
     void (async () => {
       const g = await getGroupById(db, groupId);
       if (!g) {
@@ -335,6 +348,7 @@ export function createBot(token: string, deps: BotDeps): Bot {
         lead: opts.lead,
         questionText: opts.questionText,
         bossTone,
+        canAct,
         api: ctx.api,
         chatId,
         designs: runtime.current().postDesigns,
@@ -588,7 +602,8 @@ export function createBot(token: string, deps: BotDeps): Bot {
 
         // Placeholder first, from the fast rules; the model refines the route.
         const topic: LoadingTopic =
-          byRules.query?.kind ?? (byRules.intent === "chat" ? chatLoadingTopic(text) : "scan");
+          byRules.query?.kind ??
+          (byRules.intent === "action" ? "pending" : byRules.intent === "chat" ? chatLoadingTopic(text) : "scan");
         const loading = await startLoading(ctx.api, chat.id, { topic, replyTo });
 
         const understander = aiOk ? (humor?.client ?? gemini) : undefined;
@@ -604,6 +619,15 @@ export function createBot(token: string, deps: BotDeps): Bot {
           `[understand] group=${groupId} intent=${u.intent} source=${byModel ? "model" : "rules"} query=${JSON.stringify(u.query ?? null)}`,
         );
 
+        if (u.intent === "action" && u.action) {
+          await startAction(g, u.action, {
+            respond: (t, opts) => loading.finish(t, opts),
+            askerTelegramId,
+            asBoss,
+            allowed: bossConfig.actions,
+          });
+          return;
+        }
         if ((u.intent === "ledger" || u.intent === "correction") && u.query) {
           const correcting = u.intent === "correction" && previous != null;
           answerLedger(ctx, groupId, u.query, {
@@ -655,8 +679,132 @@ export function createBot(token: string, deps: BotDeps): Bot {
     }
   });
 
+  async function startAction(
+    g: Group,
+    request: ActionRequest,
+    o: { respond: LoadingHandle["finish"]; askerTelegramId: bigint | null; asBoss: boolean; allowed: boolean },
+  ): Promise<void> {
+    const openUrl = postContext({ botUsername, miniAppShortName, miniAppUrl }, g.id).openUrl;
+    const openButton = openUrl ? { reply_markup: { inline_keyboard: [[{ text: "Open Jemaw", url: openUrl }]] } } : {};
+    if (!o.asBoss || !o.allowed || o.askerTelegramId == null) {
+      await o.respond("Only Jemaw's super admins can change the books from chat. You can do this in the app.", openButton);
+      return;
+    }
+    const actor = await findMemberByTelegramId(db, g.id, o.askerTelegramId);
+    if (!actor || !actor.isActive) {
+      await o.respond("You're not on this group's books yet, so I can't act for you here.");
+      return;
+    }
+    const res = await planAction(db, g, actor, request);
+    if ("message" in res) {
+      await o.respond(res.message);
+      return;
+    }
+    const { plan } = res;
+    const row = await insertChatAction(db, {
+      groupId: g.id,
+      requestedByTelegramId: o.askerTelegramId,
+      actorMemberId: actor.id,
+      kind: plan.kind,
+      payload: { ...plan.payload, multi: plan.multi, title: plan.title },
+      options: plan.options,
+      selected: plan.selected,
+      chatId: g.telegramChatId,
+      expiresAt: new Date(Date.now() + ACTION_TTL_MS),
+    });
+    const card = renderActionCard(row, plan.title);
+    const messageId = await o.respond(card.text, { parse_mode: "HTML", reply_markup: card.reply_markup });
+    if (messageId != null) await updateChatAction(db, row.id, { messageId: BigInt(messageId) });
+    console.log(`[action] planned ${plan.kind} group=${g.id} options=${plan.options.length}`);
+  }
+
+  bot.callbackQuery(APPROVE_DRAFTS_DATA, async (ctx) => {
+    const g = ctx.chat ? await getGroupByChatId(db, BigInt(ctx.chat.id)) : null;
+    const boss = runtime.current().boss;
+    if (!g || !isBoss(boss, ctx.from.id) || !boss.actions) {
+      await ctx.answerCallbackQuery({ text: "Only Jemaw's super admins can approve from chat." });
+      return;
+    }
+    await ctx.answerCallbackQuery();
+    await startAction(g, { action: "approve_drafts" }, {
+      respond: async (t, opts) => (await ctx.reply(t, opts as never).catch(() => null))?.message_id ?? null,
+      askerTelegramId: BigInt(ctx.from.id),
+      asBoss: true,
+      allowed: true,
+    });
+  });
+
+  bot.callbackQuery(/^a:/, async (ctx) => {
+    const parsed = parseCardData(ctx.callbackQuery.data);
+    const row = parsed ? await findChatAction(db, parsed.idPrefix) : null;
+    if (!parsed || !row) {
+      await ctx.answerCallbackQuery({ text: "This expired. Ask me again." });
+      return;
+    }
+    if (BigInt(ctx.from.id) !== row.requestedByTelegramId) {
+      await ctx.answerCallbackQuery({ text: "Only the person who asked can use these buttons." });
+      return;
+    }
+    if (row.status !== "pending") {
+      await ctx.answerCallbackQuery({ text: "Already handled." });
+      return;
+    }
+    const finish = (text: string) =>
+      ctx.editMessageText(text, { reply_markup: { inline_keyboard: [] } }).catch(() => {});
+    if (row.expiresAt.getTime() < Date.now()) {
+      if (await claimChatAction(db, row.id, "expired")) await finish("⌛ This expired. Ask me again.");
+      await ctx.answerCallbackQuery();
+      return;
+    }
+    const boss = runtime.current().boss;
+    if (!isBoss(boss, ctx.from.id) || !boss.actions) {
+      await ctx.answerCallbackQuery({ text: "Only Jemaw's super admins can do this." });
+      return;
+    }
+    const payload = row.payload as { multi?: boolean; title?: string };
+    const options = row.options as unknown[];
+    const { op } = parsed;
+    if (op.kind === "toggle" || op.kind === "all") {
+      const selected = toggleSelection(row.selected as number[], op, options.length, payload.multi === true);
+      await updateChatAction(db, row.id, { selected });
+      const card = renderActionCard({ ...row, selected }, payload.title ?? "");
+      await ctx.editMessageText(card.text, { parse_mode: "HTML", reply_markup: card.reply_markup }).catch(() => {});
+      await ctx.answerCallbackQuery();
+      return;
+    }
+    if (op.kind === "no") {
+      if (await claimChatAction(db, row.id, "cancelled")) await finish("Cancelled. Nothing changed.");
+      await ctx.answerCallbackQuery();
+      return;
+    }
+    if (options.length > 0 && (row.selected as number[]).length === 0) {
+      await ctx.answerCallbackQuery({ text: "Pick at least one first." });
+      return;
+    }
+    // Claim before writing so a double tap can't record twice.
+    if (!(await claimChatAction(db, row.id, "done"))) {
+      await ctx.answerCallbackQuery({ text: "Already handled." });
+      return;
+    }
+    await ctx.answerCallbackQuery({ text: "Working on it…" });
+    const g = await getGroupById(db, row.groupId);
+    try {
+      const out = g ? await executeAction(db, g, row) : { ok: false, text: "This group is gone." };
+      await updateChatAction(db, row.id, { status: out.ok ? "done" : "failed", result: out });
+      await finish(out.text);
+      console.log(`[action] ${row.kind} ${out.ok ? "done" : "failed"} group=${row.groupId}`);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      await updateChatAction(db, row.id, { status: "failed", result: { ok: false, text: message } });
+      await finish("That didn't go through. Check the app to see what changed.");
+      console.error(`[action] ${row.kind} failed group=${row.groupId}:`, message);
+    }
+  });
+
   return bot;
 }
+
+const ACTION_TTL_MS = 10 * 60_000;
 
 /**
  * A boss switching the group's humor from chat. Turning it off remembers the

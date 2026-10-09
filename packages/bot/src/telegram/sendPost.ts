@@ -71,7 +71,10 @@ export async function sendPost(
         post.images.map(async (spec, i) => new InputFile(await render(spec), `jemaw-${i}.png`)),
       );
       const rich_message = { blocks: withFiles(post.rich, files) };
-      const reply_markup = post.buttonsPlacement === "below" ? keyboard : undefined;
+      // Callback buttons can't live inside the message, so they always go below.
+      const actionRows = post.keyboard.filter((row) => row.some((b) => b.callback_data));
+      const reply_markup =
+        post.buttonsPlacement === "below" ? keyboard : actionRows.length ? { inline_keyboard: actionRows } : undefined;
       if (opts.editMessageId != null && files.length === 0) {
         try {
           await raw.editMessageText!({ chat_id: chatId, message_id: opts.editMessageId, rich_message, reply_markup });
