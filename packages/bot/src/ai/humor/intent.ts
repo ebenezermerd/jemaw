@@ -34,7 +34,7 @@ export interface LedgerQuery {
 }
 
 /** Owe words, forgiving the common "own" typo. */
-const OWE_RE = /\b(owe|owes|owed|owing|own|owned|debts?|balances?|payments?|paybacks?|settle|settles|settled|settlements?|unsettled|unpaid|outstanding|due|hasn'?t\s+paid|not\s+paid)\b/i;
+const OWE_RE = /\b(owe|owes|owed|owing|own|owned|debts?|balances?|payments?|paybacks?|settle|settles|settled|settlements?|unsettled|unpaid|outstanding|due|hasn'?t\s+paid|not\s+paid|(?:has|have|needs?)\s+to\s+pay)\b/i;
 /** Drafts are expenses the app found but nobody confirmed yet; "pending payments" are debts, not drafts. */
 const DRAFT_RE = /\b(drafts?|unconfirmed|review|suggestions?)\b/i;
 /** The asker means themselves; "show me" and "tell me" don't count. */
@@ -141,7 +141,7 @@ export function classifyLedgerQuestion(text: string): LedgerQuestionKind {
   // Pending, waiting or unsettled money means open payments: everyone's unless they ask about their own.
   if (OWE_RE.test(t) || /\b(pending|waiting)\b/.test(t)) return isAboutMe(t) ? "my_balance" : "who_owes";
   if (/\b(total|totals|how\s+much|stats|most|biggest|top)\b/.test(t)) return "totals";
-  if (/\b(list|latest|recent|history|expenses?|purchases?|spent\s+on|bought|paid)\b/.test(t)) {
+  if (/\b(list|latest|recent|history|expenses?|purchases?|spent\s+on|bought|paid|pay|pays)\b/.test(t)) {
     return "expense_list";
   }
   return "overview";

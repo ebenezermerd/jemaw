@@ -68,6 +68,18 @@ describe("classifyLedgerQuestion", () => {
     expect(classifyLedgerQuestion("show me the outstanding payments")).toBe("who_owes");
   });
 
+  it("never reads another member's money as who am I", () => {
+    for (const q of [
+      "how much does aman owe jemaw",
+      "does the other guy have unsettled expenses jemaw",
+      "any unpaid payments for pomi jemaw",
+      "what does tsin still have to pay jemaw",
+    ]) {
+      expect(classifyLedgerQuestion(q)).toBe("who_owes");
+    }
+    expect(classifyLedgerQuestion("what did amanuel pay jemaw")).toBe("expense_list");
+  });
+
   it("only answers with the asker's payments when they ask about themselves", () => {
     expect(classifyLedgerQuestion("hey jemaw how much do i own")).toBe("my_balance");
     expect(classifyLedgerQuestion("what payments do I have left to settle")).toBe("my_balance");

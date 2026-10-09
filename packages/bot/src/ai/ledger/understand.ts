@@ -6,7 +6,7 @@
  */
 import { z } from "zod";
 import type { ScanClient } from "../geminiClient.js";
-import { isAboutMe, type LedgerQuery, type LedgerQuestionKind } from "../humor/intent.js";
+import { classifyLedgerQuestion, isAboutMe, type LedgerQuery, type LedgerQuestionKind } from "../humor/intent.js";
 
 export interface Understanding {
   intent: "ledger" | "scan" | "chat" | "correction";
@@ -41,17 +41,22 @@ const SYSTEM_PROMPT = [
   "scan: the message reports a NEW money event to record (someone paid, spent, lent or paid back) or explicitly asks to scan or check the chat.",
   "correction: the user says Jemaw's previous answer was wrong or not what they asked. Use previous_question to fill kind, days, limit and mine with what they really wanted.",
   "chat: greetings, banter and everything else.",
-  "kind: whoami for 'who am I'. leaderboard for who is rich, broke, cheap, generous, the biggest spender or who owes the most. my_balance ONLY when the sender asks about their own money with I, me or my ('what do I owe', 'who owes me'). who_owes for open, pending, unsettled or outstanding payments, settlements or debts in general, and for what a named person owes. pending ONLY for drafts or expenses waiting for review in the app, never for payments or settlements. expense_list for listing expenses. totals for sums and top spenders.",
+  "kind: whoami ONLY when the sender asks who they are ('who am I'); questions about another person's debts, payments or expenses are who_owes, expense_list or totals, never whoami. leaderboard for who is rich, broke, cheap, generous, the biggest spender or who owes the most. my_balance ONLY when the sender asks about their own money with I, me or my ('what do I owe', 'who owes me'). who_owes for open, pending, unsettled or outstanding payments, settlements or debts in general, and for what a named person owes. pending ONLY for drafts or expenses waiting for review in the app, never for payments or settlements. expense_list for listing expenses. totals for sums and top spenders.",
   "mine: paid when they mean expenses they paid ('my expenses', 'what I paid'); involved when they mean everything they were part of; otherwise null.",
   "days: for 'last N days' or 'today' (1). limit: for 'latest N' or 'N of them'. period: week or month when they say so, else all.",
   "People type fast with typos ('own' means 'owe'). Answer with JSON only.",
 ].join(" ");
 
+const WHOAMI_ASKED = /\bwho\s+am\s+i\b|\bwhat'?s\s+my\s+name\b|\bdo\s+you\s+know\s+me\b|\bwho\s+i\s+am\b/i;
+
 /**
- * The model sometimes answers with the asker's own payments or the drafts
- * queue when the message asked neither; fall back to everyone's open payments.
+ * The model sometimes answers with who the asker is, their own payments or
+ * the drafts queue when the message asked none of these; fall back to what
+ * the message did ask, which for money is everyone's open payments.
  */
 function guardKind(kind: LedgerQuestionKind, text: string): LedgerQuestionKind {
+  // "Who am I" answers about the asker; anything else the keyword rules place better.
+  if (kind === "whoami" && !WHOAMI_ASKED.test(text)) return classifyLedgerQuestion(text);
   if (kind === "my_balance" && !isAboutMe(text)) return "who_owes";
   if (kind === "pending" && !/\b(drafts?|unconfirmed|review|suggestions?)\b/i.test(text)) return "who_owes";
   return kind;

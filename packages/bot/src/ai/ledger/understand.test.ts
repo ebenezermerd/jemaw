@@ -33,6 +33,17 @@ describe("understandMessage", () => {
     expect(own?.query?.kind).toBe("my_balance");
   });
 
+  it("keeps who am I for identity questions only", async () => {
+    const asked = async (text: string) =>
+      (await understandMessage({ client: replying({ intent: "ledger", kind: "whoami", period: "all" }), text }))?.query?.kind;
+    expect(await asked("how much does aman owe jemaw")).toBe("who_owes");
+    expect(await asked("does the other guy have unsettled expenses jemaw")).toBe("who_owes");
+    expect(await asked("any unpaid payments for pomi jemaw")).toBe("who_owes");
+    expect(await asked("abenezer has to pay me jemaw")).toBe("my_balance");
+    expect(await asked("what did amanuel pay jemaw")).toBe("expense_list");
+    expect(await asked("who am i jemaw")).toBe("whoami");
+  });
+
   it("passes the previous question so a complaint can be re-answered", async () => {
     let prompt = "";
     const u = await understandMessage({
