@@ -196,6 +196,7 @@ const botConfigSchema = z
     weeklyDigestEnabled: z.boolean(),
     maintenanceMessage: z.string().max(500).nullable(),
     postDesigns: z.record(z.unknown()),
+    boss: z.record(z.unknown()),
   })
   .partial()
   .strict();
@@ -614,6 +615,9 @@ export async function registerApi(
   app.patch("/api/admin/bot/config", { preHandler: auth }, async (req, reply) => {
     const parsed = botConfigSchema.safeParse(req.body ?? {});
     if (!parsed.success) return reply.code(400).send({ error: parsed.error.issues[0]?.message ?? "invalid body" });
+    if (parsed.data.boss && req.admin!.role !== "super") {
+      return reply.code(403).send({ error: "only super admins can change how the bot treats super admins" });
+    }
     for (const [field, raw] of Object.entries(parsed.data) as [keyof BotRuntimeConfig, unknown][]) {
       await setConfig(db, BOT_RUNTIME_KEYS[field], parseRuntimeValue(field, raw), req.admin!.uid);
     }
