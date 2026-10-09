@@ -415,7 +415,7 @@ function Choice({ on, onClick, label, hint }: { on: boolean; onClick: () => void
   );
 }
 
-function Segmented<K extends string>({
+export function Segmented<K extends string>({
   label,
   value,
   options,
