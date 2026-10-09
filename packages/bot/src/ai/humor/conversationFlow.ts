@@ -94,7 +94,7 @@ export function buildConversationFlow(input: {
   } else {
     phase = "hard_nudge";
     money = "require_light";
-    directive = `Hard ultimatum — LAST social reply before you go quiet for ~${CHAT_SULK_MINUTES} minutes. Say you'll stop chatting until the group reviews/clears an approved open draft (one label+amount). Backend WILL enforce silence after this. Never invent balances. Protect GROUP process, not personal attacks.`;
+    directive = `Hard ultimatum — LAST social reply before you go quiet for ~${CHAT_SULK_MINUTES} minutes. One short line of playful annoyance that the group keeps chatting while an expense waits for approval. A plain notice with the rules, the time and an app button is added under your line by the backend, so do not explain the pause, the timing or the app yourself. Never invent balances. Protect GROUP process, not personal attacks.`;
   }
 
   if (nearCap) {

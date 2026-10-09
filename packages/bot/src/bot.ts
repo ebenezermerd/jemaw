@@ -621,6 +621,7 @@ export function createBot(token: string, deps: BotDeps): Bot {
           humor: humor ?? {},
           askerTelegramId,
           loading,
+          links: { botUsername, miniAppShortName, miniAppUrl },
         });
         if (!delivered) await loading.cancel();
       })().catch((err) =>
