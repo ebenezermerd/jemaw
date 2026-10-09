@@ -10,6 +10,7 @@ import { Expenses } from "./routes/Expenses.js";
 import { Logs } from "./routes/Logs.js";
 import { Announcements } from "./routes/Announcements.js";
 import { Settings } from "./routes/Settings.js";
+import { Designs } from "./routes/Designs.js";
 
 function Protected() {
   const { user, loading } = useAuth();
@@ -29,6 +30,7 @@ function Protected() {
         <Route path="/logs" element={<Logs />} />
         <Route path="/announcements" element={<Announcements />} />
         <Route path="/settings" element={<Settings />} />
+        <Route path="/designs" element={<Designs />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </AppShell>

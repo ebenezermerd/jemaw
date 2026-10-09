@@ -46,7 +46,20 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   return res.json() as Promise<T>;
 }
 
+/** POST a JSON body and read the reply as a file (generated images). */
+async function blob(path: string, body: unknown): Promise<Blob> {
+  const token = await getIdToken();
+  const res = await fetch(`${BASE}${path}`, {
+    method: "POST",
+    body: JSON.stringify(body),
+    headers: { "content-type": "application/json", ...(token ? { authorization: `Bearer ${token}` } : {}) },
+  });
+  if (!res.ok) throw new ApiError(res.status, await res.text());
+  return res.blob();
+}
+
 export const api = {
+  blob,
   get: <T>(path: string) => request<T>(path),
   post: <T>(path: string, body?: unknown) =>
     request<T>(path, {

@@ -82,6 +82,16 @@ function IcoSettings({ active }: { active: boolean }) {
   );
 }
 
+function IcoDesigns({ active }: { active: boolean }) {
+  const c = active ? "var(--text)" : "var(--text-dim)";
+  return (
+    <svg width="16" height="16" viewBox="0 0 20 20" fill="none">
+      <rect x="3" y="3" width="14" height="14" rx="3" stroke={c} strokeWidth="1.7" />
+      <path d="M3 8h14M8 8v9" stroke={c} strokeWidth="1.7" />
+    </svg>
+  );
+}
+
 // ─── Three-circle logo mark ────────────────────────────────────────────────────
 
 function LogoMark({ size = 32 }: { size?: number }) {
@@ -131,7 +141,10 @@ const NAV: { label: string; items: NavEntry[] }[] = [
   },
   {
     label: "System",
-    items: [{ to: "/settings", label: "Bot & Settings", desc: "Health, AI usage and switches", Icon: IcoSettings }],
+    items: [
+      { to: "/settings", label: "Bot & Settings", desc: "Health, AI usage and switches", Icon: IcoSettings },
+      { to: "/designs", label: "Message designs", desc: "How reports, AI answers and releases look", Icon: IcoDesigns },
+    ],
   },
 ];
 
