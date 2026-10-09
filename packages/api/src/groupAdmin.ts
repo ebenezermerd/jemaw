@@ -1,7 +1,7 @@
 /**
  * Group management from the console: rename, currency, member roles, bot
- * settings, reset and delete. Every foreign key into a group is NO ACTION, so
- * deletes walk the children in order inside one transaction.
+ * settings, access (AI pause, suspension, daily AI limit) and clearing the
+ * ledger. Groups themselves are never deleted from here.
  */
 import { and, eq, inArray, ne, sql } from "drizzle-orm";
 import type { Db } from "./db.js";
@@ -15,13 +15,11 @@ import {
   suggestions,
   aiRuns,
   messages,
-  botReplies,
-  botReplyFeedback,
-  humorMemberPreferences,
   type Group,
   type Member,
 } from "@jemaw/shared/schema";
 import { applyHumorPatch, parseHumorSettings, toHumorSettingsDto } from "@jemaw/shared/humor";
+import { parseGroupAccess, type GroupAccessV1 } from "@jemaw/shared/groupAccess";
 import type { HumorSettingsDto } from "@jemaw/shared/types";
 
 export async function getGroup(db: Db, groupId: string): Promise<Group | null> {
@@ -116,28 +114,27 @@ export async function resetGroupLedger(db: Db, groupId: string): Promise<Record<
   });
 }
 
-/** Delete a group and everything that hangs off it. Returns rows deleted per table. */
-export async function deleteGroupCascade(db: Db, groupId: string): Promise<Record<string, number>> {
-  return db.transaction(async (tx) => {
-    const t = tx as unknown as Db;
-    const counts = await deleteLedgerRows(t, groupId);
-    const replyIds = t.select({ id: botReplies.id }).from(botReplies).where(eq(botReplies.groupId, groupId));
-    counts.bot_reply_feedback = (
-      await t.delete(botReplyFeedback).where(inArray(botReplyFeedback.botReplyId, replyIds)).returning({ id: botReplyFeedback.id })
-    ).length;
-    counts.bot_replies = (
-      await t.delete(botReplies).where(eq(botReplies.groupId, groupId)).returning({ id: botReplies.id })
-    ).length;
-    counts.humor_member_preferences = (
-      await t
-        .delete(humorMemberPreferences)
-        .where(eq(humorMemberPreferences.groupId, groupId))
-        .returning({ id: humorMemberPreferences.id })
-    ).length;
-    counts.members = (await t.delete(members).where(eq(members.groupId, groupId)).returning({ id: members.id })).length;
-    counts.groups = (await t.delete(groups).where(eq(groups.id, groupId)).returning({ id: groups.id })).length;
-    return counts;
-  });
+/** Merge an access change into groups.settings.access, keeping other keys. */
+export async function setGroupAccess(
+  db: Db,
+  group: Group,
+  patch: Partial<Pick<GroupAccessV1, "status" | "until" | "reason" | "aiDailyLimit">>,
+  meta: { by: string; now: Date },
+): Promise<GroupAccessV1> {
+  const current = parseGroupAccess((group.settings as Record<string, unknown> | null)?.access, meta.now);
+  const next: GroupAccessV1 = { ...current, ...patch, updatedAt: meta.now.toISOString(), updatedBy: meta.by };
+  // Lifting a pause clears its end time and reason.
+  if (next.status === "active") {
+    next.until = null;
+    if (patch.reason === undefined) next.reason = null;
+  }
+  await db
+    .update(groups)
+    .set({
+      settings: sql`jsonb_set(coalesce(${groups.settings}, '{}'::jsonb), '{access}', ${JSON.stringify(next)}::jsonb)`,
+    })
+    .where(eq(groups.id, group.id));
+  return parseGroupAccess(next, meta.now);
 }
 
 async function deleteLedgerRows(t: Db, groupId: string): Promise<Record<string, number>> {

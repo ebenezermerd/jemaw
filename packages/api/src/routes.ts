@@ -30,6 +30,7 @@ import {
   listConfig,
   setConfig,
   getAdmins,
+  aiCallsByGroupSince,
   countDistinctUsers,
   countActiveGroups,
   sumLiveExpensesCents,
@@ -49,7 +50,7 @@ import {
   type GroupLedger,
 } from "./ledger.js";
 import {
-  deleteGroupCascade,
+  setGroupAccess,
   getGroup,
   groupHasAnyExpense,
   patchGroupHumor,
@@ -61,6 +62,7 @@ import { ACTIVITY_SEVERITIES, ACTIVITY_SOURCES, listActivity } from "./activity.
 import { deliverAnnouncement } from "./announce.js";
 import { botStatus } from "./botStatus.js";
 import { aiUsage, checkGroqLimits, DEFAULT_GROQ_MODEL } from "./aiUsage.js";
+import { aiDayStart } from "@jemaw/shared/groupAccess";
 import type { TelegramClient } from "./telegram.js";
 import { announcements } from "@jemaw/shared/schema";
 import { and, inArray } from "drizzle-orm";
@@ -77,7 +79,6 @@ import type {
   AdminActivitySeverity,
   AdminActivitySource,
   AdminBotStatusDto,
-  DeleteGroupResultDto,
   UpdateGroupResultDto,
 } from "@jemaw/shared/types";
 import {
@@ -130,7 +131,14 @@ const adminAccountSchema = z.object({
   role: z.enum(["super", "admin"]),
 });
 
-const deleteGroupSchema = z.object({ confirmName: z.string() });
+const groupAccessSchema = z
+  .object({
+    status: z.enum(["active", "ai_paused", "suspended"]).optional(),
+    until: z.string().datetime({ offset: true }).nullable().optional(),
+    reason: z.string().trim().max(300).nullable().optional(),
+    aiDailyLimit: z.number().int().min(0).max(10_000).nullable().optional(),
+  })
+  .strict();
 
 const botConfigSchema = z
   .object({
@@ -385,6 +393,7 @@ export async function registerApi(
     const ledger = await loadGroupLedger(db, groupId);
     if (!ledger) return reply.code(404).send({ error: "group not found" });
     const res: AdminGroupDetailDto = groupDetail(ledger);
+    res.settings.access.aiCallsToday = (await aiCallsByGroupSince(db, aiDayStart(new Date(now())))).get(groupId) ?? 0;
     return res;
   });
 
@@ -450,25 +459,20 @@ export async function registerApi(
     return { deleted };
   });
 
-  app.delete("/api/admin/groups/:groupId", { preHandler: auth }, async (req, reply) => {
+  // Access: pause the group's AI, suspend the whole group, or cap its daily
+  // AI calls. Groups are never deleted from the console; clear expenses instead.
+  app.patch("/api/admin/groups/:groupId/access", { preHandler: auth }, async (req, reply) => {
     const { groupId } = req.params as { groupId: string };
     const group = UUID_RE.test(groupId) ? await getGroup(db, groupId) : null;
     if (!group) return reply.code(404).send({ error: "group not found" });
-    const parsed = deleteGroupSchema.safeParse(req.body ?? {});
-    if (!parsed.success || parsed.data.confirmName.trim() !== group.name.trim()) {
-      return reply.code(400).send({ error: "type the group's name to confirm" });
+    const parsed = groupAccessSchema.safeParse(req.body ?? {});
+    if (!parsed.success) return reply.code(400).send({ error: parsed.error.issues[0]?.message ?? "invalid body" });
+    if (parsed.data.until && Date.parse(parsed.data.until) <= now()) {
+      return reply.code(400).send({ error: "the end time must be in the future" });
     }
-    const deleted = await deleteGroupCascade(db, groupId);
-    // Leave the chat, or the next message there would recreate the group.
-    const left = await telegram.call("leaveChat", { chat_id: group.telegramChatId.toString() });
-    await audit(req, "group.delete", "group", groupId, {
-      name: group.name,
-      telegramChatId: group.telegramChatId.toString(),
-      deleted,
-      leftChat: left.ok,
-    });
-    const res: DeleteGroupResultDto = { deleted, leftChat: left.ok };
-    return res;
+    const access = await setGroupAccess(db, group, parsed.data, { by: req.admin!.email ?? req.admin!.uid, now: new Date(now()) });
+    await audit(req, "group.access", "group", groupId, { name: group.name, ...parsed.data });
+    return access;
   });
 
   // ─── expenses (cross-group feed, or one group's) ────────────────────

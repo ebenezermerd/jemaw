@@ -13,7 +13,8 @@ import {
   type AiLimitsSnapshot,
 } from "@jemaw/shared/runtimeConfig";
 import type { AdminAiUsageDto } from "@jemaw/shared/types";
-import { getConfig, setConfig } from "./repo.js";
+import { aiCallsByGroupSince, getConfig, setConfig } from "./repo.js";
+import { parseGroupAccess } from "@jemaw/shared/groupAccess";
 
 export const DEFAULT_GROQ_MODEL = "openai/gpt-oss-120b";
 
@@ -67,6 +68,7 @@ export async function aiUsage(
   `)) as unknown as Row[];
   const sentBy = new Map(sentToday.map((r) => [String(r.group_id), n(r.n)]));
   const groupRows = await db.select({ id: groups.id, name: groups.name, settings: groups.settings }).from(groups);
+  const aiCalls = await aiCallsByGroupSince(db, dayStart);
 
   const scans = n(t?.scans);
   const replies = n(t?.replies);
@@ -84,18 +86,22 @@ export async function aiUsage(
     groups: groupRows
       .map((g) => {
         const h = parseHumorSettings((g.settings as Record<string, unknown> | null)?.humor);
+        const access = parseGroupAccess((g.settings as Record<string, unknown> | null)?.access, opts.now);
         // Same cap the bot applies (deliver.ts maxRepliesForMode).
         const maxPerDay = h.mode === "off" ? 0 : h.maxPublicRepliesPerDay || HUMOR_MODE_LIMITS[h.mode].maxPublicRepliesPerDay;
         return {
           groupId: g.id,
           groupName: g.name,
+          access: access.status,
+          aiCallsToday: aiCalls.get(g.id) ?? 0,
+          aiDailyLimit: access.aiDailyLimit,
           mode: h.mode,
           repliesToday: sentBy.get(g.id) ?? 0,
           maxPerDay,
           mutedUntil: h.mutedUntil && Date.parse(h.mutedUntil) > opts.now.getTime() ? h.mutedUntil : null,
         };
       })
-      .sort((a, b) => b.repliesToday - a.repliesToday || a.groupName.localeCompare(b.groupName)),
+      .sort((a, b) => b.aiCallsToday - a.aiCallsToday || b.repliesToday - a.repliesToday || a.groupName.localeCompare(b.groupName)),
     limits: ((await getConfig(db, BOT_AI_LIMITS_KEY)) as AiLimitsSnapshot | null) ?? null,
     canCheck: opts.canCheck,
     model: opts.model,
