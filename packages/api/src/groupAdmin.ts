@@ -98,7 +98,9 @@ export async function updateGroupMember(
       return { ok: false, status: 409, error: "a group needs at least one active admin" };
     }
   }
-  const [updated] = await db.update(members).set(patch).where(eq(members.id, memberId)).returning();
+  // Removing or restoring also takes them out of (or back into) default splits.
+  const set = patch.isActive === undefined ? patch : { ...patch, isPrimary: patch.isActive };
+  const [updated] = await db.update(members).set(set).where(eq(members.id, memberId)).returning();
   return { ok: true, member: updated! };
 }
 

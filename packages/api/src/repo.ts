@@ -177,7 +177,9 @@ export async function setUserActive(
 ): Promise<number> {
   const rows = await db
     .update(members)
-    .set({ isActive })
+    // Suspended people leave the default split for new expenses, like a mini
+    // app removal; past shares and balances are untouched.
+    .set({ isActive, isPrimary: isActive })
     .where(eq(members.telegramUserId, telegramUserId))
     .returning({ id: members.id });
   return rows.length;
