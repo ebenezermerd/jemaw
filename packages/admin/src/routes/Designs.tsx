@@ -131,6 +131,23 @@ export function Designs() {
       void qc.invalidateQueries({ queryKey: ["activity"] });
     },
   });
+  const [sendTarget, setSendTarget] = useState<"group" | "all">("group");
+  const [confirming, setConfirming] = useState(false);
+  const sendNow = useMutation({
+    mutationFn: () =>
+      api.post<{ sent: number; failed: number; skipped: number; errors: { group: string; error: string }[] }>("/api/admin/designs/send", {
+        useCase,
+        target: sendTarget,
+        ...(sendTarget === "group" ? { groupId } : {}),
+        memberId: memberId || undefined,
+        design,
+        data: input.useCase === "weekly" || input.useCase === "ai_payments" ? undefined : input.data,
+      }),
+    onSettled: () => {
+      setConfirming(false);
+      void qc.invalidateQueries({ queryKey: ["activity"] });
+    },
+  });
   const test = useMutation({
     mutationFn: () =>
       api.post<{ mode: "rich" | "classic" | "fallback"; richError?: string }>("/api/admin/designs/test", {
@@ -147,13 +164,17 @@ export function Designs() {
   const groupName = groups.find((g) => g.id === groupId)?.name;
   const showChecklistStyle = design.layout === "checklist" || useCase === "ai_payments" || (useCase === "weekly" && design.sections.debts);
   const slideshowFits = useCase === "weekly";
+  // AI answers only make sense in one group; reports and broadcasts can go everywhere.
+  const canSendAll = useCase === "weekly" || useCase === "announcement" || useCase === "release";
+  const target = canSendAll ? sendTarget : "group";
+  const targetLabel = target === "all" ? `all ${groups.length} group${groups.length === 1 ? "" : "s"}` : (groupName ?? "a group");
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
       <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
         <div role="tablist" aria-label="Kind of post" style={{ display: "flex", gap: 7, flexWrap: "wrap", flex: 1 }}>
           {POST_USE_CASES.map((u) => (
-            <Pill key={u} active={u === useCase} onClick={() => { setUseCase(u); test.reset(); }} role="tab">
+            <Pill key={u} active={u === useCase} onClick={() => { setUseCase(u); test.reset(); sendNow.reset(); setConfirming(false); if (u === "ai_payments" || u === "ai_report") setSendTarget("group"); }} role="tab">
               {POST_USE_CASE_META[u].label}
             </Pill>
           ))}
@@ -289,6 +310,51 @@ export function Designs() {
                 Real numbers from {groupName}. Jemaw's comment is written by the AI when the bot sends the post, so the preview shows a sample line.
               </div>
             )}
+          </Card>
+
+          <Card>
+            <Heading title="Send" hint="Posts this design for real, with the numbers of each group it goes to." />
+            {canSendAll && (
+              <Segmented
+                label="To"
+                value={sendTarget}
+                onChange={(t) => { setSendTarget(t); setConfirming(false); sendNow.reset(); }}
+                options={[
+                  { key: "group", label: groupName ? `Only ${groupName}` : "One group" },
+                  { key: "all", label: "All groups" },
+                ]}
+                hint={
+                  target === "all"
+                    ? useCase === "weekly"
+                      ? "Groups with no spending this week and suspended groups are skipped."
+                      : "Suspended groups are skipped. For a record in history, send from Announcements."
+                    : undefined
+                }
+              />
+            )}
+            <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 12, flexWrap: "wrap" }}>
+              {!confirming ? (
+                <PrimaryButton onClick={() => setConfirming(true)} disabled={(target === "group" && !groupId) || sendNow.isPending}>
+                  {target === "group" && !groupId ? "Pick a group above to send" : `Send to ${targetLabel}`}
+                </PrimaryButton>
+              ) : (
+                <>
+                  <span style={{ fontSize: 13, flex: 1 }}>Send the {POST_USE_CASE_META[useCase].label.toLowerCase()} to {targetLabel} now?</span>
+                  <GhostButton onClick={() => setConfirming(false)} disabled={sendNow.isPending}>Cancel</GhostButton>
+                  <PrimaryButton onClick={() => sendNow.mutate()} disabled={sendNow.isPending}>
+                    {sendNow.isPending ? "Sending…" : "Yes, send"}
+                  </PrimaryButton>
+                </>
+              )}
+            </div>
+            {sendNow.isSuccess && (
+              <div style={{ fontSize: 12.5, marginTop: 10, color: sendNow.data.failed ? "var(--warn)" : "var(--success)" }}>
+                Sent to {sendNow.data.sent} group{sendNow.data.sent === 1 ? "" : "s"}
+                {sendNow.data.skipped ? ` · ${sendNow.data.skipped} skipped` : ""}
+                {sendNow.data.failed ? ` · ${sendNow.data.failed} failed: ${sendNow.data.errors.map((e) => `${e.group} (${e.error})`).join(", ")}` : ""}
+              </div>
+            )}
+            {sendNow.isError && <div style={{ fontSize: 12.5, marginTop: 10, color: "var(--danger)" }}>{errText(sendNow.error)}</div>}
           </Card>
         </div>
       </div>

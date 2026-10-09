@@ -63,7 +63,7 @@ import { ACTIVITY_SEVERITIES, ACTIVITY_SOURCES, listActivity } from "./activity.
 import { deliverAnnouncement } from "./announce.js";
 import { botStatus } from "./botStatus.js";
 import { aiUsage, checkGroqLimits, DEFAULT_GROQ_MODEL } from "./aiUsage.js";
-import { aiDayStart } from "@jemaw/shared/groupAccess";
+import { aiDayStart, parseGroupAccess } from "@jemaw/shared/groupAccess";
 import type { TelegramClient } from "./telegram.js";
 import {
   composePost,
@@ -72,8 +72,10 @@ import {
   POST_USE_CASES,
   SAMPLE_POST_DATA,
   type PostData,
+  type PostDesign,
+  type PostUseCase,
 } from "@jemaw/shared/posts";
-import { sendComposedPost, type ImageRenderer } from "./postSend.js";
+import { sendComposedPost, type ImageRenderer, type PostSendResult } from "./postSend.js";
 import { loadGroupPostData } from "./postData.js";
 import { announcements } from "@jemaw/shared/schema";
 import { and, inArray } from "drizzle-orm";
@@ -119,7 +121,7 @@ export interface ApiDeps {
 const imageText = z.string().max(120);
 const imageSpecSchema = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("hero"), eyebrow: imageText, badge: imageText, amount: imageText, currency: imageText, subline: imageText }),
-  z.object({ kind: z.literal("expense"), title: imageText, amount: imageText, currency: imageText, payer: imageText, date: imageText, emoji: z.string().max(16) }),
+  z.object({ kind: z.literal("expense"), title: imageText, amount: imageText, currency: imageText, payer: imageText, date: imageText, subline: imageText }),
   z.object({ kind: z.literal("banner"), eyebrow: imageText, title: imageText, subline: imageText }),
 ]);
 
@@ -130,6 +132,12 @@ const designTestSchema = z.object({
   memberId: z.string().optional(),
   /** Text the editor typed for announcements, releases and reports. */
   data: z.record(z.unknown()).optional(),
+});
+
+/** A real send: to one group, or to every active group for the reports and broadcasts. */
+const designSendSchema = designTestSchema.omit({ groupId: true }).extend({
+  target: z.enum(["group", "all"]),
+  groupId: z.string().regex(/^[0-9a-f-]{36}$/i).optional(),
 });
 
 const releaseItems = z.array(z.string().trim().min(1).max(300)).max(20).default([]);
@@ -633,29 +641,77 @@ export async function registerApi(
     return data;
   });
 
+  /** Compose one group's post from its real numbers (or the editor's text) and send it. */
+  async function sendDesign(
+    group: { id: string; telegramChatId: bigint },
+    useCase: PostUseCase,
+    design: PostDesign,
+    opts: { memberId?: string; data?: Record<string, unknown>; evenIfQuiet?: boolean },
+  ): Promise<PostSendResult | "quiet" | "missing"> {
+    const real = await loadGroupPostData(db, group.id, { memberId: opts.memberId, now: new Date(now()) });
+    if (!real) return "missing";
+    if (useCase === "weekly" && real.weekly.expenseCount === 0 && !opts.evenIfQuiet) return "quiet";
+    const input: PostData =
+      useCase === "weekly" ? { useCase, data: real.weekly }
+      : useCase === "ai_payments" ? { useCase, data: real.payments }
+      : ({ useCase, data: { ...SAMPLE_POST_DATA[useCase].data, ...opts.data } } as PostData);
+    const post = composePost(input, design, { openUrl: deps.openAppUrl?.(group.id) ?? null });
+    return sendComposedPost(telegram, group.telegramChatId.toString(), post, renderImage);
+  }
+
   app.post("/api/admin/designs/test", { preHandler: auth }, async (req, reply) => {
     const parsed = designTestSchema.safeParse(req.body ?? {});
     if (!parsed.success) return reply.code(400).send({ error: parsed.error.issues[0]?.message ?? "invalid body" });
     if (!telegram.configured) return reply.code(503).send({ error: "TELEGRAM_BOT_TOKEN is not set on the API" });
     const { useCase, groupId, memberId } = parsed.data;
-    const real = await loadGroupPostData(db, groupId, { memberId, now: new Date(now()) });
-    const group = real ? await getGroup(db, groupId) : null;
-    if (!real || !group) return reply.code(404).send({ error: "group not found" });
-    const input: PostData =
-      useCase === "weekly" ? { useCase, data: real.weekly }
-      : useCase === "ai_payments" ? { useCase, data: real.payments }
-      : ({ useCase, data: { ...SAMPLE_POST_DATA[useCase].data, ...parsed.data.data } } as PostData);
+    const group = await getGroup(db, groupId);
+    if (!group) return reply.code(404).send({ error: "group not found" });
     const design = parsePostDesign(parsed.data.design, DEFAULT_POST_DESIGNS[useCase]);
-    let post;
+    let sent;
     try {
-      post = composePost(input, design, { openUrl: deps.openAppUrl?.(groupId) ?? null });
+      // A test always posts, even in a quiet week.
+      sent = await sendDesign(group, useCase, design, { memberId, data: parsed.data.data, evenIfQuiet: true });
     } catch {
       return reply.code(400).send({ error: "those details can't be turned into a post" });
     }
-    const sent = await sendComposedPost(telegram, group.telegramChatId.toString(), post, renderImage);
+    if (sent === "missing" || sent === "quiet") return reply.code(404).send({ error: "group not found" });
     await audit(req, "designs.test", "group", groupId, { useCase, layout: design.layout, mode: sent.mode, ok: sent.ok });
     if (!sent.ok) return reply.code(502).send({ error: sent.error ?? "Telegram refused the post" });
     return sent;
+  });
+
+  app.post("/api/admin/designs/send", { preHandler: auth }, async (req, reply) => {
+    const parsed = designSendSchema.safeParse(req.body ?? {});
+    if (!parsed.success) return reply.code(400).send({ error: parsed.error.issues[0]?.message ?? "invalid body" });
+    if (!telegram.configured) return reply.code(503).send({ error: "TELEGRAM_BOT_TOKEN is not set on the API" });
+    const { useCase, target, groupId, memberId } = parsed.data;
+    if (target === "all" && (useCase === "ai_payments" || useCase === "ai_report")) {
+      return reply.code(400).send({ error: "AI answers go to one group at a time" });
+    }
+    const design = parsePostDesign(parsed.data.design, DEFAULT_POST_DESIGNS[useCase]);
+    const all = target === "all" ? await db.select().from(groups) : groupId ? [await getGroup(db, groupId)].filter((g) => g != null) : [];
+    if (all.length === 0) return reply.code(404).send({ error: "group not found" });
+    // Suspended groups get nothing from the bot, broadcasts included.
+    const targets = all.filter((g) => parseGroupAccess((g.settings as Record<string, unknown> | null)?.access, new Date(now())).status !== "suspended");
+    const res = { sent: 0, failed: 0, skipped: all.length - targets.length, errors: [] as { group: string; error: string }[] };
+    for (const g of targets) {
+      try {
+        const out = await sendDesign(g, useCase, design, { memberId, data: parsed.data.data });
+        if (out === "quiet" || out === "missing") res.skipped += 1;
+        else if (out.ok) res.sent += 1;
+        else {
+          res.failed += 1;
+          if (res.errors.length < 5) res.errors.push({ group: g.name, error: out.error ?? "not delivered" });
+        }
+      } catch (err) {
+        res.failed += 1;
+        if (res.errors.length < 5) res.errors.push({ group: g.name, error: err instanceof Error ? err.message : String(err) });
+      }
+      if (targets.length > 1) await new Promise((r) => setTimeout(r, 60));
+    }
+    await audit(req, "designs.send", target === "all" ? "groups" : "group", target === "all" ? "all" : groupId!, { useCase, layout: design.layout, ...res });
+    if (res.sent === 0 && res.failed > 0) return reply.code(502).send({ error: res.errors[0]?.error ?? "Telegram refused the post", ...res });
+    return res;
   });
 
   // ─── announcements ─────────────────────────────────────────────────

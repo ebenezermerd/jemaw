@@ -362,7 +362,22 @@ d("admin management routes", () => {
     const rich = calls.find((c) => c.method === "sendRichMessage")!;
     expect(rich.params.files).toEqual(["img0", "img1"]);
     expect(JSON.stringify(rich.params.rich_message)).toContain("attach://img1");
-    expect(rich.params.reply_markup).toMatchObject({ inline_keyboard: [[{ url: `https://t.me/jemawsbot/app?startapp=${groupId}` }], [{ copy_text: { text: "100" } }]] });
+    expect(rich.params.reply_markup).toMatchObject({ inline_keyboard: [[{ url: `https://t.me/jemawsbot/app?startapp=${groupId}` }, { copy_text: { text: "100" } }]] });
+
+    await inject("PATCH", `/api/admin/groups/${groupId}/access`, { status: "active" });
+    calls.length = 0;
+    const toAll = await inject("POST", "/api/admin/designs/send", { useCase: "weekly", target: "all", design: {} });
+    expect(toAll.statusCode).toBe(200);
+    // Groups with spending this week get a report; quiet ones (like ITest Empty) are skipped.
+    const reached = calls.filter((c) => c.method === "sendRichMessage").map((c) => c.params.chat_id);
+    expect(reached).toContain(chatId.toString());
+    expect(reached).not.toContain((chatId - 1n).toString());
+    expect(toAll.json().sent).toBe(reached.length);
+    expect(toAll.json().skipped).toBeGreaterThan(0);
+    expect((await inject("POST", "/api/admin/designs/send", { useCase: "ai_payments", target: "all", design: {} })).statusCode).toBe(400);
+    await inject("PATCH", `/api/admin/groups/${groupId}/access`, { status: "suspended" });
+    const suspended = await inject("POST", "/api/admin/designs/send", { useCase: "release", target: "group", groupId, design: {} });
+    expect(suspended.json()).toMatchObject({ sent: 0, skipped: 1 });
 
     const saved = await inject("PATCH", "/api/admin/bot/config", { postDesigns: { ai_payments: { checklistStyle: "table" } } });
     expect(saved.json().postDesigns.ai_payments).toMatchObject({ layout: "checklist", checklistStyle: "table" });

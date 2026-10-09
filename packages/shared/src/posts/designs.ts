@@ -98,7 +98,7 @@ export const DEFAULT_POST_DESIGNS: PostDesigns = {
     layout: "showcase",
     hero: "image",
     buttonsPlacement: "below",
-    buttons: [[OPEN], [{ label: "Copy total", action: "copy_amount", style: "default" }]],
+    buttons: [[OPEN, { label: "Copy total", action: "copy_amount", style: "default" }]],
     checklistStyle: "checklist",
     sections: { stats: false, expenses: true, standings: false, debts: true, note: true },
     footer: "",
