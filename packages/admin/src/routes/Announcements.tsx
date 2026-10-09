@@ -1,11 +1,17 @@
 /**
- * Compose and send broadcasts through the bot. Groups and users are picked
- * from lists, not typed as ids. History shows how each send went.
+ * Compose and send broadcasts and feature releases through the bot. Groups
+ * and users are picked from lists, not typed as ids. The preview uses the
+ * saved message design, so it shows what Telegram will get. History shows
+ * how each send went.
  */
 import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../lib/api.js";
+import type { BotRuntimeConfig } from "@jemaw/shared/runtimeConfig";
+import { composePost, DEFAULT_POST_DESIGNS, type PostData } from "@jemaw/shared/posts";
+import { PostPreview } from "../ui/PostPreview.js";
 import type {
+  AnnouncementKind,
   AdminGroupDto,
   AdminUserDto,
   AnnouncementAudience,
@@ -27,10 +33,15 @@ interface Stats {
 
 const errText = (e: unknown) => (e instanceof Error ? e.message : "Something went wrong.");
 
+const lines = (s: string) => s.split("\n").map((l) => l.trim()).filter(Boolean);
+const EMPTY_NOTES = { version: "", added: "", improved: "", fixed: "" };
+
 export function Announcements() {
   const qc = useQueryClient();
+  const [kind, setKind] = useState<AnnouncementKind>("announcement");
   const [title, setTitle] = useState("");
   const [body, setBody] = useState("");
+  const [notes, setNotes] = useState(EMPTY_NOTES);
   const [audience, setAudience] = useState<AnnouncementAudience>("all_groups");
   const [targetId, setTargetId] = useState("");
   const [userQuery, setUserQuery] = useState("");
@@ -53,6 +64,18 @@ export function Announcements() {
     enabled: audience === "user",
   });
 
+  const { data: config } = useQuery({
+    queryKey: ["bot-config"],
+    queryFn: () => api.get<BotRuntimeConfig>("/api/admin/bot/config"),
+  });
+  const release = { version: notes.version.trim() || undefined, added: lines(notes.added), improved: lines(notes.improved), fixed: lines(notes.fixed) };
+  const postData: PostData =
+    kind === "release"
+      ? { useCase: "release", data: { title: title.trim() || "Release title", intro: body, ...release } }
+      : { useCase: "announcement", data: { title: title.trim() || "Title", body } };
+  const designs = config?.postDesigns ?? DEFAULT_POST_DESIGNS;
+  const preview = composePost(postData, designs[postData.useCase], { openUrl: "https://t.me/jemawsbot/app" });
+
   const refresh = () => {
     void qc.invalidateQueries({ queryKey: ["announcements"] });
     void qc.invalidateQueries({ queryKey: ["activity"] });
@@ -60,8 +83,10 @@ export function Announcements() {
   const create = useMutation({
     mutationFn: (queue: boolean) => {
       const payload: CreateAnnouncementInput = {
+        kind,
         title: title.trim(),
         body: body.trim(),
+        ...(kind === "release" ? { release } : {}),
         audience,
         ...(audience !== "all_groups" ? { targetId } : {}),
         queue,
@@ -71,6 +96,7 @@ export function Announcements() {
     onSuccess: () => {
       setTitle("");
       setBody("");
+      setNotes(EMPTY_NOTES);
       setTargetId("");
       setUserQuery("");
       refresh();
@@ -97,7 +123,11 @@ export function Announcements() {
   const recipients =
     audience === "all_groups" ? `${groups.length} group chats` : audience === "group" ? groups.find((g) => g.id === targetId)?.name ?? "—" : pickedUser ? titleCase(pickedUser.displayName) : "—";
 
-  const canSubmit = title.trim().length > 0 && body.trim().length > 0 && (audience === "all_groups" || targetId.length > 0);
+  const hasContent =
+    kind === "release"
+      ? release.added.length + release.improved.length + release.fixed.length > 0 || body.trim().length > 0
+      : body.trim().length > 0;
+  const canSubmit = title.trim().length > 0 && hasContent && (audience === "all_groups" || targetId.length > 0);
   const sendingOff = status && !status.configured;
 
   return (
@@ -105,8 +135,66 @@ export function Announcements() {
       <Card>
         <div style={{ fontSize: 15, fontWeight: 700, marginBottom: 16 }}>Compose broadcast</div>
         <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-          <input value={title} onChange={(e) => setTitle(e.target.value)} maxLength={120} placeholder="Title" style={fieldStyle} />
-          <textarea value={body} onChange={(e) => setBody(e.target.value)} maxLength={4000} placeholder="Message…" rows={5} style={{ ...fieldStyle, resize: "vertical" }} />
+          <div role="radiogroup" aria-label="Kind" style={{ display: "flex", gap: 7 }}>
+            {(
+              [
+                ["announcement", "Announcement", "News or a heads-up"],
+                ["release", "Feature release", "What's new, improved and fixed"],
+              ] as const
+            ).map(([key, label, hint]) => (
+              <button
+                key={key}
+                role="radio"
+                aria-checked={kind === key}
+                onClick={() => setKind(key)}
+                style={{
+                  flex: 1,
+                  textAlign: "left",
+                  padding: "10px 12px",
+                  borderRadius: 11,
+                  cursor: "pointer",
+                  background: kind === key ? "rgba(110,89,199,.22)" : "var(--bg-panel)",
+                  border: `1px solid ${kind === key ? "rgba(169,156,227,.6)" : "var(--hairline-2)"}`,
+                  color: "var(--text)",
+                }}
+              >
+                <div style={{ fontSize: 13, fontWeight: 700 }}>{label}</div>
+                <div style={{ fontSize: 11, color: "var(--text-dim)", marginTop: 2 }}>{hint}</div>
+              </button>
+            ))}
+          </div>
+          <input value={title} onChange={(e) => setTitle(e.target.value)} maxLength={120} placeholder={kind === "release" ? "Release title, e.g. Jemaw gets prettier" : "Title"} style={fieldStyle} />
+          {kind === "release" && (
+            <input value={notes.version} onChange={(e) => setNotes({ ...notes, version: e.target.value })} maxLength={30} placeholder="Version (optional), e.g. 1.6" style={fieldStyle} />
+          )}
+          <textarea
+            value={body}
+            onChange={(e) => setBody(e.target.value)}
+            maxLength={4000}
+            placeholder={kind === "release" ? "Intro (optional)" : "Message…"}
+            rows={kind === "release" ? 2 : 5}
+            style={{ ...fieldStyle, resize: "vertical" }}
+          />
+          {kind === "release" &&
+            (
+              [
+                ["added", "✨ New", "One feature per line"],
+                ["improved", "⚡ Improved", "One improvement per line"],
+                ["fixed", "🛠 Fixed", "One fix per line"],
+              ] as const
+            ).map(([key, label, hint]) => (
+              <label key={key} style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                <span style={{ fontSize: 12, fontWeight: 600, color: "var(--text-dim)" }}>{label}</span>
+                <textarea
+                  aria-label={label}
+                  value={notes[key]}
+                  onChange={(e) => setNotes({ ...notes, [key]: e.target.value })}
+                  placeholder={hint}
+                  rows={3}
+                  style={{ ...fieldStyle, resize: "vertical" }}
+                />
+              </label>
+            ))}
           <div style={{ display: "flex", gap: 7 }}>
             {(
               [
@@ -185,13 +273,12 @@ export function Announcements() {
             </div>
           )}
 
-          {(title || body) && (
+          {(title || body || hasContent) && (
             <div>
-              <div style={{ fontSize: 12, fontWeight: 600, color: "var(--text-dim)", marginBottom: 6 }}>Preview · to {recipients}</div>
-              <div style={{ background: "#1E1C2A", borderRadius: "14px 14px 14px 4px", padding: "11px 14px", fontSize: 14, lineHeight: 1.5, whiteSpace: "pre-wrap" }}>
-                <b>{title}</b>
-                {body && `\n\n${body}`}
+              <div style={{ fontSize: 12, fontWeight: 600, color: "var(--text-dim)", marginBottom: 6 }}>
+                Preview · to {recipients} · change the look in Message designs
               </div>
+              <PostPreview post={preview} />
             </div>
           )}
 
@@ -227,7 +314,10 @@ export function Announcements() {
               <div key={a.id} style={{ padding: "13px 20px", borderTop: "1px solid rgba(255,255,255,.05)" }}>
                 <div style={{ display: "flex", alignItems: "flex-start", gap: 12 }}>
                   <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontSize: 14, fontWeight: 600 }}>{a.title}</div>
+                    <div style={{ fontSize: 14, fontWeight: 600 }}>
+                      {a.kind === "release" && <span style={{ fontSize: 11, fontWeight: 700, color: "var(--accent-soft)", marginRight: 6 }}>RELEASE</span>}
+                      {a.title}
+                    </div>
                     <div style={{ fontSize: 12, color: "var(--text-dim)", marginTop: 2 }}>
                       {target} · {new Date(a.sentAt ?? a.createdAt).toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}
                     </div>
