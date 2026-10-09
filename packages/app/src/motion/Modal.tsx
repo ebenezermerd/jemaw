@@ -45,6 +45,10 @@ export function Modal({
             style={{
               maxWidth: 360,
               width: "100%",
+              // Never taller than the screen: long content scrolls inside.
+              maxHeight: "calc(100dvh - 48px)",
+              overflowY: "auto",
+              overscrollBehavior: "contain",
               background: "var(--surface)",
               borderRadius: "var(--r-lg)",
               padding: 24,

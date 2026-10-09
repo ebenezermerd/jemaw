@@ -1059,6 +1059,20 @@ function TelegramSection({ member }: { member: MemberDto }) {
                 : "No known accounts yet. Search by @username, or type a numeric Telegram user id."}
             </span>
           )}
+          <div
+            data-testid="link-candidates"
+            style={{
+              display: "grid",
+              gap: 2,
+              // About five accounts tall; the rest scrolls here, not the page.
+              maxHeight: 248,
+              overflowY: "auto",
+              overscrollBehavior: "contain",
+              WebkitOverflowScrolling: "touch",
+              margin: "0 -4px",
+              padding: "0 4px",
+            }}
+          >
           {list.map((c) => (
             <button
               key={c.telegramUserId}
@@ -1117,6 +1131,7 @@ function TelegramSection({ member }: { member: MemberDto }) {
               </span>
             </button>
           ))}
+          </div>
 
           {rawIdOption && (
             <button
