@@ -32,6 +32,7 @@ import {
   setMemberPrimaryById,
   assignMemberTelegram,
   listMessageSenderIds,
+  listSeenUsers,
   removeMemberById,
   countAdmins,
   updateGroupCurrency,
@@ -1153,9 +1154,10 @@ export async function registerApi(
     },
   );
 
-  // GET assignable Telegram identities — admin only. Every linked member's
-  // current account plus chat message senders not yet attached to any member
-  // (names resolved via the bot API when available).
+  // GET assignable Telegram identities — admin only, this group only. Every
+  // linked member's account, plus people seen in the chat who aren't attached
+  // to a member: message senders, joiners and chat admins. Telegram gives bots
+  // no member list, so these are everyone the bot can know about.
   app.get(
     "/api/groups/:groupId/members/telegram-candidates",
     { preHandler: auth },
@@ -1164,6 +1166,20 @@ export async function registerApi(
       const { group } = req.jemaw!;
       const memberRows = await listMembers(db, group.id);
       const senderIds = await listMessageSenderIds(db, group.id);
+      const seen = listSeenUsers(group);
+      // Chat admins come with their names; best effort.
+      const admins = deps.botApi
+        ? await deps.botApi.getChatAdministrators(Number(group.telegramChatId)).catch(() => [])
+        : [];
+      const known = new Map<string, { username: string | null; name: string | null }>();
+      for (const [id, u] of seen) known.set(id, { username: u.username, name: u.name });
+      for (const a of admins) {
+        if (a.user.is_bot) continue;
+        known.set(String(a.user.id), {
+          username: a.user.username ?? null,
+          name: [a.user.first_name, a.user.last_name].filter(Boolean).join(" ").trim() || null,
+        });
+      }
 
       const candidates: TelegramCandidateDto[] = [];
       const linked = new Set<string>();
@@ -1180,14 +1196,17 @@ export async function registerApi(
       }
       // Resolve unattached sender names in parallel — sequential getChatMember
       // calls made the picker feel like it never loaded.
-      const unattached = senderIds.filter(
-        (tid) => tid > 0n && !linked.has(tid.toString()),
-      );
+      const unattached = [
+        ...new Set([...senderIds.map(String), ...known.keys()]),
+      ]
+        .filter((tid) => /^\d+$/.test(tid) && !linked.has(tid))
+        .map((tid) => BigInt(tid));
       const resolved = await Promise.all(
         unattached.map(async (tid): Promise<TelegramCandidateDto> => {
-          let displayName: string | null = null;
-          let username: string | null = null;
-          if (deps.botApi) {
+          const hint = known.get(tid.toString());
+          let displayName: string | null = hint?.name ?? null;
+          let username: string | null = hint?.username ?? null;
+          if (deps.botApi && !hint) {
             try {
               const cm = await deps.botApi.getChatMember(
                 Number(group.telegramChatId),
