@@ -128,6 +128,7 @@ d("admin management routes", () => {
         verifier: { verify: async () => ({ uid: "itest", email: ADMIN }) },
         now: () => Date.now(),
         telegram,
+        botToken: "123:itest",
       },
       corsOrigin: undefined,
     });
@@ -278,6 +279,16 @@ d("admin management routes", () => {
     const after = await inject("GET", "/api/admin/ai/usage");
     expect(after.json().limits).toMatchObject({ requests: { limit: 1000, remaining: 0 } });
     await db.delete(appConfig).where(eq(appConfig.key, "bot.ai.limits"));
+  });
+
+  it("hands out signed photo links and refuses forged ones", async () => {
+    const detail = (await inject("GET", `/api/admin/groups/${groupId}`)).json();
+    const ada = detail.members.find((m: { memberId: string }) => m.memberId === adminId);
+    expect(ada.photoUrl).toMatch(/^\/avatars\/9100001\.jpg\?s=/);
+    const forged = await app.inject({ method: "GET", url: "/avatars/9100001.jpg?s=forged" });
+    expect(forged.statusCode).toBe(404);
+    const users = (await inject("GET", "/api/admin/users")).json();
+    expect(users.find((u: { telegramUserId: string }) => u.telegramUserId === "9100001").photoUrl).toBe(ada.photoUrl);
   });
 
   it("pauses a group's AI, suspends it, caps its daily AI calls, and never deletes it", async () => {

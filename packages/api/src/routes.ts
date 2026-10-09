@@ -2,6 +2,7 @@
  * Admin REST API. All routes live under /api/admin and run behind the Firebase
  * auth hook, which attaches req.admin. Bodies are validated with zod.
  */
+import { createAvatarFetcher, verifyAvatarSignature } from "@jemaw/shared/avatar";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import type { Db } from "./db.js";
@@ -83,6 +84,7 @@ import type {
 } from "@jemaw/shared/types";
 import {
   toUserDto,
+  configureAvatars,
   toTopGroupDto,
   toAuditDto,
   toAnnouncementDto,
@@ -94,6 +96,8 @@ export interface ApiDeps {
   now: () => number;
   /** Bot API client for announcements, chat renames and leaving chats. */
   telegram: TelegramClient;
+  /** The bot token, to sign and fetch members' profile photos. */
+  botToken?: string;
   /** Groq key and default model, for the AI usage limits check. */
   groq?: { apiKey?: string; model?: string };
 }
@@ -162,6 +166,22 @@ export async function registerApi(
   deps: ApiDeps,
 ): Promise<void> {
   const { db, now, telegram } = deps;
+  configureAvatars(deps.botToken);
+  const getAvatar = deps.botToken ? createAvatarFetcher(deps.botToken) : null;
+
+  // Members' Telegram profile photos for the console, by signed link only.
+  app.get("/avatars/:file", async (req, reply) => {
+    const id = (req.params as { file: string }).file.replace(/\.jpg$/, "");
+    if (!deps.botToken || !getAvatar || !verifyAvatarSignature(deps.botToken, id, (req.query as { s?: string }).s)) {
+      return reply.code(404).send();
+    }
+    const img = await getAvatar(id);
+    if (!img) return reply.code(404).header("cache-control", "public, max-age=3600").send();
+    return reply
+      .header("content-type", img.contentType)
+      .header("cache-control", "public, max-age=86400")
+      .send(Buffer.from(img.body));
+  });
   const audit = (
     req: { admin?: { uid: string; email: string | null } },
     action: string,

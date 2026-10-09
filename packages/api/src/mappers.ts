@@ -2,6 +2,7 @@
  * Row → wire DTO mappers. Telegram ids become strings; cents become decimal
  * strings; user status is derived from activity recency + active flag.
  */
+import { avatarPath } from "@jemaw/shared/avatar";
 import {
   centsToDecimal,
   type AdminUserDto,
@@ -30,8 +31,16 @@ export function deriveUserStatus(
   return "idle";
 }
 
+// Signs profile photo links; set once by registerApi with the bot token.
+let avatarToken: string | undefined;
+export function configureAvatars(botToken: string | undefined): void {
+  avatarToken = botToken;
+}
+export const memberPhoto = (telegramUserId: bigint | string) => avatarPath(avatarToken, telegramUserId);
+
 export function toUserDto(row: AdminUserRow, now: number): AdminUserDto {
   return {
+    photoUrl: memberPhoto(row.telegramUserId),
     telegramUserId: row.telegramUserId.toString(),
     displayName: row.displayName,
     username: row.username,

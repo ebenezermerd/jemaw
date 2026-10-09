@@ -3,6 +3,7 @@
  * bot uses (@jemaw/shared/ledger), so balances and settled states match what
  * members see in the mini app.
  */
+import { memberPhoto } from "./mappers.js";
 import { and, count, desc, eq, ilike, inArray, isNull, or, type SQL } from "drizzle-orm";
 import { parseHumorSettings, toHumorSettingsDto } from "@jemaw/shared/humor";
 import { parseGroupAccess } from "@jemaw/shared/groupAccess";
@@ -188,6 +189,7 @@ export function groupDetail(ledger: GroupLedger): AdminGroupDetailDto {
         displayName: m.displayName,
         username: m.username,
         telegramUserId: telegramIdToString(m.telegramUserId),
+        photoUrl: memberPhoto(m.telegramUserId),
         isManual: isManualId(m.telegramUserId),
         role: m.role,
         isActive: m.isActive,
