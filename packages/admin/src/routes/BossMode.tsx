@@ -145,6 +145,13 @@ export function BossModeCard() {
               onChange={(v) => update({ canEndPause: v })}
             />
             <ToggleRow
+              label="Change the books from chat"
+              hint={'"settle mine to Pomi", "approve the groceries drafts", "add 600 for lunch with Aman", "delete yesterday\'s lunch". Each shows a card with Confirm and Cancel.'}
+              on={boss.actions}
+              disabled={!canEdit || save.isPending}
+              onChange={(v) => update({ actions: v })}
+            />
+            <ToggleRow
               label="Chat commands"
               hint={'"jemaw humor off" and "jemaw humor on" switch the group\'s humor from the chat.'}
               on={boss.commands}
