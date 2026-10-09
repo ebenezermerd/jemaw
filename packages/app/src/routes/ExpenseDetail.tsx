@@ -7,7 +7,8 @@ import {
   useVoidExpense,
 } from "../lib/hooks.js";
 import type { CreateExpenseInput, ExpenseKind } from "@jemaw/shared/types";
-import { Button, Avatar } from "../ui/primitives.js";
+import { Button } from "../ui/primitives.js";
+import { MemberAvatar } from "../ui/MemberAvatar.js";
 import { Modal } from "../motion/Modal.js";
 import { PageHeader } from "../ui/PageHeader.js";
 import { PageLoader } from "../motion/Loader.js";
@@ -133,7 +134,7 @@ export function ExpenseDetail() {
       <Field label={kind === "loan" ? "Lent by" : "Paid by"}>
         <div style={{ display: "flex", gap: 8, overflowX: "auto", paddingBottom: 4 }}>
           {payerOptions.map((m) => (
-            <Chip key={m.id} active={payer === m.id} onClick={() => setPayer(m.id)} name={label(m)} />
+            <Chip key={m.id} active={payer === m.id} onClick={() => setPayer(m.id)} name={label(m)} memberId={m.id} />
           ))}
         </div>
       </Field>
@@ -149,6 +150,7 @@ export function ExpenseDetail() {
                   active={borrower === m.id}
                   onClick={() => setSplitWith(new Set([m.id]))}
                   name={label(m)}
+                  memberId={m.id}
                 />
               ))}
           </div>
@@ -174,7 +176,7 @@ export function ExpenseDetail() {
                     cursor: "pointer",
                   }}
                 >
-                  <Avatar name={formatDisplayName(m.displayName)} size={28} />
+                  <MemberAvatar name={formatDisplayName(m.displayName)} memberId={m.id} size={28} />
                   <span className="t-body-strong">{label(m)}</span>
                 </button>
               );
@@ -244,7 +246,7 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
   );
 }
 
-function Chip({ active, onClick, name }: { active: boolean; onClick: () => void; name: string }) {
+function Chip({ active, onClick, name, memberId }: { active: boolean; onClick: () => void; name: string; memberId?: string }) {
   return (
     <button
       onClick={onClick}
@@ -262,7 +264,7 @@ function Chip({ active, onClick, name }: { active: boolean; onClick: () => void;
         cursor: "pointer",
       }}
     >
-      <Avatar name={name} size={24} />
+      <MemberAvatar name={name} memberId={memberId} size={24} />
       <span className="t-label">{name}</span>
     </button>
   );

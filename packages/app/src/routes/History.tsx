@@ -12,7 +12,8 @@ import {
   useHistory,
   useVoidExpense,
 } from "../lib/hooks.js";
-import { Avatar, Button, Money } from "../ui/primitives.js";
+import { Button, Money } from "../ui/primitives.js";
+import { MemberAvatar } from "../ui/MemberAvatar.js";
 import { Skeleton } from "../motion/Skeleton.js";
 import { EmptyState } from "../ui/EmptyState.js";
 import { Modal } from "../motion/Modal.js";
@@ -392,7 +393,7 @@ function HistoryPageItems({
                     <TypeGlyph kind="settlement" />
                     <div style={{ minWidth: 0 }}>
                       <div style={{ display: "flex", alignItems: "center", gap: 7, minWidth: 0 }}>
-                        <Avatar name={nameOf(item.settlement.fromMemberId)} size={24} />
+                        <MemberAvatar name={nameOf(item.settlement.fromMemberId)} memberId={item.settlement.fromMemberId} size={24} />
                         <span className="t-label" style={ellipsis}>
                           {nameOf(item.settlement.fromMemberId)}
                         </span>
@@ -406,7 +407,7 @@ function HistoryPageItems({
                           marginTop: 3,
                         }}
                       >
-                        <Avatar name={nameOf(item.settlement.toMemberId)} size={24} />
+                        <MemberAvatar name={nameOf(item.settlement.toMemberId)} memberId={item.settlement.toMemberId} size={24} />
                         <span className="t-caption" style={{ color: "var(--text-muted)", ...ellipsis }}>
                           paid to {nameOf(item.settlement.toMemberId)}
                         </span>
