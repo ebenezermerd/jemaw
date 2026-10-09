@@ -736,3 +736,41 @@ export interface AdminAccountsDto {
   /** only supers can add, remove or change admins */
   canManage: boolean;
 }
+
+export interface AdminAiUsageDayDto {
+  date: string; // YYYY-MM-DD (UTC)
+  scans: number;
+  replies: number;
+  tokens: number;
+}
+
+export interface AdminAiGroupQuotaDto {
+  groupId: string;
+  groupName: string;
+  mode: "off" | "jemaw_dry" | "roast" | "chaos";
+  /** public replies sent since 00:00 UTC, the bot's daily window */
+  repliesToday: number;
+  /** the group's daily cap; 0 when the personality is off */
+  maxPerDay: number;
+  mutedUntil: string | null;
+}
+
+export interface AdminAiUsageDto {
+  today: {
+    calls: number;
+    scans: number;
+    replies: number;
+    inputTokens: number;
+    outputTokens: number;
+    errors: number;
+  };
+  days: AdminAiUsageDayDto[];
+  byModel: { model: string; calls: number; tokens: number }[];
+  groups: AdminAiGroupQuotaDto[];
+  /** Groq's last reported limits, or null before any call was recorded */
+  limits: import("./runtimeConfig.js").AiLimitsSnapshot | null;
+  /** the API holds a Groq key, so "Check now" works */
+  canCheck: boolean;
+  /** the model the bot uses now */
+  model: string;
+}

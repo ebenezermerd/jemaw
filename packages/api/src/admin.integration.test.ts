@@ -179,6 +179,13 @@ d("admin management routes", () => {
     expect(promote.statusCode).toBe(200);
     const demote = await inject("PATCH", `/api/admin/groups/${groupId}/members/${adminId}`, { role: "member" });
     expect(demote.statusCode).toBe(200);
+    // Removing someone keeps their money but takes them out of default splits.
+    await inject("PATCH", `/api/admin/groups/${groupId}/members/${adminId}`, { isActive: false });
+    const [gone] = await db.select().from(members).where(eq(members.id, adminId));
+    expect(gone).toMatchObject({ isActive: false, isPrimary: false });
+    await inject("PATCH", `/api/admin/groups/${groupId}/members/${adminId}`, { isActive: true });
+    const detail = await inject("GET", `/api/admin/groups/${groupId}`);
+    expect(detail.json().members.find((m: { memberId: string }) => m.memberId === adminId)).toMatchObject({ isActive: true, isPrimary: true, paid: "100.00" });
   });
 
   it("feeds scans, replies, drafts, settlements and console actions into activity", async () => {
@@ -238,6 +245,39 @@ d("admin management routes", () => {
     expect(removed.json().admins.map((a: { email: string }) => a.email)).toEqual([ADMIN]);
   });
 
+  it("reports today's AI usage, each group's reply quota and Groq's limits", async () => {
+    await db.insert(botReplies).values({
+      groupId, triggerEvent: "direct_chat", channel: "group", decision: "sent",
+      model: "openai/gpt-oss-120b", inputTokens: 900, outputTokens: 60,
+    });
+    const res = await inject("GET", "/api/admin/ai/usage");
+    expect(res.statusCode).toBe(200);
+    const u = res.json();
+    expect(u.today.replies).toBeGreaterThanOrEqual(1);
+    expect(u.today.inputTokens).toBeGreaterThanOrEqual(900);
+    expect(u.days).toHaveLength(14);
+    const mine = u.groups.find((g: { groupId: string }) => g.groupId === groupId);
+    expect(mine).toMatchObject({ mode: "roast", repliesToday: 1, maxPerDay: 50 });
+
+    const { checkGroqLimits } = await import("./aiUsage.js");
+    const fakeFetch = (async () =>
+      new Response("{}", {
+        status: 429,
+        headers: {
+          "x-ratelimit-limit-requests": "1000",
+          "x-ratelimit-remaining-requests": "0",
+          "x-ratelimit-reset-requests": "3m",
+          "x-ratelimit-limit-tokens": "8000",
+          "x-ratelimit-remaining-tokens": "8000",
+        },
+      })) as unknown as typeof fetch;
+    const snap = await checkGroqLimits(db, { apiKey: "k", model: "m", now: new Date(), fetchImpl: fakeFetch });
+    expect(snap).toMatchObject({ source: "check", requests: { remaining: 0, resetSeconds: 180 } });
+    const after = await inject("GET", "/api/admin/ai/usage");
+    expect(after.json().limits).toMatchObject({ requests: { limit: 1000, remaining: 0 } });
+    await db.delete(appConfig).where(eq(appConfig.key, "bot.ai.limits"));
+  });
+
   it("deletes a group with all its data after the name is confirmed, and leaves the chat", async () => {
     const wrong = await inject("DELETE", `/api/admin/groups/${groupId}`, { confirmName: "nope" });
     expect(wrong.statusCode).toBe(400);
@@ -245,7 +285,7 @@ d("admin management routes", () => {
     expect(res.statusCode).toBe(200);
     expect(res.json()).toMatchObject({
       leftChat: true,
-      deleted: { groups: 1, members: 2, expenses: 1, expense_shares: 2, settlements: 1, suggestions: 1, ai_runs: 1, bot_replies: 1, messages: 1 },
+      deleted: { groups: 1, members: 2, expenses: 1, expense_shares: 2, settlements: 1, suggestions: 1, ai_runs: 1, bot_replies: 2, messages: 1 },
     });
     expect(calls.at(-1)).toMatchObject({ method: "leaveChat", params: { chat_id: chatId.toString() } });
     const left = await db.select().from(members).where(inArray(members.id, [adminId, memberId]));

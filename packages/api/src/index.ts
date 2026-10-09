@@ -27,7 +27,13 @@ async function main(): Promise<void> {
   const telegram = createTelegramClient(env.TELEGRAM_BOT_TOKEN);
   if (!telegram.configured) console.warn("[api] TELEGRAM_BOT_TOKEN not set: announcements and chat actions are off");
   const app = await buildServer({
-    api: { db, verifier, now: () => Date.now(), telegram },
+    api: {
+      db,
+      verifier,
+      now: () => Date.now(),
+      telegram,
+      groq: { apiKey: env.GROQ_API_KEY, model: env.GROQ_MODEL },
+    },
     corsOrigin: env.ADMIN_ORIGIN,
   });
 

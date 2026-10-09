@@ -60,6 +60,7 @@ import {
 import { ACTIVITY_SEVERITIES, ACTIVITY_SOURCES, listActivity } from "./activity.js";
 import { deliverAnnouncement } from "./announce.js";
 import { botStatus } from "./botStatus.js";
+import { aiUsage, checkGroqLimits, DEFAULT_GROQ_MODEL } from "./aiUsage.js";
 import type { TelegramClient } from "./telegram.js";
 import { announcements } from "@jemaw/shared/schema";
 import { and, inArray } from "drizzle-orm";
@@ -71,6 +72,7 @@ import {
 } from "@jemaw/shared/runtimeConfig";
 import type {
   AdminAccountsDto,
+  AdminAiUsageDto,
   AdminActivityPageDto,
   AdminActivitySeverity,
   AdminActivitySource,
@@ -91,6 +93,8 @@ export interface ApiDeps {
   now: () => number;
   /** Bot API client for announcements, chat renames and leaving chats. */
   telegram: TelegramClient;
+  /** Groq key and default model, for the AI usage limits check. */
+  groq?: { apiKey?: string; model?: string };
 }
 
 const createAnnouncementSchema = z.object({
@@ -511,6 +515,26 @@ export async function registerApi(
   // ─── bot health & runtime switches ─────────────────────────────────
   app.get("/api/admin/bot/status", { preHandler: auth }, async () => {
     const res: AdminBotStatusDto = await botStatus(db, telegram, now());
+    return res;
+  });
+
+  // The model the bot runs now: the console override, else the bot's env default.
+  const activeModel = async () =>
+    runtimeConfigFromRows(await listConfig(db)).model ?? deps.groq?.model ?? DEFAULT_GROQ_MODEL;
+
+  app.get("/api/admin/ai/usage", { preHandler: auth }, async () => {
+    const res: AdminAiUsageDto = await aiUsage(db, {
+      now: new Date(now()),
+      model: await activeModel(),
+      canCheck: Boolean(deps.groq?.apiKey),
+    });
+    return res;
+  });
+
+  app.post("/api/admin/ai/limits/check", { preHandler: auth }, async (_req, reply) => {
+    if (!deps.groq?.apiKey) return reply.code(503).send({ error: "GROQ_API_KEY is not set on the API" });
+    const res = await checkGroqLimits(db, { apiKey: deps.groq.apiKey, model: await activeModel(), now: new Date(now()) });
+    if ("error" in res) return reply.code(502).send(res);
     return res;
   });
 
