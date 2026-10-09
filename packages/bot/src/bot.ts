@@ -4,6 +4,7 @@ import {
   upsertGroup,
   getGroupById,
   getGroupByChatId,
+  rememberSeenUser,
   groupAiGate,
   captureMessage,
   countPendingSuggestions,
@@ -489,6 +490,34 @@ export function createBot(token: string, deps: BotDeps): Bot {
       await ctx.reply("Couldn't build the summary right now. Try again shortly.");
     }
   });
+
+  // People who join after Jemaw is in the chat: remember them for the account
+  // picker without adding them to splits until they take part.
+  bot.on("message:new_chat_members", async (ctx) => {
+    const groupId = await ensureGroup(ctx);
+    if (!groupId) return;
+    for (const u of ctx.message.new_chat_members) {
+      if (!u.is_bot) await rememberSeenUser(db, groupId, u).catch(() => {});
+    }
+  });
+
+  // Media-only senders take part too: register them like text senders.
+  bot.on(
+    [
+      "message:photo",
+      "message:video",
+      "message:voice",
+      "message:sticker",
+      "message:document",
+      "message:animation",
+      "message:audio",
+      "message:video_note",
+    ],
+    async (ctx) => {
+      const groupId = await ensureGroup(ctx);
+      if (groupId && ctx.from) await registerUser(db, groupId, ctx.from).catch(() => {});
+    },
+  );
 
   // Capture plain group text + register the speaker; trigger a scan on "jemaw".
   bot.on("message:text", async (ctx) => {

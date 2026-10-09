@@ -501,6 +501,41 @@ export async function assignMemberTelegram(
 }
 
 /** Distinct Telegram user ids seen sending messages in this group's chat. */
+export interface SeenUser {
+  username: string | null;
+  name: string | null;
+  at: string;
+}
+
+/** How many joiners a group remembers for the account picker. */
+const SEEN_USERS_CAP = 300;
+
+/**
+ * Remember someone who joined the chat but hasn't spoken yet, so admins can
+ * link them to a member. Kept under groups.settings.seenUsers, newest last.
+ */
+export async function rememberSeenUser(
+  db: Db,
+  groupId: string,
+  user: { id: number | bigint; username?: string; first_name?: string; last_name?: string },
+): Promise<void> {
+  const group = await getGroupById(db, groupId);
+  if (!group) return;
+  const settings = (group.settings as Record<string, unknown> | null) ?? {};
+  const seen = { ...((settings.seenUsers as Record<string, SeenUser> | undefined) ?? {}) };
+  const name = [user.first_name, user.last_name].filter(Boolean).join(" ").trim() || null;
+  delete seen[String(user.id)];
+  seen[String(user.id)] = { username: user.username ?? null, name, at: new Date().toISOString() };
+  const keys = Object.keys(seen);
+  for (const k of keys.slice(0, Math.max(0, keys.length - SEEN_USERS_CAP))) delete seen[k];
+  await mergeGroupSettings(db, groupId, { seenUsers: seen });
+}
+
+export function listSeenUsers(group: Group): Map<string, SeenUser> {
+  const raw = (group.settings as Record<string, unknown> | null)?.seenUsers;
+  return new Map(Object.entries((raw as Record<string, SeenUser> | undefined) ?? {}));
+}
+
 export async function listMessageSenderIds(
   db: Db,
   groupId: string,
