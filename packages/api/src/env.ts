@@ -28,6 +28,8 @@ const schema = z.object({
   GROQ_API_KEY: z.string().optional(),
   /** The bot's default Groq model, when the console hasn't overridden it. */
   GROQ_MODEL: z.string().optional(),
+  /** Mini App short name, for "Open Jemaw" buttons on test posts (t.me/<bot>/<name>). */
+  MINI_APP_SHORT_NAME: z.string().default("app"),
 });
 
 export type Env = z.infer<typeof schema>;

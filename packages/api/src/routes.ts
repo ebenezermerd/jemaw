@@ -65,6 +65,16 @@ import { botStatus } from "./botStatus.js";
 import { aiUsage, checkGroqLimits, DEFAULT_GROQ_MODEL } from "./aiUsage.js";
 import { aiDayStart } from "@jemaw/shared/groupAccess";
 import type { TelegramClient } from "./telegram.js";
+import {
+  composePost,
+  DEFAULT_POST_DESIGNS,
+  parsePostDesign,
+  POST_USE_CASES,
+  SAMPLE_POST_DATA,
+  type PostData,
+} from "@jemaw/shared/posts";
+import { sendComposedPost, type ImageRenderer } from "./postSend.js";
+import { loadGroupPostData } from "./postData.js";
 import { announcements } from "@jemaw/shared/schema";
 import { and, inArray } from "drizzle-orm";
 import {
@@ -100,7 +110,27 @@ export interface ApiDeps {
   botToken?: string;
   /** Groq key and default model, for the AI usage limits check. */
   groq?: { apiKey?: string; model?: string };
+  /** Mini App deep link for a group, for posts' "Open Jemaw" buttons. */
+  openAppUrl?: (groupId: string) => string | null;
+  /** Draws post images; defaults to the shared satori renderer. */
+  renderImage?: ImageRenderer;
 }
+
+const imageText = z.string().max(120);
+const imageSpecSchema = z.discriminatedUnion("kind", [
+  z.object({ kind: z.literal("hero"), eyebrow: imageText, badge: imageText, amount: imageText, currency: imageText, subline: imageText }),
+  z.object({ kind: z.literal("expense"), title: imageText, amount: imageText, currency: imageText, payer: imageText, date: imageText, emoji: z.string().max(16) }),
+  z.object({ kind: z.literal("banner"), eyebrow: imageText, title: imageText, subline: imageText }),
+]);
+
+const designTestSchema = z.object({
+  useCase: z.enum(POST_USE_CASES),
+  groupId: z.string().regex(/^[0-9a-f-]{36}$/i),
+  design: z.record(z.unknown()),
+  memberId: z.string().optional(),
+  /** Text the editor typed for announcements, releases and reports. */
+  data: z.record(z.unknown()).optional(),
+});
 
 const createAnnouncementSchema = z.object({
   title: z.string().min(1).max(120),
@@ -152,6 +182,7 @@ const botConfigSchema = z
     scanCooldownSeconds: z.number().int().min(5).max(600),
     weeklyDigestEnabled: z.boolean(),
     maintenanceMessage: z.string().max(500).nullable(),
+    postDesigns: z.record(z.unknown()),
   })
   .partial()
   .strict();
@@ -576,6 +607,50 @@ export async function registerApi(
     await audit(req, "bot.config", "config", "bot", parsed.data);
     const res: BotRuntimeConfig = runtimeConfigFromRows(await listConfig(db));
     return res;
+  });
+
+  // ─── message designs ───────────────────────────────────────────────
+  const renderImage: ImageRenderer =
+    deps.renderImage ?? (async (spec) => (await import("@jemaw/shared/postImages")).renderPostImage(spec));
+
+  app.post("/api/admin/designs/image", { preHandler: auth }, async (req, reply) => {
+    const parsed = imageSpecSchema.safeParse((req.body as { spec?: unknown } | null)?.spec);
+    if (!parsed.success) return reply.code(400).send({ error: parsed.error.issues[0]?.message ?? "invalid image" });
+    const png = await renderImage(parsed.data);
+    return reply.header("content-type", "image/png").header("cache-control", "private, max-age=600").send(png);
+  });
+
+  app.get("/api/admin/designs/data", { preHandler: auth }, async (req, reply) => {
+    const { groupId, memberId } = req.query as { groupId?: string; memberId?: string };
+    if (!groupId || !UUID_RE.test(groupId)) return reply.code(404).send({ error: "group not found" });
+    const data = await loadGroupPostData(db, groupId, { memberId, now: new Date(now()) });
+    if (!data) return reply.code(404).send({ error: "group not found" });
+    return data;
+  });
+
+  app.post("/api/admin/designs/test", { preHandler: auth }, async (req, reply) => {
+    const parsed = designTestSchema.safeParse(req.body ?? {});
+    if (!parsed.success) return reply.code(400).send({ error: parsed.error.issues[0]?.message ?? "invalid body" });
+    if (!telegram.configured) return reply.code(503).send({ error: "TELEGRAM_BOT_TOKEN is not set on the API" });
+    const { useCase, groupId, memberId } = parsed.data;
+    const real = await loadGroupPostData(db, groupId, { memberId, now: new Date(now()) });
+    const group = real ? await getGroup(db, groupId) : null;
+    if (!real || !group) return reply.code(404).send({ error: "group not found" });
+    const input: PostData =
+      useCase === "weekly" ? { useCase, data: real.weekly }
+      : useCase === "ai_payments" ? { useCase, data: real.payments }
+      : ({ useCase, data: { ...SAMPLE_POST_DATA[useCase].data, ...parsed.data.data } } as PostData);
+    const design = parsePostDesign(parsed.data.design, DEFAULT_POST_DESIGNS[useCase]);
+    let post;
+    try {
+      post = composePost(input, design, { openUrl: deps.openAppUrl?.(groupId) ?? null });
+    } catch {
+      return reply.code(400).send({ error: "those details can't be turned into a post" });
+    }
+    const sent = await sendComposedPost(telegram, group.telegramChatId.toString(), post, renderImage);
+    await audit(req, "designs.test", "group", groupId, { useCase, layout: design.layout, mode: sent.mode, ok: sent.ok });
+    if (!sent.ok) return reply.code(502).send({ error: sent.error ?? "Telegram refused the post" });
+    return sent;
   });
 
   // ─── announcements ─────────────────────────────────────────────────

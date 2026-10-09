@@ -36,6 +36,10 @@ const telegram: TelegramClient = {
     if (method === "sendMessage" && params.chat_id === "999") return { ok: false, error: "chat not found" };
     return { ok: true, result: { username: "JemawBot" } as T };
   },
+  async upload<T>(method: string, params: Record<string, unknown>, files: Record<string, Buffer>) {
+    calls.push({ method, params: { ...params, files: Object.keys(files) } });
+    return { ok: true, result: { message_id: 1 } as T };
+  },
 };
 
 d("admin management routes", () => {
@@ -129,6 +133,8 @@ d("admin management routes", () => {
         now: () => Date.now(),
         telegram,
         botToken: "123:itest",
+        renderImage: async () => Buffer.from("png"),
+        openAppUrl: (id) => `https://t.me/jemawsbot/app?startapp=${id}`,
       },
       corsOrigin: undefined,
     });
@@ -307,6 +313,37 @@ d("admin management routes", () => {
     const [g] = await db.select().from(groups).where(eq(groups.id, groupId));
     expect((g!.settings as Record<string, unknown>).vibe).toEqual({ keep: 1 });
     expect((await inject("DELETE", `/api/admin/groups/${groupId}`)).statusCode).toBe(404);
+  });
+
+  it("previews and test-sends message designs with the group's real numbers", async () => {
+    const data = await inject("GET", `/api/admin/designs/data?groupId=${groupId}`);
+    expect(data.statusCode).toBe(200);
+    const body = data.json() as { weekly: { spentCents: number; expenses: { description: string }[] }; payments: { name: string; owes: { name: string; cents: number }[] } };
+    expect(body.weekly.spentCents).toBe(10000);
+    expect(body.weekly.expenses[0]!.description).toBe("Lunch");
+    // Debts follow allocations like the bot's: the unallocated 20 doesn't clear Lunch yet.
+    expect(body.payments).toMatchObject({ name: "Bo", owes: [{ name: "Ada", cents: 5000 }] });
+
+    const image = await inject("POST", "/api/admin/designs/image", { spec: { kind: "banner", eyebrow: "New", title: "Hi", subline: "x" } });
+    expect(image.statusCode).toBe(200);
+    expect(image.headers["content-type"]).toBe("image/png");
+    expect((await inject("POST", "/api/admin/designs/image", { spec: { kind: "poster" } })).statusCode).toBe(400);
+
+    calls.length = 0;
+    const sent = await inject("POST", "/api/admin/designs/test", {
+      useCase: "weekly",
+      groupId,
+      design: { layout: "showcase", hero: "slideshow", buttonsPlacement: "below" },
+    });
+    expect(sent.statusCode).toBe(200);
+    expect(sent.json()).toMatchObject({ ok: true, mode: "rich" });
+    const rich = calls.find((c) => c.method === "sendRichMessage")!;
+    expect(rich.params.files).toEqual(["img0", "img1"]);
+    expect(JSON.stringify(rich.params.rich_message)).toContain("attach://img1");
+    expect(rich.params.reply_markup).toMatchObject({ inline_keyboard: [[{ url: `https://t.me/jemawsbot/app?startapp=${groupId}` }], [{ copy_text: { text: "100" } }]] });
+
+    const saved = await inject("PATCH", "/api/admin/bot/config", { postDesigns: { ai_payments: { checklistStyle: "table" } } });
+    expect(saved.json().postDesigns.ai_payments).toMatchObject({ layout: "checklist", checklistStyle: "table" });
   });
 
   it("clears a group's expenses but keeps the group and its members", async () => {
