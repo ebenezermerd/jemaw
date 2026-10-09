@@ -10,6 +10,8 @@ import type { LedgerQuery } from "../humor/intent.js";
 import { buildDirectChatPacket } from "../humor/factPacket.js";
 import { verifyCandidate } from "../humor/verifier.js";
 import { cleanReplyPunctuation } from "../humor/punctuation.js";
+import { bossToneRule } from "../humor/boss.js";
+import type { BossTone } from "@jemaw/shared/boss";
 import { groupDigits } from "../../telegram/announcements.js";
 import {
   ledgerHighlights,
@@ -73,6 +75,8 @@ export async function composeLedgerPersonaLine(input: {
   snapshot: LedgerSnapshot;
   query: LedgerQuery;
   rng?: () => number;
+  /** Set when a super admin asked: how gently to treat them. */
+  bossTone?: BossTone;
 }): Promise<PersonaLine> {
   const s = input.snapshot;
   const highlights = ledgerHighlights(s);
@@ -98,7 +102,12 @@ export async function composeLedgerPersonaLine(input: {
   for (let attempt = 0; input.client && attempt < 2; attempt++) {
     try {
       const res = await input.client.suggest({
-        systemPrompt: input.query.kind === "leaderboard" ? bragPrompt(input.mode) : systemPrompt(input.mode),
+        systemPrompt: [
+          input.query.kind === "leaderboard" ? bragPrompt(input.mode) : systemPrompt(input.mode),
+          bossToneRule(input.bossTone, s.asker?.name),
+        ]
+          .filter(Boolean)
+          .join(" "),
         userPrompt: `FACTS:${JSON.stringify({
           asker: s.asker?.name ?? null,
           asker_net: s.asker ? plainAmount(s.asker.netCents) : null,

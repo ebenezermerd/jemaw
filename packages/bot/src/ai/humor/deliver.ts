@@ -25,6 +25,8 @@ import {
 } from "./factPacket.js";
 import { composeHumorReply } from "./service.js";
 import { JEMAW_MENTION_RE, sanitizeAddressedUtterance } from "./intent.js";
+import { bossToneRule, endsPause } from "./boss.js";
+import type { BossTone } from "@jemaw/shared/boss";
 import {
   buildConversationFlow,
   isChatSulking,
@@ -162,6 +164,10 @@ export async function maybeDeliverDirectChat(input: {
   loading?: LoadingHandle;
   /** Where the app opens, for the button under a going-quiet warning. */
   links?: PostLinks;
+  /** Set when a super admin is talking: how to treat them. */
+  boss?: { tone: BossTone; skipPause: boolean; canEndPause: boolean };
+  /** Every super admin's Telegram id; their mentions don't count toward the pause. */
+  bossIds?: string[];
 }): Promise<boolean> {
   const started = Date.now();
   const settingsRaw = input.group.settings as Record<string, unknown> | null;
@@ -188,6 +194,7 @@ export async function maybeDeliverDirectChat(input: {
     settings,
     settingsRaw,
     currency: input.currency,
+    ignoreSenders: input.bossIds,
   });
 
   // Enforce prior ultimatum: stay quiet unless backlog improved.
@@ -203,6 +210,12 @@ export async function maybeDeliverDirectChat(input: {
         `[humor] sulk cleared group=${input.group.id} reason=backlog_improved`,
       );
     }
+  } else if (sulk.sulking && input.boss?.canEndPause && endsPause(utterance)) {
+    // The boss calls it off: the pause ends for everyone.
+    settings = await clearChatSulk(input.db, input.group.id, settings);
+    console.log(`[humor] sulk cleared group=${input.group.id} reason=boss`);
+  } else if (sulk.sulking && input.boss?.skipPause) {
+    console.log(`[humor] sulk skipped for boss group=${input.group.id}`);
   } else if (sulk.sulking) {
     console.log(
       `[humor] chat suppressed group=${input.group.id} reason=chat_sulk pending=${ctx.pendingCount}`,
@@ -258,7 +271,8 @@ export async function maybeDeliverDirectChat(input: {
   const flow = buildConversationFlow({
     kind: "chat",
     pendingCount: ctx.pendingCount,
-    pokeCount1h: ctx.pokeCount1h,
+    // A boss who skips the pause is never nudged toward it either.
+    pokeCount1h: input.boss?.skipPause ? Math.min(ctx.pokeCount1h, 1) : ctx.pokeCount1h,
     recentBotTexts: recentTexts,
     publicRepliesToday,
     maxPublicRepliesPerDay: maxDay,
@@ -271,6 +285,9 @@ export async function maybeDeliverDirectChat(input: {
       `Continue the ongoing thread (${threadTurns.length} prior lines). ` +
       flow.directive;
   }
+
+  const bossRule = bossToneRule(input.boss?.tone, ledger?.asker?.name);
+  if (bossRule) flow.directive = `${flow.directive} ${bossRule}`;
 
   const packet = buildDirectChatPacket({
     pendingCount: ctx.pendingCount,
@@ -306,7 +323,7 @@ export async function maybeDeliverDirectChat(input: {
     styleSamples: ctx.styleSamples,
     humor: input.humor,
     prefetched: { publicRepliesToday, recentTexts },
-    applySulkIfHardNudge: true,
+    applySulkIfHardNudge: !input.boss,
     pendingCountForSulk: ctx.pendingCount,
     sulkDrafts: ctx.drafts,
     openUrl: postContext(input.links, input.group.id).openUrl,
@@ -494,6 +511,8 @@ async function loadHumorGroupContext(input: {
   settings: HumorSettingsV1;
   settingsRaw: Record<string, unknown> | null;
   currency: string;
+  /** Telegram ids whose mentions don't count as pokes (the bosses). */
+  ignoreSenders?: string[];
 }): Promise<{
   vibe: GroupVibeV1;
   styleSamples: string[];
@@ -522,9 +541,11 @@ async function loadHumorGroupContext(input: {
     loadPrefsMap(input.db, input.groupId),
   ]);
   const hourAgo = Date.now() - 60 * 60 * 1000;
+  const ignored = new Set(input.ignoreSenders ?? []);
   const pokeCount1h = msgs.filter(
     (m) =>
       m.sentAt.getTime() >= hourAgo &&
+      !ignored.has(String(m.senderTelegramUserId)) &&
       JEMAW_MENTION_RE.test(m.text),
   ).length;
   const recentMessages = msgs.map((m) => ({ text: m.text, sentAt: m.sentAt }));

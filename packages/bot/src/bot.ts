@@ -8,6 +8,7 @@ import {
   groupAiGate,
   captureMessage,
   captureEditedMessage,
+  mergeGroupSettings,
   countPendingSuggestions,
   findMemberByTelegramId,
   setMemberRole,
@@ -44,6 +45,9 @@ import {
 import { startLoading, type LoadingHandle, type LoadingTopic } from "./telegram/loading.js";
 import { staticRuntimeConfig, type RuntimeConfigStore } from "./runtimeConfig.js";
 import { parseGroupAccess, type GroupAccessV1 } from "@jemaw/shared/groupAccess";
+import { isBoss } from "@jemaw/shared/boss";
+import type { Group } from "@jemaw/shared/schema";
+import { parseBossCommand, type BossCommand } from "./ai/humor/boss.js";
 
 
 // ─── Reply copy (pure, testable) ──────────────────────────────────────
@@ -304,8 +308,10 @@ export function createBot(token: string, deps: BotDeps): Bot {
     opts: { loading?: LoadingHandle; lead?: string; questionText?: string } = {},
   ): void {
     const chatId = ctx.chat!.id;
-    const replyTo = ctx.message?.message_id;
+    const replyTo = ctx.msg?.message_id;
     const askerTelegramId = ctx.from ? BigInt(ctx.from.id) : null;
+    const boss = runtime.current().boss;
+    const bossTone = isBoss(boss, askerTelegramId) ? boss.tone : undefined;
     void (async () => {
       const g = await getGroupById(db, groupId);
       if (!g) {
@@ -328,6 +334,7 @@ export function createBot(token: string, deps: BotDeps): Bot {
         humor: gate.blocked ? {} : (humor ?? {}),
         lead: opts.lead,
         questionText: opts.questionText,
+        bossTone,
         api: ctx.api,
         chatId,
         designs: runtime.current().postDesigns,
@@ -555,9 +562,20 @@ export function createBot(token: string, deps: BotDeps): Bot {
       const chatEnabled = runtime.current().chatEnabled;
       const askerTelegramId = ctx.from ? BigInt(ctx.from.id) : null;
       const replyTo = msg.message_id;
+      const bossConfig = runtime.current().boss;
+      const asBoss = isBoss(bossConfig, askerTelegramId);
       void (async () => {
         const g = await getGroupById(db, groupId);
         if (!g) return;
+        const command = asBoss && bossConfig.commands ? parseBossCommand(text) : null;
+        if (command) {
+          const line = await runBossCommand(db, g, command);
+          await ctx
+            .reply(line, { reply_parameters: { message_id: replyTo, allow_sending_without_reply: true } })
+            .catch(() => {});
+          console.log(`[boss] ${command} group=${groupId}`);
+          return;
+        }
         const gate = await groupAiGate(db, g);
         const aiOk = chatEnabled && !gate.blocked;
         const previous = recallLedgerQuestion(groupId, askerTelegramId);
@@ -624,6 +642,8 @@ export function createBot(token: string, deps: BotDeps): Bot {
           askerTelegramId,
           loading,
           links: { botUsername, miniAppShortName, miniAppUrl },
+          boss: asBoss ? bossConfig : undefined,
+          bossIds: bossConfig.people.map((p) => p.telegramUserId),
         });
         if (!delivered) await loading.cancel();
       })().catch((err) =>
@@ -636,6 +656,25 @@ export function createBot(token: string, deps: BotDeps): Bot {
   });
 
   return bot;
+}
+
+/**
+ * A boss switching the group's humor from chat. Turning it off remembers the
+ * mode so turning it back on restores it.
+ */
+async function runBossCommand(db: Db, g: Group, command: BossCommand): Promise<string> {
+  const raw = (g.settings as Record<string, unknown> | null) ?? {};
+  const humor = parseHumorSettings(raw.humor);
+  if (command === "humor_off") {
+    if (humor.mode === "off") return "Humor is already off here. Say \"jemaw humor on\" to bring it back.";
+    await mergeGroupSettings(db, g.id, { humor: { ...humor, mode: "off" }, humorModeBeforeBoss: humor.mode });
+    return "Done, humor is off in this group. I'll still answer money questions. Say \"jemaw humor on\" to bring it back.";
+  }
+  if (humor.mode !== "off") return "Humor is already on here.";
+  const before = raw.humorModeBeforeBoss;
+  const mode = before === "roast" || before === "chaos" || before === "jemaw_dry" ? before : "jemaw_dry";
+  await mergeGroupSettings(db, g.id, { humor: { ...humor, mode, enabledAt: new Date().toISOString() } });
+  return "Humor is back on. Good to be back, boss.";
 }
 
 /** How long after sending an edit that adds a mention still gets an answer. */
