@@ -7,7 +7,8 @@ import {
   useVoidExpense,
 } from "../lib/hooks.js";
 import type { CreateExpenseInput, ExpenseKind } from "@jemaw/shared/types";
-import { Button, Avatar } from "../ui/primitives.js";
+import { Button } from "../ui/primitives.js";
+import { MemberAvatar } from "../ui/MemberAvatar.js";
 import { Modal } from "../motion/Modal.js";
 import { PageHeader } from "../ui/PageHeader.js";
 import { PageLoader } from "../motion/Loader.js";
@@ -27,14 +28,13 @@ export function ExpenseDetail() {
   const edit = useEditExpense();
   const voidExpense = useVoidExpense();
 
-  // Active members, plus anyone already on this expense even if they were
-  // removed since: their share still counts and must stay visible.
-  const involved = new Set([
-    expense.data?.payerMemberId,
-    ...(expense.data?.shares.map((s) => s.memberId) ?? []),
-  ]);
-  const members =
-    group.data?.members.filter((m) => m.isActive || involved.has(m.id)) ?? [];
+  // Removed members appear only in the role they already have on this
+  // expense (payer, or one of the shares); they are never offered elsewhere.
+  const all = group.data?.members ?? [];
+  const active = all.filter((m) => m.isActive);
+  const originalShares = new Set(expense.data?.shares.map((s) => s.memberId) ?? []);
+  const payerOptions = all.filter((m) => m.isActive || m.id === expense.data?.payerMemberId);
+  const shareOptions = all.filter((m) => m.isActive || originalShares.has(m.id));
   const label = (m: { displayName: string; isActive: boolean }) =>
     `${formatDisplayName(m.displayName)}${m.isActive ? "" : " (removed)"}`;
 
@@ -56,10 +56,10 @@ export function ExpenseDetail() {
   }, [expense.data]);
 
   useEffect(() => {
-    if (kind !== "loan" || !payer || members.length < 2) return;
+    if (kind !== "loan" || !payer || active.length < 2) return;
     const current = [...splitWith][0];
     if (splitWith.size === 1 && current && current !== payer) return;
-    const next = members.find((m) => m.id !== payer)?.id;
+    const next = active.find((m) => m.id !== payer)?.id;
     if (next) setSplitWith(new Set([next]));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [kind, payer, group.data]);
@@ -133,8 +133,8 @@ export function ExpenseDetail() {
 
       <Field label={kind === "loan" ? "Lent by" : "Paid by"}>
         <div style={{ display: "flex", gap: 8, overflowX: "auto", paddingBottom: 4 }}>
-          {members.map((m) => (
-            <Chip key={m.id} active={payer === m.id} onClick={() => setPayer(m.id)} name={label(m)} />
+          {payerOptions.map((m) => (
+            <Chip key={m.id} active={payer === m.id} onClick={() => setPayer(m.id)} name={label(m)} memberId={m.id} />
           ))}
         </div>
       </Field>
@@ -142,7 +142,7 @@ export function ExpenseDetail() {
       {kind === "loan" ? (
         <Field label="Borrower">
           <div style={{ display: "flex", gap: 8, overflowX: "auto", paddingBottom: 4 }}>
-            {members
+            {shareOptions
               .filter((m) => m.id !== payer)
               .map((m) => (
                 <Chip
@@ -150,6 +150,7 @@ export function ExpenseDetail() {
                   active={borrower === m.id}
                   onClick={() => setSplitWith(new Set([m.id]))}
                   name={label(m)}
+                  memberId={m.id}
                 />
               ))}
           </div>
@@ -157,7 +158,7 @@ export function ExpenseDetail() {
       ) : (
         <Field label="Split between (equal)">
           <div style={{ display: "grid", gap: 8 }}>
-            {members.map((m) => {
+            {shareOptions.map((m) => {
               const on = splitWith.has(m.id);
               return (
                 <button
@@ -175,7 +176,7 @@ export function ExpenseDetail() {
                     cursor: "pointer",
                   }}
                 >
-                  <Avatar name={formatDisplayName(m.displayName)} size={28} />
+                  <MemberAvatar name={formatDisplayName(m.displayName)} memberId={m.id} size={28} />
                   <span className="t-body-strong">{label(m)}</span>
                 </button>
               );
@@ -245,7 +246,7 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
   );
 }
 
-function Chip({ active, onClick, name }: { active: boolean; onClick: () => void; name: string }) {
+function Chip({ active, onClick, name, memberId }: { active: boolean; onClick: () => void; name: string; memberId?: string }) {
   return (
     <button
       onClick={onClick}
@@ -263,7 +264,7 @@ function Chip({ active, onClick, name }: { active: boolean; onClick: () => void;
         cursor: "pointer",
       }}
     >
-      <Avatar name={name} size={24} />
+      <MemberAvatar name={name} memberId={memberId} size={24} />
       <span className="t-label">{name}</span>
     </button>
   );

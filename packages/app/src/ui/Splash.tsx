@@ -11,10 +11,16 @@ export function Splash({
   title = "Jemaw",
   subtitle,
   hint,
+  loading = true,
+  children,
 }: {
   title?: string;
   subtitle?: string;
   hint?: string;
+  /** show the spinner (off for screens that are not waiting on anything) */
+  loading?: boolean;
+  /** extra content under the wordmark, e.g. a notice card */
+  children?: React.ReactNode;
 }) {
   const reduced = useReducedMotion();
   return (
@@ -148,9 +154,12 @@ export function Splash({
       </div>
 
       {/* branded loader */}
-      <div style={{ position: "relative", marginTop: 6 }}>
-        <Loader size={44} />
-      </div>
+      {loading && (
+        <div style={{ position: "relative", marginTop: 6 }}>
+          <Loader size={44} />
+        </div>
+      )}
+      {children}
 
       {/* bottom hint */}
       {hint && (

@@ -5,6 +5,7 @@
  * in the window are skipped silently but still re-stamped so quiet groups are
  * not spammed. `/digest` triggers the same send on demand.
  */
+import { parseGroupAccess } from "@jemaw/shared/groupAccess";
 import type { Api } from "grammy";
 import type { Db } from "../db.js";
 import type { Group } from "@jemaw/shared/schema";
@@ -155,6 +156,8 @@ export async function runWeeklyDigestSweep(deps: WeeklyJobDeps): Promise<void> {
   if (deps.runtime && !deps.runtime.current().weeklyDigestEnabled) return;
   const groups = await listAllGroups(deps.db);
   for (const group of groups) {
+    // Suspended groups get nothing from the bot, the digest included.
+    if (parseGroupAccess((group.settings as Record<string, unknown> | null)?.access).status === "suspended") continue;
     try {
       const last = lastSentAt(group);
       if (last === null) {

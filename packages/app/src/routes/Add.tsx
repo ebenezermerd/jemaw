@@ -28,10 +28,15 @@ export function Add() {
     : undefined;
 
   // New expenses go to active members. A suggestion may still name someone
-  // who was removed since; keep them visible so nobody is split in unseen.
-  const fromSource = new Set([source?.payerMemberId, ...(source?.splitWith ?? [])]);
-  const members =
-    group.data?.members.filter((m) => m.isActive || fromSource.has(m.id)) ?? [];
+  // removed since; they show only in the role the suggestion gave them, so
+  // nobody is split in unseen and nobody removed can be newly picked.
+  const all = group.data?.members ?? [];
+  const members = all.filter((m) => m.isActive);
+  const sourceShares = new Set(source?.splitWith ?? []);
+  const payerOptions = all.filter((m) => m.isActive || m.id === source?.payerMemberId);
+  const shareOptions = all.filter((m) => m.isActive || sourceShares.has(m.id));
+  const label = (m: { displayName: string; isActive: boolean }) =>
+    `${formatDisplayName(m.displayName)}${m.isActive ? "" : " (removed)"}`;
 
   const [description, setDescription] = useState("");
   const [amount, setAmount] = useState("");
@@ -214,12 +219,12 @@ export function Add() {
       <Group>
         <Field label={kind === "loan" ? "Lent by" : "Paid by"} icon="◎">
           <ChipRow>
-            {members.map((m) => (
+            {payerOptions.map((m) => (
               <Chip
                 key={m.id}
                 active={payer === m.id}
                 onClick={() => setPayer(m.id)}
-                name={formatDisplayName(m.displayName)}
+                name={label(m)}
                 telegramUserId={m.telegramUserId}
               />
             ))}
@@ -229,14 +234,14 @@ export function Add() {
         {kind === "loan" ? (
           <Field label="Borrower" icon="⇄">
             <ChipRow>
-              {members
+              {shareOptions
                 .filter((m) => m.id !== payer)
                 .map((m) => (
                   <Chip
                     key={m.id}
                     active={borrower === m.id}
                     onClick={() => setSplitWith(new Set([m.id]))}
-                    name={formatDisplayName(m.displayName)}
+                    name={label(m)}
                     telegramUserId={m.telegramUserId}
                   />
                 ))}
@@ -254,7 +259,7 @@ export function Add() {
 
             <Field label="Split between" icon="≡">
               <div style={{ display: "grid", gap: 8 }}>
-                {members
+                {shareOptions
                   .filter(
                     (m) =>
                       showSecondary ||
@@ -296,7 +301,7 @@ export function Add() {
                           telegramUserId={m.telegramUserId}
                           size={28}
                         />
-                        <span className="t-body-strong">{formatDisplayName(m.displayName)}</span>
+                        <span className="t-body-strong">{label(m)}</span>
                       </button>
 
                       {on && splitType === "shares" && (

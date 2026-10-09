@@ -143,6 +143,7 @@ const CONSOLE_VERBS: Record<string, string> = {
   "group.humor": "Changed a group's bot settings",
   "group.reset": "Reset a group's ledger",
   "group.delete": "Deleted a group",
+  "group.access": "Changed a group's access",
   "member.update": "Changed a member",
   "admin.add": "Added a console admin",
   "admin.role": "Changed a console admin's role",

@@ -14,6 +14,7 @@ import { useRefresh, useGroup, useTriggerScan } from "./lib/hooks.js";
 import { TabBar } from "./ui/TabBar.js";
 import { PullToRefresh } from "./ui/PullToRefresh.js";
 import { Splash } from "./ui/Splash.js";
+import { SuspendedScreen } from "./ui/GroupAccess.js";
 import { ErrorBoundary } from "./ui/ErrorBoundary.js";
 import { Home } from "./routes/Home.js";
 import { Balances } from "./routes/Balances.js";
@@ -183,6 +184,9 @@ function Booting({ children }: { children: React.ReactNode }) {
     }
   }, [canScan, scan]);
   if (group.isLoading && !group.data) return <Splash />;
+  if (group.data?.access?.status === "suspended") {
+    return <SuspendedScreen access={group.data.access} groupName={group.data.name} />;
+  }
   // The group context is gone or unreachable (e.g. a stale deep link pointing at
   // a group that no longer exists). Show the friendly entry splash rather than
   // letting downstream screens crash into the error boundary.

@@ -32,6 +32,7 @@ async function main(): Promise<void> {
       verifier,
       now: () => Date.now(),
       telegram,
+      botToken: env.TELEGRAM_BOT_TOKEN,
       groq: { apiKey: env.GROQ_API_KEY, model: env.GROQ_MODEL },
     },
     corsOrigin: env.ADMIN_ORIGIN,

@@ -161,19 +161,37 @@ export function AiUsageCard() {
 
       {/* per-group reply caps */}
       <div style={{ fontSize: 12, fontWeight: 600, color: "var(--text-dim)", margin: "20px 0 8px" }}>
-        Jemaw's replies today per group · resets 00:00 UTC
+        AI calls and replies today per group · resets 00:00 UTC
       </div>
       <div className="jx-scroll" style={{ display: "grid", gap: 10, maxHeight: 8 * 38, overflowY: "auto", paddingRight: 4 }}>
         {u.groups.map((g) => {
           const off = g.mode === "off" || g.maxPerDay === 0;
           const left = Math.max(0, g.maxPerDay - g.repliesToday);
+          const state =
+            g.access === "suspended"
+              ? "suspended"
+              : g.access === "ai_paused"
+                ? "AI paused"
+                : `${g.aiCallsToday}${g.aiDailyLimit != null ? ` / ${g.aiDailyLimit}` : ""} AI`;
           return (
             <button
               key={g.groupId}
               onClick={() => navigate(`/groups/${g.groupId}`, { state: { from: { path: "/settings", label: "Bot & Settings" } } })}
-              style={{ display: "grid", gridTemplateColumns: "1fr 150px 90px", gap: 12, alignItems: "center", background: "none", border: "none", color: "var(--text)", padding: 0, textAlign: "left", cursor: "pointer" }}
+              style={{ display: "grid", gridTemplateColumns: "1fr 90px 150px 90px", gap: 12, alignItems: "center", background: "none", border: "none", color: "var(--text)", padding: 0, textAlign: "left", cursor: "pointer" }}
             >
               <span style={{ fontSize: 13, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{g.groupName}</span>
+              <span
+                style={{
+                  fontSize: 11.5,
+                  fontVariantNumeric: "tabular-nums",
+                  color:
+                    g.access !== "active" || (g.aiDailyLimit != null && g.aiCallsToday >= g.aiDailyLimit)
+                      ? "var(--warn)"
+                      : "var(--text-dim)",
+                }}
+              >
+                {state}
+              </span>
               <span style={{ height: 6, borderRadius: 99, background: "var(--track)", overflow: "hidden" }}>
                 {!off && (
                   <span style={{ display: "block", height: "100%", width: `${Math.min(100, (g.repliesToday / g.maxPerDay) * 100)}%`, background: tone(left, g.maxPerDay), borderRadius: 99 }} />

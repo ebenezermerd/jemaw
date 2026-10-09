@@ -4,6 +4,7 @@
  * uses a CSS transform that the reduced-motion media query disables; richer
  * spring/layout motion lives in the motion/ components.
  */
+import { useState } from "react";
 import type { ButtonHTMLAttributes, ReactNode } from "react";
 import { AnimatedNumber } from "../motion/AnimatedNumber.js";
 import { currencyAffix, formatNumber } from "../lib/money.js";
@@ -145,15 +146,19 @@ export function Avatar({
 }: {
   name: string;
   size?: number;
-  /** Telegram photo (only available for the current viewer); else initial. */
+  /** Telegram profile photo; the initial shows when there is none. */
   photoUrl?: string;
 }) {
   const initial = (name.trim()[0] ?? "?").toUpperCase();
-  if (photoUrl) {
+  // No photo (404) or a broken link falls back to the initial.
+  const [failed, setFailed] = useState<string | null>(null);
+  if (photoUrl && failed !== photoUrl) {
     return (
       <img
         src={photoUrl}
         alt={name}
+        loading="lazy"
+        onError={() => setFailed(photoUrl)}
         width={size}
         height={size}
         style={{

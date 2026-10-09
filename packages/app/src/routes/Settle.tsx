@@ -1,6 +1,6 @@
 import { useNavigate } from "react-router-dom";
 import { useGroup, useSettlePlan, useBalances } from "../lib/hooks.js";
-import { Avatar, Money } from "../ui/primitives.js";
+import { Money } from "../ui/primitives.js";
 import { MemberAvatar } from "../ui/MemberAvatar.js";
 import { SkeletonList } from "../motion/Skeleton.js";
 import { memberDisplayName, formatDisplayName } from "../lib/names.js";
@@ -23,13 +23,13 @@ const evenRow: React.CSSProperties = {
 };
 
 /** Two small avatars overlapped into one compact pill (payer over payee). */
-function DuoAvatar({ from, to }: { from: string; to: string }) {
+function DuoAvatar({ from, to, fromId, toId }: { from: string; to: string; fromId: string; toId: string }) {
   return (
     <span style={{ display: "inline-flex", alignItems: "center", flexShrink: 0 }}>
       <span style={{ marginRight: -8, zIndex: 1, borderRadius: "var(--r-full)", outline: "2px solid var(--surface)" }}>
-        <Avatar name={from} size={26} />
+        <MemberAvatar name={from} memberId={fromId} size={26} />
       </span>
-      <Avatar name={to} size={26} />
+      <MemberAvatar name={to} memberId={toId} size={26} />
     </span>
   );
 }
@@ -113,7 +113,7 @@ export function Settle() {
               width: "100%",
             }}
           >
-            <DuoAvatar from={nameOf(t.fromMemberId)} to={nameOf(t.toMemberId)} />
+            <DuoAvatar from={nameOf(t.fromMemberId)} to={nameOf(t.toMemberId)} fromId={t.fromMemberId} toId={t.toMemberId} />
             <div style={{ flex: 1, minWidth: 0 }}>
               <div className="t-label" style={ellip}>
                 {nameOf(t.fromMemberId)}{" "}

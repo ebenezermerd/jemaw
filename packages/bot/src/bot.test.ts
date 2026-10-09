@@ -123,3 +123,13 @@ describe("createBot error boundary", () => {
     warn.mockRestore();
   });
 });
+
+describe("group access notices", () => {
+  it("say who paused the group, until when and why", async () => {
+    const { suspendedNotice, aiBlockedLine } = await import("./bot.js");
+    expect(
+      suspendedNotice({ status: "suspended", until: "2026-10-12T09:00:00Z", reason: "Spam", aiDailyLimit: null }),
+    ).toBe("Jemaw is paused in this group by the Jemaw team until Oct 12, 9:00 AM UTC. Reason: Spam Your records are safe.");
+    expect(aiBlockedLine("limit")).toContain("today's AI allowance");
+  });
+});

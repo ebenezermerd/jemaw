@@ -128,6 +128,7 @@ d("admin management routes", () => {
         verifier: { verify: async () => ({ uid: "itest", email: ADMIN }) },
         now: () => Date.now(),
         telegram,
+        botToken: "123:itest",
       },
       corsOrigin: undefined,
     });
@@ -144,10 +145,12 @@ d("admin management routes", () => {
     await db.delete(announcements).where(eq(announcements.createdByUid, "itest"));
     // Whatever the delete test left behind.
     const ids = [groupId, otherGroupId].filter(Boolean);
-    const { deleteGroupCascade } = await import("./groupAdmin.js");
+    const { resetGroupLedger } = await import("./groupAdmin.js");
     for (const id of ids) {
-      const [still] = await db.select().from(groups).where(eq(groups.id, id));
-      if (still) await deleteGroupCascade(db, id);
+      await resetGroupLedger(db, id);
+      await db.delete(botReplies).where(eq(botReplies.groupId, id));
+      await db.delete(members).where(eq(members.groupId, id));
+      await db.delete(groups).where(eq(groups.id, id));
     }
   });
 
@@ -278,17 +281,40 @@ d("admin management routes", () => {
     await db.delete(appConfig).where(eq(appConfig.key, "bot.ai.limits"));
   });
 
-  it("deletes a group with all its data after the name is confirmed, and leaves the chat", async () => {
-    const wrong = await inject("DELETE", `/api/admin/groups/${groupId}`, { confirmName: "nope" });
-    expect(wrong.statusCode).toBe(400);
-    const res = await inject("DELETE", `/api/admin/groups/${groupId}`, { confirmName: "ITest Renamed" });
-    expect(res.statusCode).toBe(200);
-    expect(res.json()).toMatchObject({
-      leftChat: true,
-      deleted: { groups: 1, members: 2, expenses: 1, expense_shares: 2, settlements: 1, suggestions: 1, ai_runs: 1, bot_replies: 2, messages: 1 },
-    });
-    expect(calls.at(-1)).toMatchObject({ method: "leaveChat", params: { chat_id: chatId.toString() } });
+  it("hands out signed photo links and refuses forged ones", async () => {
+    const detail = (await inject("GET", `/api/admin/groups/${groupId}`)).json();
+    const ada = detail.members.find((m: { memberId: string }) => m.memberId === adminId);
+    expect(ada.photoUrl).toMatch(/^\/avatars\/9100001\.jpg\?s=/);
+    const forged = await app.inject({ method: "GET", url: "/avatars/9100001.jpg?s=forged" });
+    expect(forged.statusCode).toBe(404);
+    const users = (await inject("GET", "/api/admin/users")).json();
+    expect(users.find((u: { telegramUserId: string }) => u.telegramUserId === "9100001").photoUrl).toBe(ada.photoUrl);
+  });
+
+  it("pauses a group's AI, suspends it, caps its daily AI calls, and never deletes it", async () => {
+    const until = new Date(Date.now() + 86_400_000).toISOString();
+    const paused = await inject("PATCH", `/api/admin/groups/${groupId}/access`, { status: "ai_paused", until, reason: "Too chatty" });
+    expect(paused.statusCode).toBe(200);
+    expect(paused.json()).toMatchObject({ status: "ai_paused", until, reason: "Too chatty", updatedBy: ADMIN });
+    const limited = await inject("PATCH", `/api/admin/groups/${groupId}/access`, { status: "active", aiDailyLimit: 25 });
+    expect(limited.json()).toMatchObject({ status: "active", until: null, reason: null, aiDailyLimit: 25 });
+    const past = await inject("PATCH", `/api/admin/groups/${groupId}/access`, { status: "suspended", until: "2001-01-01T00:00:00Z" });
+    expect(past.statusCode).toBe(400);
+    await inject("PATCH", `/api/admin/groups/${groupId}/access`, { status: "suspended", reason: "Spam" });
+    const detail = (await inject("GET", `/api/admin/groups/${groupId}`)).json();
+    expect(detail.settings.access).toMatchObject({ status: "suspended", reason: "Spam", aiDailyLimit: 25 });
+    expect(detail.settings.access.aiCallsToday).toBeGreaterThanOrEqual(1);
+    const [g] = await db.select().from(groups).where(eq(groups.id, groupId));
+    expect((g!.settings as Record<string, unknown>).vibe).toEqual({ keep: 1 });
+    expect((await inject("DELETE", `/api/admin/groups/${groupId}`)).statusCode).toBe(404);
+  });
+
+  it("clears a group's expenses but keeps the group and its members", async () => {
+    const res = await inject("POST", `/api/admin/groups/${groupId}/reset`);
+    expect(res.json().deleted).toMatchObject({ expenses: 1, expense_shares: 2, settlements: 1 });
     const left = await db.select().from(members).where(inArray(members.id, [adminId, memberId]));
-    expect(left).toHaveLength(0);
+    expect(left).toHaveLength(2);
+    const [g] = await db.select().from(groups).where(eq(groups.id, groupId));
+    expect(g).toBeTruthy();
   });
 });

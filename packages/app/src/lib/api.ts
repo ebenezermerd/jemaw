@@ -22,6 +22,11 @@ export class ApiError extends Error {
   }
 }
 
+/** Absolute URL for a path the API returned, such as a member's photo. */
+export function apiUrl(path: string): string {
+  return `${BASE}${path}`;
+}
+
 export function getGroupId(): string | null {
   const fromQuery = new URLSearchParams(window.location.search).get("group");
   if (fromQuery) return fromQuery;

@@ -3,8 +3,10 @@
  * bot uses (@jemaw/shared/ledger), so balances and settled states match what
  * members see in the mini app.
  */
+import { memberPhoto } from "./mappers.js";
 import { and, count, desc, eq, ilike, inArray, isNull, or, type SQL } from "drizzle-orm";
 import { parseHumorSettings, toHumorSettingsDto } from "@jemaw/shared/humor";
+import { parseGroupAccess } from "@jemaw/shared/groupAccess";
 import type { Db } from "./db.js";
 import {
   groups,
@@ -187,6 +189,7 @@ export function groupDetail(ledger: GroupLedger): AdminGroupDetailDto {
         displayName: m.displayName,
         username: m.username,
         telegramUserId: telegramIdToString(m.telegramUserId),
+        photoUrl: memberPhoto(m.telegramUserId),
         isManual: isManualId(m.telegramUserId),
         role: m.role,
         isActive: m.isActive,
@@ -213,6 +216,8 @@ export function groupDetail(ledger: GroupLedger): AdminGroupDetailDto {
         parseHumorSettings((ledger.group.settings as Record<string, unknown> | null)?.humor),
       ),
       currencyLocked: ledger.hasAnyExpense,
+      // Today's AI calls are filled in by the route, which can query them.
+      access: { ...parseGroupAccess((ledger.group.settings as Record<string, unknown> | null)?.access), aiCallsToday: 0 },
       telegramChatId: telegramIdToString(ledger.group.telegramChatId),
     },
     members: memberDtos,

@@ -3,6 +3,8 @@ import type { Db } from "./db.js";
 import {
   upsertGroup,
   getGroupById,
+  getGroupByChatId,
+  groupAiGate,
   captureMessage,
   countPendingSuggestions,
   findMemberByTelegramId,
@@ -38,6 +40,7 @@ import {
 } from "./ai/ledger/memory.js";
 import { startLoading, type LoadingHandle, type LoadingTopic } from "./telegram/loading.js";
 import { staticRuntimeConfig, type RuntimeConfigStore } from "./runtimeConfig.js";
+import { parseGroupAccess, type GroupAccessV1 } from "@jemaw/shared/groupAccess";
 
 /** Word-boundary, case-insensitive "jemaw" trigger (plan §10). */
 const JEMAW_RE = /(?<![a-z0-9])jemaw(?![a-z0-9])/i;
@@ -234,6 +237,23 @@ export function createBot(token: string, deps: BotDeps): Bot {
         console.log(`[scan] group ${group.id} not found`);
         return;
       }
+      const gate = await groupAiGate(db, g);
+      if (gate.blocked) {
+        console.log(`[scan] skipped for group ${group.id}: AI ${gate.blocked}`);
+        const line = aiBlockedLine(gate.blocked);
+        if (existingLoading) await existingLoading.finish(line);
+        else
+          await api
+            .sendMessage(
+              chatId,
+              line,
+              replyTo != null
+                ? { reply_parameters: { message_id: replyTo, allow_sending_without_reply: true } }
+                : {},
+            )
+            .catch(() => {});
+        return;
+      }
       const loading =
         existingLoading ?? (await startLoading(api, chatId, { topic: "scan", replyTo }));
       const res = await scanGroup(
@@ -296,13 +316,15 @@ export function createBot(token: string, deps: BotDeps): Bot {
       }
       const loading =
         opts.loading ?? (await startLoading(ctx.api, chatId, { topic: query.kind, replyTo }));
+      // Paused or over its daily AI limit: plain facts, no model line.
+      const gate = await groupAiGate(db, g);
       await deliverLedgerAnswer({
         db,
         group: g,
         askerTelegramId,
         query,
         loading,
-        humor: humor ?? {},
+        humor: gate.blocked ? {} : (humor ?? {}),
         lead: opts.lead,
       });
     })().catch((err) =>
@@ -334,6 +356,31 @@ export function createBot(token: string, deps: BotDeps): Bot {
         );
       }
     }
+  });
+
+  // Suspended groups (admin console): the bot ignores them entirely, and only
+  // answers a command or a mention with a short notice, at most every 6 hours.
+  const accessCache = new Map<string, { access: GroupAccessV1; at: number }>();
+  const noticeAt = new Map<string, number>();
+  bot.on("message", async (ctx, next) => {
+    const chat = ctx.chat;
+    if (!GROUP_TYPES.has(chat.type)) return next();
+    const key = String(chat.id);
+    let cached = accessCache.get(key);
+    if (!cached || Date.now() - cached.at > 30_000) {
+      const g = await getGroupByChatId(db, BigInt(chat.id)).catch(() => null);
+      cached = {
+        access: parseGroupAccess((g?.settings as Record<string, unknown> | null)?.access),
+        at: Date.now(),
+      };
+      accessCache.set(key, cached);
+    }
+    if (cached.access.status !== "suspended") return next();
+    const text = ctx.message.text ?? "";
+    if (!text.startsWith("/") && !JEMAW_RE.test(text)) return;
+    if (Date.now() - (noticeAt.get(key) ?? 0) < 6 * 60 * 60_000) return;
+    noticeAt.set(key, Date.now());
+    await ctx.reply(suspendedNotice(cached.access)).catch(() => {});
   });
 
   // Maintenance: commands get the admins' notice instead of running.
@@ -475,20 +522,22 @@ export function createBot(token: string, deps: BotDeps): Bot {
       void (async () => {
         const g = await getGroupById(db, groupId);
         if (!g) return;
+        const gate = await groupAiGate(db, g);
+        const aiOk = chatEnabled && !gate.blocked;
         const previous = recallLedgerQuestion(groupId, askerTelegramId);
         const byRules = understandByRules(text, previous);
         const mode = parseHumorSettings(
           (g.settings as Record<string, unknown> | null)?.humor,
         ).mode;
         // Humor off (or chat paused by the admins) and plainly social: stay quiet.
-        if (byRules.intent === "chat" && (mode === "off" || !chatEnabled)) return;
+        if (byRules.intent === "chat" && (mode === "off" || !aiOk)) return;
 
         // Placeholder first, from the fast rules; the model refines the route.
         const topic: LoadingTopic =
           byRules.query?.kind ?? (byRules.intent === "chat" ? chatLoadingTopic(text) : "scan");
         const loading = await startLoading(ctx.api, chat.id, { topic, replyTo });
 
-        const understander = chatEnabled ? (humor?.client ?? gemini) : undefined;
+        const understander = aiOk ? (humor?.client ?? gemini) : undefined;
         const byModel = understander
           ? await understandMessage({
               client: understander,
@@ -525,7 +574,7 @@ export function createBot(token: string, deps: BotDeps): Bot {
           return;
         }
         // Social banter: reply from live DB context.
-        if (mode === "off" || !chatEnabled) {
+        if (mode === "off" || !aiOk) {
           await loading.cancel();
           return;
         }
@@ -560,4 +609,20 @@ async function findScanMember(
 ): Promise<string | null> {
   const m = await findMemberByTelegramId(db, groupId, BigInt(telegramUserId));
   return m?.id ?? null;
+}
+
+/** What the bot says in a group the Jemaw team suspended. */
+export function suspendedNotice(access: GroupAccessV1): string {
+  const until = access.until
+    ? ` until ${new Date(access.until).toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit", timeZone: "UTC" })} UTC`
+    : "";
+  return `Jemaw is paused in this group by the Jemaw team${until}.${access.reason ? ` Reason: ${access.reason}` : ""} Your records are safe.`;
+}
+
+/** Why the AI stayed quiet, in the group's words. */
+export function aiBlockedLine(reason: "paused" | "suspended" | "limit"): string {
+  if (reason === "limit") {
+    return "This group has used today's AI allowance. It refills at midnight UTC. /balance and /history still work.";
+  }
+  return "AI is paused in this group for now. /balance and /history still work.";
 }

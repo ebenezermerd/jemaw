@@ -185,6 +185,18 @@ export async function setUserActive(
   return rows.length;
 }
 
+/** AI calls per group since `since`: scans plus replies that used a model. */
+export async function aiCallsByGroupSince(db: Db, since: Date): Promise<Map<string, number>> {
+  const rows = (await db.execute(sql`
+    select group_id, count(*)::int as n from (
+      select group_id from ai_runs where created_at > ${since.toISOString()}::timestamptz
+      union all
+      select group_id from bot_replies where created_at > ${since.toISOString()}::timestamptz and model is not null
+    ) calls group by group_id
+  `)) as unknown as { group_id: string; n: number }[];
+  return new Map(rows.map((r) => [String(r.group_id), Number(r.n)]));
+}
+
 // ─── overview aggregates ──────────────────────────────────────────────────
 export async function countDistinctUsers(db: Db): Promise<number> {
   const rows = await db

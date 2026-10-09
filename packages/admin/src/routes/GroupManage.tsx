@@ -4,12 +4,11 @@
  */
 import { useState, type ReactNode } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { useNavigate } from "react-router-dom";
 import { api } from "../lib/api.js";
 import type {
   AdminGroupDetailDto,
   AdminGroupMemberDto,
-  DeleteGroupResultDto,
+  GroupAccessDto,
   HumorSettingsDto,
   UpdateGroupInput,
   UpdateGroupResultDto,
@@ -298,74 +297,221 @@ function RenameMemberDialog({ member, pending, error, onSave, onClose }: { membe
   );
 }
 
-// ─── danger zone ─────────────────────────────────────────────────────────────
+// ─── access: AI pause, suspension, daily AI limit ────────────────────────────
 
-export function DangerZone({ detail }: { detail: AdminGroupDetailDto }) {
-  const [dialog, setDialog] = useState<"reset" | "delete" | null>(null);
+const ACCESS: { key: GroupAccessDto["status"]; label: string; hint: string }[] = [
+  { key: "active", label: "Active", hint: "Everything works" },
+  { key: "ai_paused", label: "AI paused", hint: "No AI scans or AI chat. Ledger, /balance and the app keep working." },
+  { key: "suspended", label: "Suspended", hint: "The bot ignores the group and the app shows a suspended screen. Data is kept." },
+];
+
+const DURATIONS: { label: string; hours: number | null }[] = [
+  { label: "Until I lift it", hours: null },
+  { label: "1 hour", hours: 1 },
+  { label: "1 day", hours: 24 },
+  { label: "7 days", hours: 24 * 7 },
+  { label: "30 days", hours: 24 * 30 },
+];
+
+const fmtUntil = (iso: string) =>
+  new Date(iso).toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
+
+export function GroupAccessCard({ detail }: { detail: AdminGroupDetailDto }) {
+  const groupId = detail.group.id;
+  const a = detail.settings.access;
+  const invalidate = useInvalidateGroup(groupId);
+  const qc = useQueryClient();
+  const [status, setStatus] = useState<GroupAccessDto["status"]>(a.status);
+  const [hours, setHours] = useState<number | null>(null);
+  const [reason, setReason] = useState(a.reason ?? "");
+  const [limit, setLimit] = useState(a.aiDailyLimit == null ? "" : String(a.aiDailyLimit));
+  const save = useMutation({
+    mutationFn: (body: Record<string, unknown>) => api.patch(`/api/admin/groups/${groupId}/access`, body),
+    onSuccess: () => {
+      invalidate();
+      void qc.invalidateQueries({ queryKey: ["ai-usage"] });
+    },
+  });
+  const changedStatus = status !== a.status || (status !== "active" && (hours !== null || reason.trim() !== (a.reason ?? "")));
+  const limitNum = limit.trim() === "" ? null : Math.max(0, Math.floor(Number(limit)));
+  const limitValid = limit.trim() === "" || Number.isFinite(Number(limit));
+  const used = a.aiDailyLimit ? Math.min(100, (a.aiCallsToday / a.aiDailyLimit) * 100) : 0;
+  const tone = a.status === "suspended" ? "var(--danger)" : a.status === "ai_paused" ? "var(--warn)" : "var(--success)";
+
   return (
-    <div style={{ background: "#16151F", border: "1px solid rgba(242,104,95,.25)", borderRadius: 16, padding: 20 }}>
-      <div style={{ fontSize: 15, fontWeight: 700, color: "var(--danger)", marginBottom: 14 }}>Danger zone</div>
-      <DangerRow
-        title="Reset ledger"
-        text="Deletes every expense, settlement, draft and AI scan. Members and settings stay."
-        action={<GhostButton tone="danger" onClick={() => setDialog("reset")}>Reset ledger</GhostButton>}
-      />
-      <div style={{ height: 1, background: "rgba(255,255,255,.06)", margin: "14px 0" }} />
-      <DangerRow
-        title="Delete group"
-        text="Removes the group and all its data for good, and the bot leaves the Telegram chat."
-        action={<GhostButton tone="danger" onClick={() => setDialog("delete")}>Delete group</GhostButton>}
-      />
-      {dialog && <ConfirmDangerDialog detail={detail} kind={dialog} onClose={() => setDialog(null)} />}
+    <div style={{ background: "#16151F", border: "1px solid rgba(255,255,255,.07)", borderRadius: 16, overflow: "hidden" }}>
+      <div style={{ padding: "15px 20px", borderBottom: "1px solid rgba(255,255,255,.07)", display: "flex", alignItems: "center", gap: 10 }}>
+        <span style={{ fontSize: 15, fontWeight: 700, flex: 1 }}>Group access</span>
+        {save.isPending && <Loader size={18} />}
+        <span style={{ fontSize: 11, fontWeight: 700, color: tone, background: "rgba(255,255,255,.05)", padding: "3px 9px", borderRadius: 7 }}>
+          {ACCESS.find((x) => x.key === a.status)?.label}
+          {a.until ? ` · until ${fmtUntil(a.until)}` : ""}
+        </span>
+      </div>
+      <div style={{ padding: 20, display: "flex", flexDirection: "column", gap: 16 }}>
+        <div role="radiogroup" aria-label="Access" style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 8 }}>
+          {ACCESS.map((x) => {
+            const on = status === x.key;
+            return (
+              <button
+                key={x.key}
+                role="radio"
+                aria-checked={on}
+                onClick={() => setStatus(x.key)}
+                style={{
+                  textAlign: "left",
+                  padding: "10px 12px",
+                  borderRadius: 11,
+                  cursor: "pointer",
+                  background: on ? "rgba(110,89,199,.22)" : "var(--bg-panel)",
+                  border: `1px solid ${on ? "rgba(169,156,227,.6)" : "var(--hairline-2)"}`,
+                  color: "var(--text)",
+                }}
+              >
+                <div style={{ fontSize: 13, fontWeight: 700 }}>{x.label}</div>
+                <div style={{ fontSize: 11, color: "var(--text-dim)", marginTop: 2, lineHeight: 1.35 }}>{x.hint}</div>
+              </button>
+            );
+          })}
+        </div>
+        {status !== "active" && (
+          <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+            <label style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+              <span style={{ fontSize: 12, fontWeight: 600, color: "var(--text-dim)" }}>For</span>
+              <select
+                aria-label="Duration"
+                value={hours ?? ""}
+                onChange={(e) => setHours(e.target.value === "" ? null : Number(e.target.value))}
+                style={{ ...fieldStyle, width: 170 }}
+              >
+                {DURATIONS.map((d) => (
+                  <option key={d.label} value={d.hours ?? ""}>
+                    {d.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label style={{ display: "flex", flexDirection: "column", gap: 6, flex: 1, minWidth: 200 }}>
+              <span style={{ fontSize: 12, fontWeight: 600, color: "var(--text-dim)" }}>Reason members see (optional)</span>
+              <input value={reason} maxLength={300} onChange={(e) => setReason(e.target.value)} placeholder="e.g. Back after maintenance" style={fieldStyle} />
+            </label>
+          </div>
+        )}
+        <div style={{ display: "flex", justifyContent: "flex-end" }}>
+          <PrimaryButton
+            disabled={!changedStatus || save.isPending}
+            onClick={() =>
+              save.mutate({
+                status,
+                until: status === "active" || hours === null ? null : new Date(Date.now() + hours * 3_600_000).toISOString(),
+                reason: status === "active" ? null : reason.trim() || null,
+              })
+            }
+          >
+            {status === "active" ? (a.status === "active" ? "Active" : "Lift and reactivate") : status === "suspended" ? "Suspend group" : "Pause AI"}
+          </PrimaryButton>
+        </div>
+
+        <div style={{ height: 1, background: "rgba(255,255,255,.06)" }} />
+
+        <div>
+          <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
+            <span style={{ fontSize: 13.5, fontWeight: 600, flex: 1 }}>Daily AI limit</span>
+            <span style={{ fontSize: 12.5, color: "var(--text-dim)", fontVariantNumeric: "tabular-nums" }}>
+              {a.aiCallsToday} AI call{a.aiCallsToday === 1 ? "" : "s"} today{a.aiDailyLimit != null ? ` of ${a.aiDailyLimit}` : ""}
+            </span>
+          </div>
+          {a.aiDailyLimit != null && (
+            <div style={{ height: 6, borderRadius: 99, background: "var(--track)", marginTop: 8, overflow: "hidden" }}>
+              <div style={{ width: `${used}%`, height: "100%", borderRadius: 99, background: used >= 100 ? "var(--danger)" : used > 80 ? "var(--warn)" : "var(--success)" }} />
+            </div>
+          )}
+          <div style={{ fontSize: 11.5, color: "var(--text-faint)", margin: "6px 0 10px" }}>
+            Scans and AI-written replies count; template replies are free. Resets at 00:00 UTC. When it runs out, the group gets plain answers until then.
+          </div>
+          <div style={{ display: "flex", gap: 8 }}>
+            <input
+              aria-label="Daily AI limit"
+              type="number"
+              min={0}
+              value={limit}
+              placeholder="No limit"
+              onChange={(e) => setLimit(e.target.value)}
+              style={{ ...fieldStyle, width: 150, fontFamily: "var(--font-mono)" }}
+            />
+            <GhostButton
+              disabled={!limitValid || limitNum === a.aiDailyLimit || save.isPending}
+              onClick={() => save.mutate({ aiDailyLimit: limitNum })}
+            >
+              Save limit
+            </GhostButton>
+            {a.aiDailyLimit != null && (
+              <GhostButton disabled={save.isPending} onClick={() => { setLimit(""); save.mutate({ aiDailyLimit: null }); }}>
+                Remove limit
+              </GhostButton>
+            )}
+          </div>
+        </div>
+        {save.isError && <ErrorLine>{errText(save.error)}</ErrorLine>}
+      </div>
     </div>
   );
 }
 
-function ConfirmDangerDialog({ detail, kind, onClose }: { detail: AdminGroupDetailDto; kind: "reset" | "delete"; onClose: () => void }) {
+// ─── clear expenses ──────────────────────────────────────────────────────────
+
+export function DangerZone({ detail }: { detail: AdminGroupDetailDto }) {
+  const [confirm, setConfirm] = useState(false);
+  return (
+    <div style={{ background: "#16151F", border: "1px solid rgba(242,104,95,.25)", borderRadius: 16, padding: 20 }}>
+      <div style={{ fontSize: 15, fontWeight: 700, color: "var(--danger)", marginBottom: 14 }}>Clean up</div>
+      <DangerRow
+        title="Clear expenses"
+        text="Deletes every expense, settlement, AI draft and scan in this group. The group, its members and settings stay."
+        action={<GhostButton tone="danger" onClick={() => setConfirm(true)}>Clear expenses</GhostButton>}
+      />
+      {confirm && <ClearExpensesDialog detail={detail} onClose={() => setConfirm(false)} />}
+    </div>
+  );
+}
+
+function ClearExpensesDialog({ detail, onClose }: { detail: AdminGroupDetailDto; onClose: () => void }) {
   const { group } = detail;
-  const [typed, setTyped] = useState("");
-  const navigate = useNavigate();
   const qc = useQueryClient();
   const invalidate = useInvalidateGroup(group.id);
+  const [done, setDone] = useState<Record<string, number> | null>(null);
   const run = useMutation({
-    mutationFn: () =>
-      kind === "delete"
-        ? api.delete<DeleteGroupResultDto>(`/api/admin/groups/${group.id}`, { confirmName: typed })
-        : api.post<{ deleted: Record<string, number> }>(`/api/admin/groups/${group.id}/reset`),
-    onSuccess: () => {
+    mutationFn: () => api.post<{ deleted: Record<string, number> }>(`/api/admin/groups/${group.id}/reset`),
+    onSuccess: (res) => {
       invalidate();
       void qc.invalidateQueries({ queryKey: ["expenses"] });
-      onClose();
-      if (kind === "delete") {
-        qc.removeQueries({ queryKey: ["group", group.id] });
-        navigate("/groups");
-      }
+      setDone(res.deleted);
     },
   });
-  const matches = typed.trim() === group.name.trim();
   return (
     <Dialog
       tone="danger"
-      title={kind === "delete" ? `Delete ${group.name}?` : `Reset ${group.name}'s ledger?`}
-      subtitle="This cannot be undone."
+      title={done ? "Expenses cleared" : `Clear ${group.name}'s expenses?`}
+      subtitle={done ? undefined : "This cannot be undone."}
       onClose={onClose}
       footer={
-        <>
-          <GhostButton onClick={onClose}>Cancel</GhostButton>
-          <GhostButton tone="danger" onClick={() => run.mutate()} disabled={!matches || run.isPending}>
-            {run.isPending ? "Working…" : kind === "delete" ? "Delete forever" : "Reset ledger"}
-          </GhostButton>
-        </>
+        done ? (
+          <PrimaryButton onClick={onClose}>Done</PrimaryButton>
+        ) : (
+          <>
+            <GhostButton onClick={onClose}>Cancel</GhostButton>
+            <GhostButton tone="danger" onClick={() => run.mutate()} disabled={run.isPending}>
+              {run.isPending ? "Clearing…" : `Clear ${group.expenseCount} expenses`}
+            </GhostButton>
+          </>
+        )
       }
     >
       <div style={{ fontSize: 13.5, color: "var(--text-dim)", lineHeight: 1.55 }}>
-        {kind === "delete"
-          ? `${group.memberCount} members, ${group.expenseCount} expenses and every settlement, draft and bot reply in this group will be deleted, and Jemaw will leave the chat.`
-          : `${group.expenseCount} expenses and every settlement, draft and AI scan will be deleted. Balances go back to zero.`}
+        {done
+          ? `Removed ${done.expenses ?? 0} expenses, ${done.settlements ?? 0} settlements and ${done.suggestions ?? 0} AI drafts. Balances are back to zero; the group and its ${group.memberCount} members are untouched.`
+          : `${group.expenseCount} expenses and every settlement, AI draft and scan in this group will be deleted, so balances go back to zero. The group, its members and its settings stay.`}
       </div>
-      <Field label={`Type ${group.name} to confirm`}>
-        <input value={typed} onChange={(e) => setTyped(e.target.value)} style={fieldStyle} autoFocus />
-      </Field>
       {run.isError && <ErrorLine>{errText(run.error)}</ErrorLine>}
     </Dialog>
   );
