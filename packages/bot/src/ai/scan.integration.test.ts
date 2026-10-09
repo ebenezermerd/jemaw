@@ -296,6 +296,40 @@ d("scanGroup (mocked Gemini)", () => {
     expect([...(rows[0]!.splitWith as string[])].sort()).toEqual([saraId, tomId].sort());
   });
 
+  it("leaves a suspended member out of a default split even if still marked primary", async () => {
+    await db.update(groups).set({ lastScanMessageId: null }).where(eq(groups.id, group.id));
+    await db.delete(suggestions).where(eq(suggestions.groupId, group.id));
+    // Suspended from the admin console before it cleared isPrimary.
+    await db.update(members).set({ isActive: false, isPrimary: true }).where(eq(members.id, tomId));
+    const g = (await getGroupById(db, group.id))!;
+    const res = await scanGroup(
+      { db, gemini: mockGemini({
+        suggestions: [
+          {
+            confidence: 0.9,
+            description: "Lunch",
+            amount: 40,
+            currency: "EUR",
+            payer_telegram_id: saraTg,
+            split_type: "equal",
+            split_with: [],
+            shares: null,
+            evidence_message_ids: [1001],
+            reasoning: "Sara paid 40 for lunch",
+          },
+        ],
+        scan_window: { from_message_id: 1001, to_message_id: 1002 },
+      }), now },
+      g,
+      null,
+      "keyword",
+    );
+    await db.update(members).set({ isActive: true }).where(eq(members.id, tomId));
+    expect(res.written).toBe(1);
+    const rows = await db.select().from(suggestions).where(eq(suggestions.groupId, group.id));
+    expect(rows[0]!.splitWith).toEqual([saraId]);
+  });
+
   it("returns no_messages only when the group has no messages at all", async () => {
     // The pointer no longer gates the window; emptiness does. Temporarily clear.
     await db.delete(messages).where(eq(messages.groupId, group.id));

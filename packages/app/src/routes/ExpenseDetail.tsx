@@ -27,7 +27,16 @@ export function ExpenseDetail() {
   const edit = useEditExpense();
   const voidExpense = useVoidExpense();
 
-  const members = group.data?.members.filter((m) => m.isActive) ?? [];
+  // Active members, plus anyone already on this expense even if they were
+  // removed since: their share still counts and must stay visible.
+  const involved = new Set([
+    expense.data?.payerMemberId,
+    ...(expense.data?.shares.map((s) => s.memberId) ?? []),
+  ]);
+  const members =
+    group.data?.members.filter((m) => m.isActive || involved.has(m.id)) ?? [];
+  const label = (m: { displayName: string; isActive: boolean }) =>
+    `${formatDisplayName(m.displayName)}${m.isActive ? "" : " (removed)"}`;
 
   const [description, setDescription] = useState("");
   const [amount, setAmount] = useState("");
@@ -125,7 +134,7 @@ export function ExpenseDetail() {
       <Field label={kind === "loan" ? "Lent by" : "Paid by"}>
         <div style={{ display: "flex", gap: 8, overflowX: "auto", paddingBottom: 4 }}>
           {members.map((m) => (
-            <Chip key={m.id} active={payer === m.id} onClick={() => setPayer(m.id)} name={formatDisplayName(m.displayName)} />
+            <Chip key={m.id} active={payer === m.id} onClick={() => setPayer(m.id)} name={label(m)} />
           ))}
         </div>
       </Field>
@@ -140,7 +149,7 @@ export function ExpenseDetail() {
                   key={m.id}
                   active={borrower === m.id}
                   onClick={() => setSplitWith(new Set([m.id]))}
-                  name={formatDisplayName(m.displayName)}
+                  name={label(m)}
                 />
               ))}
           </div>
@@ -167,7 +176,7 @@ export function ExpenseDetail() {
                   }}
                 >
                   <Avatar name={formatDisplayName(m.displayName)} size={28} />
-                  <span className="t-body-strong">{formatDisplayName(m.displayName)}</span>
+                  <span className="t-body-strong">{label(m)}</span>
                 </button>
               );
             })}
