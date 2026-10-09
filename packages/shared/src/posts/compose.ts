@@ -47,6 +47,8 @@ export interface PaymentsPostData {
   owedBy: { name: string; cents: number }[];
   /** Every open payment in the group; when set, the post lists these instead of the asker's own. */
   debts?: { from: string; to: string; cents: number }[];
+  /** The member those debts were narrowed to, when the question named one. */
+  person?: string | null;
   note: string | null;
   lead?: string | null;
 }
@@ -258,26 +260,27 @@ function paymentsDoc(d: PaymentsPostData, design: PostDesign): Doc {
 }
 
 function groupPaymentsDoc(d: PaymentsPostData, debts: NonNullable<PaymentsPostData["debts"]>, design: PostDesign): Doc {
-  const doc = emptyDoc("Open payments");
+  const heading = d.person ? `${d.person}'s open payments` : "Open payments";
+  const doc = emptyDoc(heading);
   if (d.lead) doc.lead.push(d.lead);
   const total = debts.reduce((a, x) => a + x.cents, 0);
   const people = new Set(debts.flatMap((x) => [x.from, x.to])).size;
   doc.hero = {
     kind: "hero",
     eyebrow: "Open payments",
-    badge: `${debts.length} open`,
+    badge: d.person ?? `${debts.length} open`,
     amount: formatAmount(total),
     currency: d.currency,
     subline: `${debts.length} payment${debts.length === 1 ? "" : "s"} between ${people} people`,
   };
   doc.checklist = {
-    title: `Open payments · ${formatAmount(total)} ${d.currency}`,
+    title: `${heading} · ${formatAmount(total)} ${d.currency}`,
     items: debts.map((x) => ({
       who: [bold(x.from), " → ", bold(x.to)] as RichText,
       amount: `${formatAmount(x.cents)} ${d.currency}`,
       checked: false,
     })),
-    empty: "All square. Nobody owes anybody.",
+    empty: d.person ? `${d.person} is all square.` : "All square. Nobody owes anybody.",
   };
   if (design.sections.note && d.note) doc.note = d.note;
   return doc;
