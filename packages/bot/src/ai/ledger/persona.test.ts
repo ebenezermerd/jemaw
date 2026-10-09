@@ -46,7 +46,7 @@ describe("composeLedgerPersonaLine", () => {
       query: { kind: "my_balance", period: "all" },
     });
     expect(r).toMatchObject({
-      text: "Sami, Abenezer fronted 900 for you. The ledger is judging you quietly.",
+      text: "Sami, Abenezer paid 900 for you. The ledger is judging you quietly.",
       source: "model",
     });
   });
@@ -146,7 +146,7 @@ describe("composeLedgerPersonaLine", () => {
     });
     const facts = JSON.parse(prompt.replace(/^FACTS:/, ""));
     expect(facts.focus).toEqual({
-      rich_one: { name: "Abenezer", fronted: "1200" },
+      rich_one: { name: "Abenezer", paid: "1200" },
       broke_one: { name: "Sami", owes: "900" },
       owed_most: { name: "Abenezer", amount: "1200" },
     });
@@ -171,7 +171,7 @@ describe("composeLedgerPersonaLine", () => {
       rng: () => 0,
     });
     expect(r).toEqual({
-      text: "Abenezer is clearly the group's sugar daddy with 1,200 ETB fronted. Sami, 900 ETB in the hole, start saving.",
+      text: "Abenezer is clearly the group's sugar daddy with 1,200 ETB paid. Sami, 900 ETB in the hole, start saving.",
       source: "template",
     });
   });
@@ -184,7 +184,7 @@ describe("composeLedgerPersonaLine", () => {
       snapshot: big,
       query: { kind: "leaderboard", period: "all" },
     });
-    expect(r.text).toBe("Abenezer fronted 43,140.66 ETB and Sami still owes 900 ETB.");
+    expect(r.text).toBe("Abenezer paid 43,140.66 ETB and Sami still owes 900 ETB.");
   });
 
   it("varies the leaderboard fallback", async () => {

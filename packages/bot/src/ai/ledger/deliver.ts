@@ -21,7 +21,7 @@ import { postContext, type PostLinks } from "../../telegram/postLinks.js";
 
 const REPORT_TITLE: Record<LedgerQuery["kind"], string> = {
   whoami: "About you",
-  leaderboard: "Who fronted the most",
+  leaderboard: "Who paid the most",
   my_balance: "Your open payments",
   who_owes: "Open payments",
   expense_list: "Expenses",

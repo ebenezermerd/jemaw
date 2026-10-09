@@ -34,7 +34,15 @@ describe("cleanReplyPunctuation", () => {
 describe("cleanReplyPunctuation with numbers", () => {
   it("keeps thousands separators intact", () => {
     expect(cleanReplyPunctuation("Hana fronted 1,200 ETB; Sami owes 43,140.66")).toBe(
-      "Hana fronted 1,200 ETB, Sami owes 43,140.66",
+      "Hana paid 1,200 ETB, Sami owes 43,140.66",
+    );
+  });
+});
+
+describe("cleanReplyPunctuation wording", () => {
+  it("says paid instead of fronted", () => {
+    expect(cleanReplyPunctuation("Fronted again? Tsin keeps fronting and has fronted 900")).toBe(
+      "Paid again? Tsin keeps paying and has paid 900",
     );
   });
 });

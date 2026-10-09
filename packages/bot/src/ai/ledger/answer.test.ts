@@ -173,9 +173,9 @@ describe("renderLedgerFacts for the asker's own expenses", () => {
 });
 
 describe("leaderboard", () => {
-  it("says who fronted the most and who owes the most in one plain line", () => {
+  it("says who paid the most and who owes the most in one plain line", () => {
     expect(renderLedgerFacts({ kind: "leaderboard", period: "all" }, snap, now)).toBe(
-      "Hana has fronted the most, 5,000 ETB. Sami owes the most, 750 ETB.",
+      "Hana has paid for the most, 5,000 ETB. Sami owes the most, 750 ETB.",
     );
   });
 
