@@ -13,6 +13,7 @@
     "./ledger": "./src/ledger/index.ts",
     "./runtimeConfig": "./src/runtimeConfig.ts",
     "./groupAccess": "./src/groupAccess.ts",
+    "./boss": "./src/boss.ts",
     "./avatar": "./src/avatar.ts",
     "./posts": "./src/posts/index.ts",
     "./postImages": "./src/postImages/index.ts"
