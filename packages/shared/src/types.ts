@@ -75,6 +75,17 @@ export interface GroupDto {
   isAdmin: boolean;
   /** Interactive humor settings (from groups.settings.humor). */
   humor?: HumorSettingsDto;
+  /** Set by the Jemaw team: AI paused, suspended, or a daily AI limit. */
+  access?: GroupAccessDto;
+}
+
+export interface GroupAccessDto {
+  status: "active" | "ai_paused" | "suspended";
+  until: string | null;
+  reason: string | null;
+  aiDailyLimit: number | null;
+  /** AI calls (scans + AI replies) since 00:00 UTC */
+  aiCallsToday: number;
 }
 
 /** Wire format for groups.settings.humor (Phases 1–4). */
@@ -674,16 +685,12 @@ export interface UpdateMemberInput {
   displayName?: string;
 }
 
-export interface DeleteGroupResultDto {
-  deleted: Record<string, number>;
-  /** whether the bot left the Telegram chat */
-  leftChat: boolean;
-}
-
 export interface AdminGroupBotDto {
   humor: HumorSettingsDto;
   /** the group has live expenses, so its currency is locked */
   currencyLocked: boolean;
+  /** AI pause, suspension and daily AI limit, with today's AI calls */
+  access: GroupAccessDto;
   telegramChatId: string;
 }
 
@@ -747,6 +754,10 @@ export interface AdminAiUsageDayDto {
 export interface AdminAiGroupQuotaDto {
   groupId: string;
   groupName: string;
+  access: "active" | "ai_paused" | "suspended";
+  /** scans + AI replies since 00:00 UTC, against `aiDailyLimit` */
+  aiCallsToday: number;
+  aiDailyLimit: number | null;
   mode: "off" | "jemaw_dry" | "roast" | "chaos";
   /** public replies sent since 00:00 UTC, the bot's daily window */
   repliesToday: number;

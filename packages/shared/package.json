@@ -11,7 +11,8 @@
     "./types": "./src/types.ts",
     "./humor": "./src/humor.ts",
     "./ledger": "./src/ledger/index.ts",
-    "./runtimeConfig": "./src/runtimeConfig.ts"
+    "./runtimeConfig": "./src/runtimeConfig.ts",
+    "./groupAccess": "./src/groupAccess.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",
