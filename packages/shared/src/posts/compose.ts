@@ -87,28 +87,14 @@ export interface PostContext {
 
 export type ImageSpec =
   | { kind: "hero"; eyebrow: string; badge: string; amount: string; currency: string; subline: string }
-  | { kind: "expense"; title: string; amount: string; currency: string; payer: string; date: string; emoji: string }
+  | { kind: "expense"; title: string; amount: string; currency: string; payer: string; date: string; subline: string }
   | { kind: "banner"; eyebrow: string; title: string; subline: string };
 
 export const IMAGE_SIZE: Record<ImageSpec["kind"], { width: number; height: number }> = {
   hero: { width: 1280, height: 720 },
-  expense: { width: 1080, height: 1080 },
+  expense: { width: 1280, height: 720 },
   banner: { width: 1280, height: 720 },
 };
-
-const EMOJI: [RegExp, string][] = [
-  [/breakfast|coffee|tea|buna/i, "☕"],
-  [/lunch|food|meal|injera/i, "🥗"],
-  [/dinner|supper|restaurant/i, "🍝"],
-  [/pizza/i, "🍕"],
-  [/grocer|market|shop/i, "🛒"],
-  [/rent|house|home/i, "🏠"],
-  [/util|electric|water|internet|wifi/i, "💡"],
-  [/taxi|ride|uber|fuel|transport|bus/i, "🚕"],
-  [/drink|beer|bar/i, "🍻"],
-  [/movie|cinema|game/i, "🎬"],
-];
-export const expenseEmoji = (d: string) => EMOJI.find(([re]) => re.test(d))?.[1] ?? "🧾";
 
 // ─── Output ──────────────────────────────────────────────────────────
 
@@ -189,14 +175,14 @@ function weeklyDoc(d: WeeklyPostData, design: PostDesign): Doc {
   };
   doc.slides = [
     doc.hero,
-    ...d.expenses.slice(0, 9).map((e): ImageSpec => ({
+    ...d.expenses.slice(0, 9).map((e, i, shown): ImageSpec => ({
       kind: "expense",
       title: e.description,
       amount: formatAmount(e.cents),
       currency: d.currency,
       payer: e.payer,
       date: e.date,
-      emoji: expenseEmoji(e.description),
+      subline: `Expense ${i + 1} of ${shown.length} this week`,
     })),
   ];
   doc.lead.push([`${d.expenseCount} expense${d.expenseCount === 1 ? "" : "s"} this week, `, bold(`${spent} ${d.currency}`), " in total."]);

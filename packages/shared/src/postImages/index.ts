@@ -1,6 +1,7 @@
 /**
  * Branded images for bot posts (hero, expense cards, banners), drawn from
- * live numbers with satori and rasterised with resvg. Node only: the console
+ * live numbers with satori and rasterised with resvg. All share one
+ * landscape 1280x720 frame so a slideshow never changes height. Node only: the console
  * and Mini App never import this entry.
  */
 import { readFileSync } from "node:fs";
@@ -37,7 +38,6 @@ const C = {
   violet: "#a99ce3",
   violetSoft: "#c8bfef",
 };
-const ACCENTS = ["#a99ce3", "#8ee6b0", "#ffc98a", "#8ac7ff", "#ff9fb8"];
 
 type Node = { type: string; props: Record<string, unknown> };
 const el = (type: string, style: Record<string, unknown>, ...children: (Node | string | null)[]): Node => ({
@@ -84,31 +84,38 @@ function hero(s: Extract<ImageSpec, { kind: "hero" }>): Node {
   );
 }
 
-function expense(s: Extract<ImageSpec, { kind: "expense" }>, emoji: string | null): Node {
+/** One expense, laid out like the hero: its name in the middle, the amount at the foot. */
+function expense(s: Extract<ImageSpec, { kind: "expense" }>): Node {
   const { width, height } = IMAGE_SIZE.expense;
-  const accent = ACCENTS[[...s.title].reduce((a, ch) => a + ch.charCodeAt(0), 0) % ACCENTS.length]!;
+  const long = s.title.length > 22;
   return canvas(
     width,
     height,
-    `radial-gradient(circle at 100% 0%, ${accent}66 0%, rgba(11,10,17,0) 55%)`,
+    "radial-gradient(circle at 0% 0%, rgba(110,89,199,0.6) 0%, rgba(11,10,17,0) 50%), radial-gradient(circle at 100% 100%, rgba(169,156,227,0.3) 0%, rgba(11,10,17,0) 45%)",
     el(
       "div",
-      { flexDirection: "column", padding: 84, flexGrow: 1 },
-      el("div", { alignItems: "center", gap: 16 }, img(LOGO, 56), pill(s.date, accent)),
-      emoji
-        ? el("div", { marginTop: 70 }, img(emoji, 150))
-        : el("div", { marginTop: 70, width: 150, height: 150, borderRadius: 75, backgroundColor: `${accent}33`, alignItems: "center", justifyContent: "center", fontFamily: "Bricolage", fontWeight: 800, fontSize: 80, color: accent }, (s.title[0] ?? "?").toUpperCase()),
-      el("div", { fontFamily: "Bricolage", fontWeight: 800, fontSize: s.title.length > 14 ? 72 : 96, letterSpacing: -3, marginTop: 20, lineHeight: 1.05 }, s.title.slice(0, 40)),
+      { flexDirection: "column", padding: "72px 80px", flexGrow: 1 },
+      el("div", { alignItems: "center", justifyContent: "space-between" }, brand(64), pill(s.date, C.violetSoft)),
       el(
         "div",
-        { marginTop: "auto", alignItems: "flex-end", justifyContent: "space-between" },
-        el("div", { flexDirection: "column" }, mono("Paid by", 20, C.faint), el("div", { fontFamily: "Bricolage", fontWeight: 700, fontSize: 52, marginTop: 8 }, s.payer)),
+        { flexGrow: 1, alignItems: "center" },
         el(
           "div",
-          { alignItems: "flex-end", fontFamily: "Bricolage", fontWeight: 800 },
-          el("div", { fontSize: 110, color: accent, letterSpacing: -4, lineHeight: 1 }, s.amount),
-          el("div", { fontSize: 40, color: C.muted, marginLeft: 12, marginBottom: 8 }, s.currency),
+          { fontFamily: "Bricolage", fontWeight: 800, fontSize: long ? 64 : 84, letterSpacing: -3, lineHeight: 1.05, maxWidth: 1000 },
+          s.title.slice(0, 60),
         ),
+      ),
+      el(
+        "div",
+        { flexDirection: "column" },
+        mono(`Paid by ${s.payer}`, 20, C.violet),
+        el(
+          "div",
+          { alignItems: "flex-end", marginTop: 14, fontFamily: "Bricolage", fontWeight: 800, letterSpacing: -4 },
+          el("div", { fontSize: 120, lineHeight: 1 }, s.amount),
+          el("div", { fontSize: 56, color: C.violet, marginLeft: 20, marginBottom: 10 }, s.currency),
+        ),
+        el("div", { fontSize: 30, color: C.muted, marginTop: 18 }, s.subline),
       ),
     ),
   );
@@ -135,36 +142,13 @@ function banner(s: Extract<ImageSpec, { kind: "banner" }>): Node {
   );
 }
 
-// ─── Emoji (Twemoji, fetched once and cached) ─────────────────────────
-
-const emojiCache = new Map<string, string | null>();
-async function emojiDataUri(emoji: string, fetcher: typeof fetch): Promise<string | null> {
-  if (emojiCache.has(emoji)) return emojiCache.get(emoji)!;
-  const code = [...emoji].map((c) => c.codePointAt(0)!.toString(16)).filter((c) => c !== "fe0f").join("-");
-  let uri: string | null = null;
-  try {
-    const res = await fetcher(`https://cdn.jsdelivr.net/gh/jdecked/twemoji@15.1.0/assets/svg/${code}.svg`, {
-      signal: AbortSignal.timeout(3000),
-    });
-    if (res.ok) uri = `data:image/svg+xml;base64,${Buffer.from(await res.text()).toString("base64")}`;
-  } catch {
-    // Offline or slow: the card shows the initial instead.
-  }
-  emojiCache.set(emoji, uri);
-  return uri;
-}
-
 // ─── Rendering ───────────────────────────────────────────────────────
 
 const pngCache = new Map<string, Buffer>();
 const CACHE_MAX = 64;
 
-export interface RenderOptions {
-  fetch?: typeof fetch;
-}
-
 /** Render one image spec to PNG. Results are cached by content. */
-export async function renderPostImage(spec: ImageSpec, opts: RenderOptions = {}): Promise<Buffer> {
+export async function renderPostImage(spec: ImageSpec): Promise<Buffer> {
   const key = createHash("sha1").update(JSON.stringify(spec)).digest("hex");
   const hit = pngCache.get(key);
   if (hit) return hit;
@@ -172,7 +156,7 @@ export async function renderPostImage(spec: ImageSpec, opts: RenderOptions = {})
   const tree =
     spec.kind === "hero" ? hero(spec)
     : spec.kind === "banner" ? banner(spec)
-    : expense(spec, await emojiDataUri(spec.emoji, opts.fetch ?? fetch));
+    : expense(spec);
   const svg = await satori(tree as unknown as Parameters<typeof satori>[0], { width, height, fonts: loadFonts() });
   const png = new Resvg(svg, { fitTo: { mode: "width", value: width } }).render().asPng();
   if (pngCache.size >= CACHE_MAX) pngCache.delete(pngCache.keys().next().value!);

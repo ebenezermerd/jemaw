@@ -33,7 +33,8 @@ function PostImage({ spec, radius = 0 }: { spec: ImageSpec; radius?: number }) {
     staleTime: Infinity,
     gcTime: 30 * 60_000,
   });
-  const ratio = spec.kind === "expense" ? "1 / 1" : "16 / 9";
+  // Every generated image is 1280x720.
+  const ratio = "16 / 9";
   if (!data) {
     return isError ? (
       <div style={{ aspectRatio: ratio, background: "#22303f", display: "grid", placeItems: "center", color: TG.dim, fontSize: 12, borderRadius: radius }}>

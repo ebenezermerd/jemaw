@@ -1,10 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { renderPostImage } from "./index.js";
 
-const offline = (async () => {
-  throw new Error("offline");
-}) as unknown as typeof fetch;
-
 /** Width and height from a PNG's IHDR chunk. */
 const size = (png: Buffer) => ({ width: png.readUInt32BE(16), height: png.readUInt32BE(20) });
 
@@ -15,11 +11,8 @@ describe("renderPostImage", () => {
     expect(size(png)).toEqual({ width: 1280, height: 720 });
   });
 
-  it("draws an expense card without the emoji when the CDN is unreachable", async () => {
-    const png = await renderPostImage(
-      { kind: "expense", title: "Offline lunch", amount: "900", currency: "ETB", payer: "Ebenezer", date: "Oct 8", emoji: "🥨" },
-      { fetch: offline },
-    );
-    expect(size(png)).toEqual({ width: 1080, height: 1080 });
+  it("draws expense cards in the same landscape frame as the hero", async () => {
+    const png = await renderPostImage({ kind: "expense", title: "Groceries for the whole week", amount: "5,000", currency: "ETB", payer: "Tsin", date: "Oct 8", subline: "Expense 1 of 3 this week" });
+    expect(size(png)).toEqual({ width: 1280, height: 720 });
   });
 });
