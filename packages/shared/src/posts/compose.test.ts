@@ -55,6 +55,26 @@ describe("composePost", () => {
     expect(types(post.rich)).not.toContain("blockquote");
   });
 
+  it("group payments list every open payment, not the asker's", () => {
+    const data = {
+      useCase: "ai_payments" as const,
+      data: {
+        ...SAMPLE_POST_DATA.ai_payments.data,
+        debts: [
+          { from: "Pomi", to: "Ebenezer", cents: 30000 },
+          { from: "Tsin", to: "Ebenezer", cents: 13400 },
+          { from: "Pomi", to: "Tsin", cents: 16600 },
+        ],
+      },
+    };
+    const post = composePost(data, DEFAULT_POST_DESIGNS.ai_payments, ctx);
+    const list = post.rich!.find((b) => b.type === "list") as { items: unknown[] };
+    expect(list.items).toHaveLength(3);
+    expect(post.html).toContain("Open payments");
+    expect(post.html).not.toContain("You owe");
+    expect(post.html).not.toContain("→ you");
+  });
+
   it("payments as a table has no header row", () => {
     const post = composePost(SAMPLE_POST_DATA.ai_payments, design(DEFAULT_POST_DESIGNS.ai_payments, { checklistStyle: "table" }), ctx);
     const table = post.rich!.find((b) => b.type === "table") as { cells: { is_header?: boolean }[][] };
