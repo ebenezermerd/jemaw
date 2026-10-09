@@ -78,52 +78,11 @@ export function useHumorSettings() {
   });
 }
 
-export function useUpdateHumorSettings() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (input: Partial<HumorSettingsDto> & { muteDays?: number }) =>
-      api.patch<HumorSettingsDto>(`/api/groups/${gid()}/humor`, input),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["humor"] });
-      qc.invalidateQueries({ queryKey: ["group"] });
-    },
-  });
-}
-
 export function useUpdateMyHumorPrefs() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (input: Partial<HumorMemberPrefsDto>) =>
       api.patch<HumorMemberPrefsDto>(`/api/groups/${gid()}/humor/me`, input),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["humor"] }),
-  });
-}
-
-export function useResetHumorVibe() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: () =>
-      api.post<GroupVibeDto>(`/api/groups/${gid()}/humor/vibe/reset`, {}),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["humor"] }),
-  });
-}
-
-export function useAddHumorCallback() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (text: string) =>
-      api.post<GroupVibeDto>(`/api/groups/${gid()}/humor/callbacks`, { text }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["humor"] }),
-  });
-}
-
-export function useRemoveHumorCallback() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (text: string) =>
-      api.post<GroupVibeDto>(`/api/groups/${gid()}/humor/callbacks/remove`, {
-        text,
-      }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["humor"] }),
   });
 }
