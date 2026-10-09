@@ -11,7 +11,7 @@ import {
 } from "./ai/geminiClient.js";
 import { ScanRateLimiter } from "./ai/rateLimit.js";
 import { startWeeklyDigestScheduler } from "./telegram/weeklyJob.js";
-import { createRuntimeConfigStore, startHeartbeat } from "./runtimeConfig.js";
+import { createLimitsRecorder, createRuntimeConfigStore, startHeartbeat } from "./runtimeConfig.js";
 
 async function main(): Promise<void> {
   const env = loadEnv();
@@ -23,6 +23,7 @@ async function main(): Promise<void> {
   // Switches the admin console controls (app_config bot.* keys).
   const runtime = createRuntimeConfigStore(db);
   await runtime.refresh();
+  const onLimits = createLimitsRecorder(db);
 
   // Default currency for groups created in Phase 1 (per-group currency picker
   // arrives with onboarding UI; EUR is the v1 default).
@@ -32,7 +33,7 @@ async function main(): Promise<void> {
   // Model ids come from env (with safe defaults) so provider deprecations do not
   // require a code change — only an env / Secrets Manager update + redeploy.
   const groq = env.GROQ_API_KEY
-    ? createGroqClient(env.GROQ_API_KEY, () => runtime.current().model ?? env.GROQ_MODEL)
+    ? createGroqClient(env.GROQ_API_KEY, () => runtime.current().model ?? env.GROQ_MODEL, { onLimits })
     : undefined;
   const geminiOnly = env.GEMINI_API_KEY
     ? createGeminiClient(env.GEMINI_API_KEY, env.GEMINI_MODEL)
@@ -59,7 +60,7 @@ async function main(): Promise<void> {
   // Humor Phase 2: reuse scan providers; optional HUMOR_MODEL overrides generation model.
   const humorModel = env.HUMOR_MODEL ?? env.GROQ_MODEL;
   const humorClient: ScanClient | undefined = env.GROQ_API_KEY
-    ? createGroqClient(env.GROQ_API_KEY, () => runtime.current().model ?? humorModel)
+    ? createGroqClient(env.GROQ_API_KEY, () => runtime.current().model ?? humorModel, { onLimits })
     : geminiOnly
       ? createGeminiClient(env.GEMINI_API_KEY!, env.GEMINI_MODEL)
       : undefined;

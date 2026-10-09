@@ -6,10 +6,12 @@
 import { inArray, sql } from "drizzle-orm";
 import { appConfig } from "@jemaw/shared/schema";
 import {
+  BOT_AI_LIMITS_KEY,
   BOT_HEARTBEAT_KEY,
   BOT_RUNTIME_KEYS,
   DEFAULT_BOT_RUNTIME_CONFIG,
   runtimeConfigFromRows,
+  type AiLimitsSnapshot,
   type BotRuntimeConfig,
 } from "@jemaw/shared/runtimeConfig";
 import type { Db } from "./db.js";
@@ -53,6 +55,43 @@ export function createRuntimeConfigStore(db: Db, ttlMs = 60_000): RuntimeConfigS
       return value;
     },
     refresh,
+  };
+}
+
+async function upsert(db: Db, key: string, value: unknown): Promise<void> {
+  await db
+    .insert(appConfig)
+    .values({ key, value, updatedByUid: "bot" })
+    .onConflictDoUpdate({
+      target: appConfig.key,
+      set: { value: sql`excluded.value`, updatedAt: new Date(), updatedByUid: "bot" },
+    });
+}
+
+/**
+ * Save Groq's latest remaining-limit numbers for the console. Writes at most
+ * once per `minIntervalMs`; the newest snapshot in between wins.
+ */
+export function createLimitsRecorder(db: Db, minIntervalMs = 15_000): (s: AiLimitsSnapshot) => void {
+  let latest: AiLimitsSnapshot | null = null;
+  let timer: ReturnType<typeof setTimeout> | null = null;
+  let lastWrite = 0;
+  const flush = () => {
+    timer = null;
+    if (!latest) return;
+    const snap = latest;
+    latest = null;
+    lastWrite = Date.now();
+    void upsert(db, BOT_AI_LIMITS_KEY, snap).catch((err) =>
+      console.warn(`[limits] save failed:`, err instanceof Error ? err.message : err),
+    );
+  };
+  return (snap) => {
+    latest = snap;
+    if (timer) return;
+    const wait = Math.max(0, lastWrite + minIntervalMs - Date.now());
+    timer = setTimeout(flush, wait);
+    timer.unref?.();
   };
 }
 
