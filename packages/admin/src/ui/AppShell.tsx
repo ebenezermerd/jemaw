@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { NavLink, useLocation } from "react-router-dom";
 import { AccountMenu } from "./AccountMenu.js";
 
@@ -109,74 +109,177 @@ function LogoMark({ size = 32 }: { size?: number }) {
 
 // ─── Nav items ────────────────────────────────────────────────────────────────
 
-const NAV_MANAGE = [
-  { to: "/", label: "Overview", end: true, Icon: IcoOverview },
-  { to: "/users", label: "Users", Icon: IcoUsers },
-  { to: "/groups", label: "Groups", Icon: IcoGroups },
-  { to: "/expenses", label: "Expenses", Icon: IcoExpenses },
-  { to: "/logs", label: "Activity & Logs", Icon: IcoLogs },
-  { to: "/announcements", label: "Announcements", Icon: IcoAnnouncements },
+interface NavEntry {
+  to: string;
+  label: string;
+  desc: string;
+  end?: boolean;
+  Icon: React.ComponentType<{ active: boolean }>;
+}
+
+const NAV: { label: string; items: NavEntry[] }[] = [
+  {
+    label: "Manage",
+    items: [
+      { to: "/", label: "Overview", desc: "Platform at a glance", end: true, Icon: IcoOverview },
+      { to: "/users", label: "Users", desc: "Telegram users and access", Icon: IcoUsers },
+      { to: "/groups", label: "Groups", desc: "Group chats, access and AI", Icon: IcoGroups },
+      { to: "/expenses", label: "Expenses", desc: "Cross-group expense feed", Icon: IcoExpenses },
+      { to: "/logs", label: "Activity & Logs", desc: "What the bot and admins did", Icon: IcoLogs },
+      { to: "/announcements", label: "Announcements", desc: "Broadcast to groups or people", Icon: IcoAnnouncements },
+    ],
+  },
+  {
+    label: "System",
+    items: [{ to: "/settings", label: "Bot & Settings", desc: "Health, AI usage and switches", Icon: IcoSettings }],
+  },
 ];
 
-const TITLES: Record<string, string> = {
-  "/": "Overview",
-  "/users": "Users",
-  "/groups": "Groups",
-  "/expenses": "Expenses",
-  "/logs": "Activity & Logs",
-  "/announcements": "Announcements",
-  "/settings": "Bot & Settings",
-};
+const TITLES: Record<string, string> = Object.fromEntries(NAV.flatMap((g) => g.items.map((i) => [i.to, i.label])));
+const SUBTITLES: Record<string, string> = Object.fromEntries(NAV.flatMap((g) => g.items.map((i) => [i.to, i.desc])));
 
-const SUBTITLES: Record<string, string> = {
-  "/": "Platform at a glance",
-  "/users": "Manage Telegram users",
-  "/groups": "Active group chats",
-  "/expenses": "Cross-group expense feed",
-  "/logs": "Everything the bot and admins did",
-  "/announcements": "Broadcast messages",
-  "/settings": "Bot health, AI and switches",
-};
+const COLLAPSE_KEY = "jemaw-admin.sidebar-collapsed";
+const EXPANDED_W = 264;
+const COLLAPSED_W = 72;
+
+/** Sidebar open/collapsed, remembered per browser; Ctrl/⌘+B toggles it. */
+function useSidebarCollapsed(): [boolean, () => void] {
+  const [collapsed, setCollapsed] = useState(() => {
+    try {
+      return localStorage.getItem(COLLAPSE_KEY) === "1";
+    } catch {
+      return false;
+    }
+  });
+  const toggle = useCallback(() => {
+    setCollapsed((c) => {
+      try {
+        localStorage.setItem(COLLAPSE_KEY, c ? "0" : "1");
+      } catch {
+        // storage blocked: still toggles for this visit
+      }
+      return !c;
+    });
+  }, []);
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "b") {
+        e.preventDefault();
+        toggle();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [toggle]);
+  return [collapsed, toggle];
+}
 
 // ─── Reusable nav link ────────────────────────────────────────────────────────
 
-function NavItem({
-  to,
-  label,
-  end,
-  Icon,
-}: {
-  to: string;
-  label: string;
-  end?: boolean;
-  Icon: React.ComponentType<{ active: boolean }>;
-}) {
+function NavItem({ item, collapsed }: { item: NavEntry; collapsed: boolean }) {
+  const [hover, setHover] = useState(false);
   return (
     <NavLink
-      to={to}
-      end={end}
+      to={item.to}
+      end={item.end}
+      aria-label={collapsed ? item.label : undefined}
       className="jx-navitem"
+      onMouseEnter={() => setHover(true)}
+      onMouseLeave={() => setHover(false)}
       style={({ isActive }) => ({
+        position: "relative",
         display: "flex",
         alignItems: "center",
-        gap: 10,
-        padding: "9px 12px",
+        justifyContent: collapsed ? "center" : undefined,
+        gap: 11,
+        padding: collapsed ? "10px 0" : "8px 11px",
         borderRadius: 10,
-        fontSize: 13.5,
-        fontWeight: 600,
         textDecoration: "none",
         background: isActive ? "rgba(110,89,199,.16)" : "transparent",
+        boxShadow: isActive ? "inset 2px 0 0 var(--accent-soft)" : undefined,
         color: isActive ? "var(--text)" : "var(--text-dim)",
         transition: "background .12s",
       })}
     >
       {({ isActive }) => (
         <>
-          <Icon active={isActive} />
-          {label}
+          <span style={{ display: "flex", flex: "none", width: 18, justifyContent: "center" }}>
+            <item.Icon active={isActive} />
+          </span>
+          {!collapsed && (
+            <span style={{ display: "flex", flexDirection: "column", minWidth: 0 }}>
+              <span style={{ fontSize: 13, fontWeight: 600, lineHeight: "18px", color: isActive ? "var(--text)" : "rgba(244,242,251,.82)" }}>
+                {item.label}
+              </span>
+              <span
+                style={{
+                  fontSize: 10.5,
+                  lineHeight: "14px",
+                  color: "var(--text-dim)",
+                  opacity: 0.75,
+                  whiteSpace: "nowrap",
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                }}
+              >
+                {item.desc}
+              </span>
+            </span>
+          )}
+          {collapsed && hover && (
+            <span
+              role="tooltip"
+              style={{
+                position: "absolute",
+                left: "calc(100% + 12px)",
+                top: "50%",
+                transform: "translateY(-50%)",
+                background: "#1E1C2A",
+                border: "1px solid rgba(255,255,255,.1)",
+                borderRadius: 9,
+                padding: "6px 10px",
+                whiteSpace: "nowrap",
+                zIndex: 80,
+                boxShadow: "0 12px 30px -10px rgba(0,0,0,.6)",
+                pointerEvents: "none",
+              }}
+            >
+              <span style={{ display: "block", fontSize: 12.5, fontWeight: 600, color: "var(--text)" }}>{item.label}</span>
+              <span style={{ display: "block", fontSize: 10.5, color: "var(--text-dim)" }}>{item.desc}</span>
+            </span>
+          )}
         </>
       )}
     </NavLink>
+  );
+}
+
+function CollapseButton({ collapsed, onClick }: { collapsed: boolean; onClick: () => void }) {
+  return (
+    <button
+      onClick={onClick}
+      aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+      title={`${collapsed ? "Expand" : "Collapse"} sidebar (Ctrl/⌘ B)`}
+      className="jx-navitem"
+      style={{
+        width: 30,
+        height: 30,
+        flex: "none",
+        display: "grid",
+        placeItems: "center",
+        borderRadius: 8,
+        border: "1px solid var(--hairline-2)",
+        background: "transparent",
+        color: "var(--text-dim)",
+        cursor: "pointer",
+      }}
+    >
+      <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+        <rect x="3" y="4" width="18" height="16" rx="3" />
+        <path d="M9 4v16" />
+        <path d={collapsed ? "M13 10l2 2-2 2" : "M16 10l-2 2 2 2"} />
+      </svg>
+    </button>
   );
 }
 
@@ -188,90 +291,88 @@ export function AppShell({ children }: { children: ReactNode }) {
   const section = "/" + (location.pathname.split("/")[1] ?? "");
   const title = TITLES[section] ?? "Jemaw Admin";
   const subtitle = SUBTITLES[section];
+  const [collapsed, toggle] = useSidebarCollapsed();
 
   return (
     <div style={{ display: "flex", height: "100vh", minHeight: 760, overflow: "hidden" }}>
 
       {/* Sidebar */}
-      <div
+      <aside
+        data-collapsed={collapsed}
         style={{
-          width: 244,
+          width: collapsed ? COLLAPSED_W : EXPANDED_W,
           flex: "none",
           background: "var(--sidebar)",
           borderRight: "1px solid var(--hairline)",
           display: "flex",
           flexDirection: "column",
-          padding: "20px 14px",
+          padding: collapsed ? "18px 10px" : "18px 14px",
+          transition: "width .18s ease, padding .18s ease",
         }}
       >
-        {/* Logo */}
-        <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "4px 8px 22px" }}>
-          <LogoMark size={36} />
-          <div>
-            <div
-              style={{
-                fontFamily: "var(--font-display)",
-                fontWeight: 800,
-                fontSize: 17,
-                letterSpacing: "-.02em",
-                lineHeight: 1,
-              }}
-            >
-              Jemaw
-            </div>
-            <div
-              style={{
-                fontFamily: "var(--font-mono)",
-                fontSize: 9,
-                letterSpacing: ".15em",
-                textTransform: "uppercase",
-                color: "var(--text-faint)",
-                marginTop: 2,
-              }}
-            >
-              Admin Console
-            </div>
-          </div>
-        </div>
-
-        {/* Manage section */}
+        {/* Logo + collapse */}
         <div
           style={{
-            fontFamily: "var(--font-mono)",
-            fontSize: 9.5,
-            letterSpacing: ".14em",
-            textTransform: "uppercase",
-            color: "rgba(244,242,251,.28)",
-            padding: "2px 10px 7px",
+            display: "flex",
+            flexDirection: collapsed ? "column" : "row",
+            alignItems: "center",
+            gap: 10,
+            padding: collapsed ? "2px 0 16px" : "2px 4px 18px 8px",
+            borderBottom: "1px solid var(--hairline)",
+            marginBottom: 12,
           }}
         >
-          Manage
+          <LogoMark size={collapsed ? 34 : 36} />
+          {!collapsed && (
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontFamily: "var(--font-display)", fontWeight: 800, fontSize: 17, letterSpacing: "-.02em", lineHeight: 1 }}>
+                Jemaw
+              </div>
+              <div
+                style={{
+                  fontFamily: "var(--font-mono)",
+                  fontSize: 9,
+                  letterSpacing: ".15em",
+                  textTransform: "uppercase",
+                  color: "var(--text-faint)",
+                  marginTop: 3,
+                }}
+              >
+                Admin Console
+              </div>
+            </div>
+          )}
+          <CollapseButton collapsed={collapsed} onClick={toggle} />
         </div>
-        <nav style={{ display: "flex", flexDirection: "column", gap: 2 }}>
-          {NAV_MANAGE.map((item) => (
-            <NavItem key={item.to} to={item.to} label={item.label} end={item.end} Icon={item.Icon} />
+
+        <nav aria-label="Main navigation" className="jx-scroll" style={{ display: "flex", flexDirection: "column", gap: 2, overflowY: collapsed ? "visible" : "auto", flex: 1, minHeight: 0 }}>
+          {NAV.map((group, gi) => (
+            <div key={group.label} style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+              {collapsed ? (
+                gi > 0 && <div style={{ height: 1, background: "var(--hairline)", margin: "10px 8px" }} />
+              ) : (
+                <div
+                  style={{
+                    fontFamily: "var(--font-mono)",
+                    fontSize: 9.5,
+                    letterSpacing: ".14em",
+                    textTransform: "uppercase",
+                    color: "rgba(244,242,251,.28)",
+                    padding: gi === 0 ? "4px 11px 7px" : "16px 11px 7px",
+                  }}
+                >
+                  {group.label}
+                </div>
+              )}
+              {group.items.map((item) => (
+                <NavItem key={item.to} item={item} collapsed={collapsed} />
+              ))}
+            </div>
           ))}
         </nav>
 
-        {/* System section */}
-        <div
-          style={{
-            fontFamily: "var(--font-mono)",
-            fontSize: 9.5,
-            letterSpacing: ".14em",
-            textTransform: "uppercase",
-            color: "rgba(244,242,251,.28)",
-            padding: "18px 10px 7px",
-          }}
-        >
-          System
-        </div>
-        <NavItem to="/settings" label="Bot & Settings" Icon={IcoSettings} />
-
-        <div style={{ flex: 1 }} />
-
-        <AccountMenu />
-      </div>
+        <AccountMenu collapsed={collapsed} />
+      </aside>
 
       {/* Main */}
       <div

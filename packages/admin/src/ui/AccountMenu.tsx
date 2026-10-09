@@ -73,7 +73,7 @@ function RolePill({ role }: { role: "super" | "admin" | undefined }) {
   );
 }
 
-export function AccountMenu() {
+export function AccountMenu({ collapsed = false }: { collapsed?: boolean }) {
   const { user, logout, sendPasswordReset } = useAuth();
   const navigate = useNavigate();
   const qc = useQueryClient();
@@ -131,7 +131,8 @@ export function AccountMenu() {
             position: "absolute",
             bottom: "calc(100% + 8px)",
             left: 0,
-            right: 0,
+            // On the collapsed rail the menu keeps a readable width.
+            ...(collapsed ? { width: 260 } : { right: 0 }),
             background: "#1A1925",
             border: "1px solid rgba(255,255,255,.1)",
             borderRadius: 14,
@@ -191,8 +192,9 @@ export function AccountMenu() {
           width: "100%",
           display: "flex",
           alignItems: "center",
+          justifyContent: collapsed ? "center" : undefined,
           gap: 10,
-          padding: 8,
+          padding: collapsed ? 6 : 8,
           borderRadius: 11,
           border: `1px solid ${open ? "rgba(169,156,227,.35)" : "transparent"}`,
           background: open ? "rgba(110,89,199,.12)" : "transparent",
@@ -202,6 +204,7 @@ export function AccountMenu() {
         }}
       >
         <Avatar name={name} photo={user?.photoURL} size={32} />
+        {!collapsed && (<>
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ fontSize: 12.5, fontWeight: 700, lineHeight: 1.25, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{name}</div>
           <div style={{ fontSize: 10.5, color: "var(--text-faint)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
@@ -211,6 +214,7 @@ export function AccountMenu() {
         <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="var(--text-dim)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flex: "none", transform: open ? "rotate(180deg)" : undefined, transition: "transform .15s" }}>
           <path d="M6 15l6-6 6 6" />
         </svg>
+        </>)}
       </button>
 
       {adminsOpen && <AdminsDialog myEmail={email} onClose={() => setAdminsOpen(false)} />}
