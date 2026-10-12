@@ -10,9 +10,22 @@ import { fileURLToPath } from "node:url";
 import satori from "satori";
 import { Resvg } from "@resvg/resvg-js";
 import { IMAGE_SIZE, type ImageSpec } from "../posts/compose.js";
+import type { Mascot } from "../posts/designs.js";
 
 const FONT_DIR = fileURLToPath(new URL("../../assets/fonts/", import.meta.url));
 const font = (file: string) => readFileSync(FONT_DIR + file);
+
+const MASCOT_DIR = fileURLToPath(new URL("../../assets/mascots/", import.meta.url));
+const mascotCache = new Map<string, string>();
+/** Read a mascot once and keep it as a data URI; satori cannot take a path. */
+function mascotUri(name: Mascot): string {
+  let uri = mascotCache.get(name);
+  if (!uri) {
+    uri = `data:image/png;base64,${readFileSync(`${MASCOT_DIR}${name}.png`).toString("base64")}`;
+    mascotCache.set(name, uri);
+  }
+  return uri;
+}
 
 let fonts: Parameters<typeof satori>[1]["fonts"] | null = null;
 function loadFonts() {
@@ -123,21 +136,48 @@ function expense(s: Extract<ImageSpec, { kind: "expense" }>): Node {
 
 function banner(s: Extract<ImageSpec, { kind: "banner" }>): Node {
   const { width, height } = IMAGE_SIZE.banner;
+  // With a mascot on the right the words keep the left half to themselves.
+  const textWidth = s.mascot ? 700 : width - 160;
+  const words = el(
+    "div",
+    { flexDirection: "column", flexGrow: 1, padding: "72px 80px", maxWidth: textWidth + 160 },
+    brand(64),
+    el(
+      "div",
+      { flexDirection: "column", marginTop: "auto", maxWidth: textWidth },
+      mono(s.eyebrow, 20, C.violet),
+      el(
+        "div",
+        {
+          fontFamily: "Bricolage",
+          fontWeight: 800,
+          fontSize: s.title.length > 28 ? 72 : 96,
+          letterSpacing: -3,
+          lineHeight: 1.02,
+          marginTop: 16,
+        },
+        s.title.slice(0, 70),
+      ),
+      el("div", { fontSize: 30, color: C.muted, marginTop: 18 }, s.subline),
+    ),
+  );
   return canvas(
     width,
     height,
     "radial-gradient(circle at 0% 0%, rgba(110,89,199,0.75) 0%, rgba(11,10,17,0) 55%), radial-gradient(circle at 100% 100%, rgba(142,230,176,0.25) 0%, rgba(11,10,17,0) 45%)",
     el(
       "div",
-      { flexDirection: "column", padding: "72px 80px", flexGrow: 1 },
-      brand(64),
-      el(
-        "div",
-        { flexDirection: "column", marginTop: "auto" },
-        mono(s.eyebrow, 20, C.violet),
-        el("div", { fontFamily: "Bricolage", fontWeight: 800, fontSize: s.title.length > 28 ? 72 : 96, letterSpacing: -3, lineHeight: 1.02, marginTop: 16 }, s.title.slice(0, 70)),
-        el("div", { fontSize: 30, color: C.muted, marginTop: 18 }, s.subline),
-      ),
+      { flexGrow: 1, alignItems: "stretch" },
+      words,
+      s.mascot
+        ? {
+            type: "img",
+            props: {
+              src: mascotUri(s.mascot),
+              style: { height: height - 56, marginTop: "auto", marginRight: 56, objectFit: "contain" },
+            },
+          }
+        : null,
     ),
   );
 }
