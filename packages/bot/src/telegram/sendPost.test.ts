@@ -63,7 +63,7 @@ describe("sendPost", () => {
 
   it("sends the classic layout as HTML text with its keyboard", async () => {
     const { api, calls, raw } = fakeApi();
-    const post = composePost(SAMPLE_POST_DATA.announcement, { ...DEFAULT_POST_DESIGNS.announcement, layout: "classic" }, ctx);
+    const post = composePost(SAMPLE_POST_DATA.announcement, { ...DEFAULT_POST_DESIGNS.announcement, layout: "classic", hero: "none" }, ctx);
     const sent = await sendPost(api, -100, post);
     expect(sent).toEqual({ messageId: 31, mode: "classic" });
     expect(raw.sendRichMessage).not.toHaveBeenCalled();

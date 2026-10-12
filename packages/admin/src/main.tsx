@@ -2,6 +2,7 @@ import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { App } from "./App.js";
+import { ThemeProvider } from "./lib/theme.js";
 import "./styles/tokens.css";
 
 const queryClient = new QueryClient({
@@ -14,7 +15,9 @@ if (!root) throw new Error("#root not found");
 createRoot(root).render(
   <StrictMode>
     <QueryClientProvider client={queryClient}>
-      <App />
+      <ThemeProvider>
+        <App />
+      </ThemeProvider>
     </QueryClientProvider>
   </StrictMode>,
 );

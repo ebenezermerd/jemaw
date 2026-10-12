@@ -9,7 +9,7 @@ import { useNavigate } from "react-router-dom";
 import type { AdminAccountsDto, AdminMeDto } from "@jemaw/shared/types";
 import { api } from "../lib/api.js";
 import { useAuth } from "../lib/auth.js";
-import { Dialog, GhostButton, fieldStyle } from "./Dialog.js";
+import { Dialog, GhostButton, fieldStyle, selectStyle } from "./Dialog.js";
 import { Loader, SkeletonList } from "./Loader.js";
 import { PrimaryButton } from "./primitives.js";
 
@@ -61,8 +61,8 @@ function RolePill({ role }: { role: "super" | "admin" | undefined }) {
         fontSize: 10,
         fontWeight: 700,
         letterSpacing: ".03em",
-        color: sup ? "#A99CE3" : "rgba(244,242,251,.6)",
-        background: sup ? "rgba(110,89,199,.2)" : "rgba(255,255,255,.07)",
+        color: sup ? "#A99CE3" : "var(--text-dim)",
+        background: sup ? "rgba(110,89,199,.2)" : "var(--hairline)",
         padding: "2px 7px",
         borderRadius: 6,
         flex: "none",
@@ -134,14 +134,14 @@ export function AccountMenu({ collapsed = false }: { collapsed?: boolean }) {
             // On the collapsed rail the menu keeps a readable width.
             ...(collapsed ? { width: 260 } : { right: 0 }),
             background: "#1A1925",
-            border: "1px solid rgba(255,255,255,.1)",
+            border: "1px solid var(--hairline-2)",
             borderRadius: 14,
             boxShadow: "0 -18px 48px -16px rgba(0,0,0,.7)",
             overflow: "hidden",
             zIndex: 60,
           }}
         >
-          <div style={{ padding: 14, display: "flex", gap: 11, alignItems: "center", borderBottom: "1px solid rgba(255,255,255,.07)" }}>
+          <div style={{ padding: 14, display: "flex", gap: 11, alignItems: "center", borderBottom: "1px solid var(--hairline)" }}>
             <Avatar name={name} photo={user?.photoURL} size={38} />
             <div style={{ minWidth: 0, flex: 1 }}>
               <div style={{ fontSize: 13, fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{name}</div>
@@ -171,7 +171,7 @@ export function AccountMenu({ collapsed = false }: { collapsed?: boolean }) {
               </MenuItem>
             )}
             {notice && <div style={{ fontSize: 11.5, color: reset.isError ? "var(--danger)" : "var(--success)", padding: "4px 10px 6px" }}>{notice}</div>}
-            <div style={{ height: 1, background: "rgba(255,255,255,.07)", margin: "5px 4px" }} />
+            <div style={{ height: 1, background: "var(--hairline)", margin: "5px 4px" }} />
             <MenuItem icon="exit" tone="danger" onClick={() => void signOut()} disabled={signingOut} busy={signingOut}>
               Sign out
             </MenuItem>
@@ -318,7 +318,7 @@ function AdminsDialog({ myEmail, onClose }: { myEmail: string; onClose: () => vo
             const you = a.email === myEmail.toLowerCase();
             const busy = (upsert.isPending && upsert.variables?.email === a.email) || (remove.isPending && remove.variables === a.email);
             return (
-              <div key={a.email} style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 12px", borderTop: i ? "1px solid rgba(255,255,255,.05)" : "none" }}>
+              <div key={a.email} style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 12px", borderTop: i ? "1px solid var(--hairline-soft)" : "none" }}>
                 <Avatar name={a.email} size={28} />
                 <div style={{ flex: 1, minWidth: 0, fontSize: 13, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                   {a.email}
@@ -332,7 +332,7 @@ function AdminsDialog({ myEmail, onClose }: { myEmail: string; onClose: () => vo
                       value={a.role}
                       disabled={busy}
                       onChange={(e) => upsert.mutate({ email: a.email, role: e.target.value as "admin" | "super" })}
-                      style={{ ...fieldStyle, width: "auto", padding: "5px 8px", fontSize: 12 }}
+                      style={{ ...selectStyle, width: "auto", padding: "5px 26px 5px 8px", fontSize: 12, backgroundPosition: "right 7px center", backgroundSize: "13px 13px" }}
                     >
                       <option value="admin">Admin</option>
                       <option value="super">Super admin</option>
@@ -363,7 +363,7 @@ function AdminsDialog({ myEmail, onClose }: { myEmail: string; onClose: () => vo
             placeholder="name@example.com"
             style={{ ...fieldStyle, flex: 1 }}
           />
-          <select value={role} onChange={(e) => setRole(e.target.value as "admin" | "super")} style={{ ...fieldStyle, width: "auto" }}>
+          <select value={role} onChange={(e) => setRole(e.target.value as "admin" | "super")} style={{ ...selectStyle, width: "auto" }}>
             <option value="admin">Admin</option>
             <option value="super">Super admin</option>
           </select>

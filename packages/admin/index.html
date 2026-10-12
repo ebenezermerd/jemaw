@@ -17,6 +17,14 @@
     />
   </head>
   <body>
+    <script>
+      // Stamp the saved theme before paint so a light console never flashes dark.
+      try {
+        var t = localStorage.getItem("jemaw-admin.theme");
+        if (t !== "light" && t !== "dark") t = matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark";
+        document.documentElement.dataset.theme = t;
+      } catch (e) {}
+    </script>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>

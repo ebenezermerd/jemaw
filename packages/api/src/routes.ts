@@ -68,6 +68,7 @@ import type { TelegramClient } from "./telegram.js";
 import {
   composePost,
   DEFAULT_POST_DESIGNS,
+  MASCOTS,
   parsePostDesign,
   POST_USE_CASES,
   SAMPLE_POST_DATA,
@@ -122,7 +123,7 @@ const imageText = z.string().max(120);
 const imageSpecSchema = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("hero"), eyebrow: imageText, badge: imageText, amount: imageText, currency: imageText, subline: imageText }),
   z.object({ kind: z.literal("expense"), title: imageText, amount: imageText, currency: imageText, payer: imageText, date: imageText, subline: imageText }),
-  z.object({ kind: z.literal("banner"), eyebrow: imageText, title: imageText, subline: imageText }),
+  z.object({ kind: z.literal("banner"), eyebrow: imageText, title: imageText, subline: imageText, mascot: z.enum(MASCOTS).optional() }),
 ]);
 
 const designTestSchema = z.object({

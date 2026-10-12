@@ -12,6 +12,8 @@ import type { BotRuntimeConfig } from "@jemaw/shared/runtimeConfig";
 import {
   composePost,
   DEFAULT_POST_DESIGNS,
+  MASCOTS,
+  MASCOT_LABEL,
   POST_USE_CASE_META,
   POST_USE_CASES,
   SAMPLE_POST_DATA,
@@ -25,7 +27,7 @@ import {
   type PaymentsPostData,
   type WeeklyPostData,
 } from "@jemaw/shared/posts";
-import { GhostButton, fieldStyle } from "../ui/Dialog.js";
+import { GhostButton, fieldStyle, selectStyle } from "../ui/Dialog.js";
 import { Loader, SkeletonList } from "../ui/Loader.js";
 import { Card, PrimaryButton } from "../ui/primitives.js";
 import { PostPreview } from "../ui/PostPreview.js";
@@ -166,6 +168,8 @@ export function Designs() {
   const groupName = groups.find((g) => g.id === groupId)?.name;
   const showChecklistStyle = design.layout === "checklist" || useCase === "ai_payments" || (useCase === "weekly" && design.sections.debts);
   const slideshowFits = useCase === "weekly";
+  // Only the announcement and release pictures are banners, and only a banner carries a mascot.
+  const bannerUseCase = useCase === "announcement" || useCase === "release";
   // AI answers only make sense in one group; reports and broadcasts can go everywhere.
   const canSendAll = useCase === "weekly" || useCase === "announcement" || useCase === "release";
   const target = canSendAll ? sendTarget : "group";
@@ -210,6 +214,18 @@ export function Designs() {
                 ]}
                 hint={design.hero === "slideshow" ? "Swipes from the week's picture through a card per expense." : undefined}
               />
+              {bannerUseCase && design.hero !== "none" && (
+                <Segmented
+                  label="Mascot"
+                  value={design.mascot}
+                  onChange={(mascot) => set({ mascot })}
+                  options={[
+                    { key: "none" as const, label: "No mascot" },
+                    ...MASCOTS.map((m) => ({ key: m, label: MASCOT_LABEL[m] })),
+                  ]}
+                  hint="Jemaw stands on the right of the picture; the label, title and description keep the left."
+                />
+              )}
               {design.layout !== "classic" && (
                 <Segmented
                   label="Buttons"
@@ -281,14 +297,14 @@ export function Designs() {
               </span>
             </div>
             <div style={{ display: "flex", gap: 8, marginBottom: 12, flexWrap: "wrap" }}>
-              <select aria-label="Data" value={groupId} onChange={(e) => { setGroupId(e.target.value); setMemberId(""); test.reset(); }} style={{ ...fieldStyle, flex: 1, minWidth: 160 }}>
+              <select aria-label="Data" value={groupId} onChange={(e) => { setGroupId(e.target.value); setMemberId(""); test.reset(); }} style={{ ...selectStyle, flex: 1, minWidth: 160 }}>
                 <option value="">Sample numbers</option>
                 {groups.map((g) => (
                   <option key={g.id} value={g.id}>{g.name}</option>
                 ))}
               </select>
               {useCase === "ai_payments" && realData.data && (
-                <select aria-label="Whose payments" value={memberId || realData.data.paymentsMemberId || ""} onChange={(e) => setMemberId(e.target.value)} style={{ ...fieldStyle, flex: 1, minWidth: 140 }}>
+                <select aria-label="Whose payments" value={memberId || realData.data.paymentsMemberId || ""} onChange={(e) => setMemberId(e.target.value)} style={{ ...selectStyle, flex: 1, minWidth: 140 }}>
                   {realData.data.members.map((m) => (
                     <option key={m.memberId} value={m.memberId}>{m.name}</option>
                   ))}
@@ -382,7 +398,7 @@ function Pill({ active, onClick, children, role }: { active: boolean; onClick: (
       style={{
         fontSize: 13,
         fontWeight: 600,
-        color: active ? "#fff" : "rgba(244,242,251,.6)",
+        color: active ? "#fff" : "var(--text-dim)",
         background: active ? "rgba(110,89,199,.25)" : "transparent",
         border: `1px solid ${active ? "rgba(169,156,227,.55)" : "var(--hairline-2)"}`,
         borderRadius: 10,
@@ -463,7 +479,7 @@ function ButtonsEditor({ rows, onChange }: { rows: PostButton[][]; onChange: (ro
           {row.map((b, i) => (
             <div key={i} style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
               <input aria-label="Button label" value={b.label} maxLength={40} onChange={(e) => update(r, i, { label: e.target.value })} style={{ ...fieldStyle, flex: "1 1 130px", padding: "8px 10px" }} />
-              <select aria-label="Button action" value={b.action} onChange={(e) => update(r, i, { action: e.target.value as PostButton["action"] })} style={{ ...fieldStyle, width: 132, padding: "8px 10px" }}>
+              <select aria-label="Button action" value={b.action} onChange={(e) => update(r, i, { action: e.target.value as PostButton["action"] })} style={{ ...selectStyle, width: 132, padding: "8px 30px 8px 10px", backgroundPosition: "right 9px center" }}>
                 <option value="open_app">Open Jemaw</option>
                 <option value="copy_amount">Copy amount</option>
                 <option value="url">Open a link</option>

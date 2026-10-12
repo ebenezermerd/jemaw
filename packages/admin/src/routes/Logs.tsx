@@ -115,9 +115,9 @@ export function Logs() {
                 style={{
                   fontSize: 13,
                   fontWeight: 600,
-                  color: active ? "#fff" : "rgba(244,242,251,.6)",
+                  color: active ? "#fff" : "var(--text-dim)",
                   background: active ? "#6E59C7" : "transparent",
-                  border: active ? "none" : "1px solid rgba(255,255,255,.1)",
+                  border: active ? "none" : "1px solid var(--hairline-2)",
                   padding: "8px 13px",
                   borderRadius: 9,
                   cursor: "pointer",
@@ -146,18 +146,18 @@ export function Logs() {
           <button
             onClick={() => void qc.invalidateQueries({ queryKey: ["activity"] })}
             title={dataUpdatedAt ? `Updated ${new Date(dataUpdatedAt).toLocaleTimeString()}` : undefined}
-            style={{ ...selectStyle, display: "flex", alignItems: "center", gap: 7, cursor: "pointer" }}
+            style={{ ...selectStyle, backgroundImage: "none", padding: "8px 11px", display: "flex", alignItems: "center", gap: 7 }}
           >
             {refreshing ? <Loader size={14} /> : <span aria-hidden>↻</span>}
             Refresh
           </button>
-          <button onClick={exportLogs} style={{ ...selectStyle, cursor: "pointer" }}>
+          <button onClick={exportLogs} style={{ ...selectStyle, backgroundImage: "none", padding: "8px 11px" }}>
             Export
           </button>
         </div>
       </div>
 
-      <div style={{ background: "#16151F", border: "1px solid rgba(255,255,255,.07)", borderRadius: 16, overflow: "hidden" }}>
+      <div style={{ background: "var(--surface)", border: "1px solid var(--hairline)", borderRadius: 16, overflow: "hidden" }}>
         <TableScroll min={960}>
         <div
           style={{
@@ -165,12 +165,12 @@ export function Logs() {
             gridTemplateColumns: COLS,
             gap: 12,
             padding: "13px 20px",
-            borderBottom: "1px solid rgba(255,255,255,.07)",
+            borderBottom: "1px solid var(--hairline)",
             fontFamily: "var(--font-mono)",
             fontSize: 10,
             letterSpacing: ".1em",
             textTransform: "uppercase",
-            color: "rgba(244,242,251,.4)",
+            color: "var(--text-faint)",
           }}
         >
           <span>Time</span>
@@ -220,13 +220,13 @@ function ActivityRow({
 }) {
   const sev = SEVERITY_CFG[e.severity];
   return (
-    <div style={{ borderBottom: last ? "none" : "1px solid rgba(255,255,255,.04)" }}>
+    <div style={{ borderBottom: last ? "none" : "1px solid var(--hairline-soft)" }}>
       <div
         className="jx-row"
         onClick={onToggle}
         style={{ display: "grid", gridTemplateColumns: COLS, gap: 12, padding: "12px 20px", alignItems: "center", cursor: "pointer" }}
       >
-        <span style={{ fontSize: 12, color: "rgba(244,242,251,.55)", fontFamily: "var(--font-mono)" }}>{fmtTimestamp(e.at)}</span>
+        <span style={{ fontSize: 12, color: "var(--text-dim)", fontFamily: "var(--font-mono)" }}>{fmtTimestamp(e.at)}</span>
         <span style={{ fontSize: 13, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{e.actor ?? "system"}</span>
         <span style={{ fontSize: 13, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={e.summary}>
           {e.summary}
@@ -243,10 +243,10 @@ function ActivityRow({
               {e.groupName}
             </button>
           ) : (
-            <span style={{ color: "rgba(244,242,251,.35)", fontSize: 13 }}>—</span>
+            <span style={{ color: "var(--text-faint)", fontSize: 13 }}>—</span>
           )}
         </span>
-        <span style={{ fontSize: 12, color: "rgba(244,242,251,.55)", fontFamily: "var(--font-mono)" }}>{SOURCE_LABEL[e.source]}</span>
+        <span style={{ fontSize: 12, color: "var(--text-dim)", fontFamily: "var(--font-mono)" }}>{SOURCE_LABEL[e.source]}</span>
         <span>
           <span style={{ fontSize: 11, fontWeight: 700, color: sev.color, background: sev.bg, padding: "3px 9px", borderRadius: 7 }}>{e.severity}</span>
         </span>
@@ -274,11 +274,18 @@ function ActivityRow({
 }
 
 const selectStyle = {
-  background: "#16151F",
-  border: "1px solid rgba(255,255,255,.1)",
+  backgroundColor: "var(--surface)",
+  backgroundImage: "var(--select-chevron)",
+  backgroundRepeat: "no-repeat",
+  backgroundPosition: "right 9px center",
+  backgroundSize: "14px 14px",
+  appearance: "none",
+  WebkitAppearance: "none",
+  border: "1px solid var(--hairline-2)",
   borderRadius: 9,
-  padding: "8px 11px",
+  padding: "8px 30px 8px 11px",
   fontSize: 13,
   color: "var(--text)",
   outline: "none",
+  cursor: "pointer",
 } as const;

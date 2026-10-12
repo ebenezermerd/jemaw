@@ -43,7 +43,7 @@ export function TableFooter({
             aria-label="Rows per page"
             value={limit}
             onChange={(e) => onLimit(Number(e.target.value))}
-            style={{ background: "var(--bg-panel)", color: "var(--text)", border: "1px solid var(--hairline-2)", borderRadius: 8, padding: "5px 8px", fontSize: 12.5, cursor: "pointer" }}
+            style={{ backgroundColor: "var(--bg-panel)", backgroundImage: "var(--select-chevron)", backgroundRepeat: "no-repeat", backgroundPosition: "right 7px center", backgroundSize: "13px 13px", appearance: "none", WebkitAppearance: "none", color: "var(--text)", border: "1px solid var(--hairline-2)", borderRadius: 8, padding: "5px 24px 5px 8px", fontSize: 12.5, cursor: "pointer" }}
           >
             {PAGE_SIZES.map((n) => (
               <option key={n} value={n}>

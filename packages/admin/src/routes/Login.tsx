@@ -3,10 +3,13 @@ import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "../lib/auth.js";
 import { api } from "../lib/api.js";
 import { useIsNarrow, useIsPhone } from "../lib/responsive.js";
+import { ThemeToggle } from "../ui/ThemeToggle.js";
 import type { AdminPublicStatsDto } from "@jemaw/shared/types";
 
 /** Compact a number for the brand panel: 1248 → "1,248", 8_420_000 → "8.4M". */
 function compact(n: number): string {
+  // A half-written stats reply must not white-screen the only way in.
+  if (!Number.isFinite(n)) return "—";
   if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1).replace(/\.0$/, "")}M`;
   if (n >= 10_000) return `${(n / 1000).toFixed(1).replace(/\.0$/, "")}k`;
   return n.toLocaleString();
@@ -56,18 +59,19 @@ export function Login() {
 
   return (
     <div style={{ minHeight: "100dvh", display: "flex", flexDirection: narrow ? "column" : "row" }}>
-      {/* Brand panel */}
+      {/* Brand panel: a tablet stacks it above the form, a phone drops it. */}
       <div
         style={{
+          display: phone ? "none" : "flex",
           flex: narrow ? "none" : 1.1,
           position: "relative",
           overflow: "hidden",
           background: "linear-gradient(160deg,#2A1F5C 0%,#463494 52%,#6E59C7 100%)",
-          display: "flex",
           flexDirection: "column",
           justifyContent: "space-between",
           gap: narrow ? 20 : 0,
           padding: phone ? "28px 20px 24px" : narrow ? "34px 32px 30px" : 56,
+          color: "#f6f4fd",
         }}
       >
         {/* background flourishes */}
@@ -142,21 +146,43 @@ export function Login() {
           alignItems: "center",
           justifyContent: "center",
           padding: phone ? "28px 18px 36px" : narrow ? "32px 24px 40px" : 40,
+          position: "relative",
         }}
       >
+        <div style={{ position: "absolute", top: phone ? 18 : 24, right: phone ? 16 : 24 }}>
+          <ThemeToggle />
+        </div>
         <form onSubmit={onSubmit} style={{ width: "100%", maxWidth: 400 }}>
+          {/* The phone has no brand panel, so the mark rides above the form. */}
+          {phone && (
+            <div style={{ display: "flex", alignItems: "center", gap: 11, marginBottom: 26 }}>
+              <div style={{ width: 40, height: 40, borderRadius: 12, background: "rgba(110,89,199,.18)", border: "1px solid rgba(169,156,227,.35)", position: "relative", overflow: "hidden", flex: "none" }}>
+                <svg viewBox="0 0 100 100" style={{ position: "absolute", inset: 7 }}>
+                  <circle cx="50" cy="40" r="23" fill="#fff" opacity={0.94} style={{ mixBlendMode: "screen" }} />
+                  <circle cx="37" cy="62" r="23" fill="#E5DFF5" opacity={0.92} style={{ mixBlendMode: "screen" }} />
+                  <circle cx="63" cy="62" r="23" fill="#C8BFEF" opacity={0.9} style={{ mixBlendMode: "screen" }} />
+                </svg>
+              </div>
+              <div>
+                <div style={{ fontFamily: "var(--font-display)", fontWeight: 800, fontSize: 20, letterSpacing: "-.02em", lineHeight: 1 }}>Jemaw</div>
+                <div style={{ fontFamily: "var(--font-mono)", fontSize: 9.5, letterSpacing: ".16em", textTransform: "uppercase", color: "var(--text-faint)", marginTop: 3 }}>
+                  Admin Console
+                </div>
+              </div>
+            </div>
+          )}
           <div style={{ fontFamily: "var(--font-mono)", fontSize: 12, letterSpacing: ".14em", textTransform: "uppercase", color: "var(--accent-soft)", marginBottom: 12 }}>
             Secure sign-in
           </div>
           <h2 style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: phone ? 24 : 30, letterSpacing: "-.02em", margin: "0 0 8px" }}>
             Welcome back, admin
           </h2>
-          <p style={{ fontSize: 14, color: "rgba(244,242,251,.55)", margin: phone ? "0 0 22px" : "0 0 30px" }}>
+          <p style={{ fontSize: 14, color: "var(--text-dim)", margin: phone ? "0 0 22px" : "0 0 30px" }}>
             Authorized personnel only. Sessions are logged.
           </p>
 
           <label style={{ display: "block", marginBottom: 16 }}>
-            <div style={{ fontSize: 12, fontWeight: 700, letterSpacing: ".05em", color: "rgba(244,242,251,.5)", marginBottom: 7 }}>EMAIL</div>
+            <div style={{ fontSize: 12, fontWeight: 700, letterSpacing: ".05em", color: "var(--text-dim)", marginBottom: 7 }}>EMAIL</div>
             <input
               type="email"
               value={email}
@@ -168,7 +194,7 @@ export function Login() {
           </label>
 
           <label style={{ display: "block", marginBottom: 14 }}>
-            <div style={{ fontSize: 12, fontWeight: 700, letterSpacing: ".05em", color: "rgba(244,242,251,.5)", marginBottom: 7 }}>PASSWORD</div>
+            <div style={{ fontSize: 12, fontWeight: 700, letterSpacing: ".05em", color: "var(--text-dim)", marginBottom: 7 }}>PASSWORD</div>
             <div style={{ position: "relative" }}>
               <input
                 type={showPassword ? "text" : "password"}
@@ -218,7 +244,7 @@ export function Login() {
 
           <label style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 24, cursor: "pointer" }}>
             <input type="checkbox" checked={remember} onChange={(e) => setRemember(e.target.checked)} />
-            <span style={{ fontSize: 13, color: "rgba(244,242,251,.7)" }}>Remember this device</span>
+            <span style={{ fontSize: 13, color: "var(--text-soft)" }}>Remember this device</span>
           </label>
 
           {error && (
@@ -239,7 +265,7 @@ export function Login() {
               fontWeight: 700,
               color: "#fff",
               cursor: busy ? "default" : "pointer",
-              boxShadow: "0 12px 30px -10px rgba(110,89,199,.7)",
+              boxShadow: "var(--accent-glow)",
             }}
           >
             {busy ? "Signing in…" : "Sign in to console"}

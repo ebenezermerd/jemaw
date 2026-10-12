@@ -12,15 +12,18 @@ vi.mock("../lib/auth.js", () => ({
   }),
 }));
 const { AppShell } = await import("./AppShell.js");
+const { ThemeProvider } = await import("../lib/theme.js");
 
 function renderShell() {
   return render(
     <QueryClientProvider client={new QueryClient()}>
-      <MemoryRouter initialEntries={["/groups"]}>
-        <AppShell>
-          <div>page</div>
-        </AppShell>
-      </MemoryRouter>
+      <ThemeProvider>
+        <MemoryRouter initialEntries={["/groups"]}>
+          <AppShell>
+            <div>page</div>
+          </AppShell>
+        </MemoryRouter>
+      </ThemeProvider>
     </QueryClientProvider>,
   );
 }

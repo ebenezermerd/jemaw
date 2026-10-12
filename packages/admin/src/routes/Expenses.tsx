@@ -65,7 +65,7 @@ function kindOf(e: AdminExpenseDto): Kind {
 const STATUS_CFG = {
   open: { text: "Open", color: "#E0B23C", bg: "rgba(224,178,60,.12)" },
   settled: { text: "Settled", color: "#2DD4A7", bg: "rgba(45,212,167,.12)" },
-  voided: { text: "Voided", color: "rgba(244,242,251,.45)", bg: "rgba(255,255,255,.06)" },
+  voided: { text: "Voided", color: "var(--text-faint)", bg: "var(--hairline)" },
 } as const;
 
 /** Open: someone still owes on it. Settled: every share was paid back. */
@@ -140,9 +140,9 @@ function GroupDropdown({ groups, value, onChange }: {
         style={{
           display: "flex", alignItems: "center", gap: 8,
           fontSize: 13, fontWeight: 600,
-          color: value ? "#fff" : "rgba(244,242,251,.7)",
-          background: value ? "#6E59C7" : "#16151F",
-          border: value ? "none" : "1px solid rgba(255,255,255,.1)",
+          color: value ? "#fff" : "var(--text-soft)",
+          background: value ? "#6E59C7" : "var(--surface)",
+          border: value ? "none" : "1px solid var(--hairline-2)",
           padding: "9px 13px", borderRadius: 9, cursor: "pointer",
         }}
       >
@@ -150,7 +150,7 @@ function GroupDropdown({ groups, value, onChange }: {
           <circle cx="12" cy="9" r="3" /><circle cx="6" cy="14" r="2.2" /><circle cx="18" cy="14" r="2.2" />
         </svg>
         {label}
-        <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="rgba(244,242,251,.5)" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"
+        <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="var(--text-dim)" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"
           style={{ transform: open ? "rotate(180deg)" : "none", transition: "transform .15s" }}>
           <polyline points="6 9 12 15 18 9" />
         </svg>
@@ -158,7 +158,7 @@ function GroupDropdown({ groups, value, onChange }: {
       {open && (
         <div style={{
           position: "absolute", top: "calc(100% + 6px)", left: 0, minWidth: 200,
-          background: "#1E1C2A", border: "1px solid rgba(255,255,255,.1)",
+          background: "var(--track)", border: "1px solid var(--hairline-2)",
           borderRadius: 12, overflow: "hidden", zIndex: 100,
           boxShadow: "0 16px 40px -8px rgba(0,0,0,.5)",
         }}>
@@ -168,9 +168,9 @@ function GroupDropdown({ groups, value, onChange }: {
               width: "100%", display: "flex", alignItems: "center", gap: 8,
               padding: "10px 14px", fontSize: 13,
               fontWeight: value === null ? 700 : 400,
-              color: value === null ? "#A99CE3" : "rgba(244,242,251,.8)",
+              color: value === null ? "#A99CE3" : "var(--text-soft)",
               background: value === null ? "rgba(110,89,199,.1)" : "none",
-              border: "none", borderBottom: "1px solid rgba(255,255,255,.06)", cursor: "pointer", textAlign: "left",
+              border: "none", borderBottom: "1px solid var(--hairline)", cursor: "pointer", textAlign: "left",
             }}
           >
             All groups
@@ -184,9 +184,9 @@ function GroupDropdown({ groups, value, onChange }: {
                   width: "100%", display: "flex", alignItems: "center", gap: 8,
                   padding: "10px 14px", fontSize: 13,
                   fontWeight: value === g.id ? 700 : 400,
-                  color: value === g.id ? "#A99CE3" : "rgba(244,242,251,.8)",
+                  color: value === g.id ? "#A99CE3" : "var(--text-soft)",
                   background: value === g.id ? "rgba(110,89,199,.1)" : "none",
-                  border: "none", borderBottom: "1px solid rgba(255,255,255,.04)",
+                  border: "none", borderBottom: "1px solid var(--hairline-soft)",
                   cursor: "pointer", textAlign: "left",
                 }}
               >
@@ -231,7 +231,7 @@ function ExpenseDetail({ e, onBack }: { e: AdminExpenseDto; onBack: () => void }
 
       {/* summary card */}
       <div style={{
-        background: "#16151F", border: "1px solid rgba(255,255,255,.07)",
+        background: "var(--surface)", border: "1px solid var(--hairline)",
         borderRadius: 18, padding: 24, marginBottom: 16,
       }}>
         <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
@@ -253,7 +253,7 @@ function ExpenseDetail({ e, onBack }: { e: AdminExpenseDto; onBack: () => void }
             }}>
               {e.description}
             </div>
-            <div style={{ fontSize: 13, color: "rgba(244,242,251,.5)", marginTop: 2 }}>
+            <div style={{ fontSize: 13, color: "var(--text-dim)", marginTop: 2 }}>
               {cfg.label} · {e.groupName} · {e.source.replace(/_/g, " ")}
             </div>
           </div>
@@ -272,7 +272,7 @@ function ExpenseDetail({ e, onBack }: { e: AdminExpenseDto; onBack: () => void }
         {/* meta 4-grid */}
         <div style={{
           display: "grid", gridTemplateColumns: autoFit(170), gap: 12,
-          marginTop: 20, paddingTop: 18, borderTop: "1px solid rgba(255,255,255,.06)",
+          marginTop: 20, paddingTop: 18, borderTop: "1px solid var(--hairline)",
         }}>
           {[
             { label: "Paid by", value: e.payerName },
@@ -281,7 +281,7 @@ function ExpenseDetail({ e, onBack }: { e: AdminExpenseDto; onBack: () => void }
             { label: "Entry ID", value: e.id.slice(0, 8).toUpperCase(), mono: true },
           ].map(({ label, value, mono }) => (
             <div key={label}>
-              <div style={{ fontSize: 11, color: "rgba(244,242,251,.45)", marginBottom: 3 }}>{label}</div>
+              <div style={{ fontSize: 11, color: "var(--text-faint)", marginBottom: 3 }}>{label}</div>
               <div style={{
                 fontSize: 14, fontWeight: 600,
                 fontFamily: mono ? "var(--font-mono)" : undefined,
@@ -297,14 +297,14 @@ function ExpenseDetail({ e, onBack }: { e: AdminExpenseDto; onBack: () => void }
       {/* AI provenance — only for AI-sourced entries */}
       {isAI && (
         <div style={{
-          background: "#16151F", border: "1px solid rgba(110,89,199,.3)",
+          background: "var(--surface)", border: "1px solid rgba(110,89,199,.3)",
           borderRadius: 16, padding: 20, marginBottom: 16,
         }}>
           <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
             <span style={{ fontSize: 11, fontWeight: 700, color: "#2DD4A7", background: "rgba(45,212,167,.14)", padding: "3px 9px", borderRadius: 7 }}>
               ✦ AI drafted
             </span>
-            <span style={{ fontSize: 13, color: "rgba(244,242,251,.6)" }}>
+            <span style={{ fontSize: 13, color: "var(--text-dim)" }}>
               {e.source === "ai_edited" ? "edited by a member before saving" : "confirmed as drafted"}
             </span>
           </div>
@@ -313,10 +313,10 @@ function ExpenseDetail({ e, onBack }: { e: AdminExpenseDto; onBack: () => void }
 
       {/* split breakdown */}
       <div style={{
-        background: "#16151F", border: "1px solid rgba(255,255,255,.07)",
+        background: "var(--surface)", border: "1px solid var(--hairline)",
         borderRadius: 16, overflow: "hidden",
       }}>
-        <div style={{ padding: "15px 20px", borderBottom: "1px solid rgba(255,255,255,.07)", fontSize: 15, fontWeight: 700 }}>
+        <div style={{ padding: "15px 20px", borderBottom: "1px solid var(--hairline)", fontSize: 15, fontWeight: 700 }}>
           Split breakdown
         </div>
 
@@ -331,7 +331,7 @@ function ExpenseDetail({ e, onBack }: { e: AdminExpenseDto; onBack: () => void }
                 style={{
                   display: "flex", alignItems: "center", gap: 11,
                   padding: "13px 20px",
-                  borderBottom: i < arr.length - 1 ? "1px solid rgba(255,255,255,.04)" : "none",
+                  borderBottom: i < arr.length - 1 ? "1px solid var(--hairline-soft)" : "none",
                 }}
               >
                 {memberAvatar(m.name, 32)}
@@ -340,11 +340,11 @@ function ExpenseDetail({ e, onBack }: { e: AdminExpenseDto; onBack: () => void }
                     {m.name}
                     {isPayer && <span style={{ fontSize: 11, color: "#2DD4A7", marginLeft: 6 }}>· paid</span>}
                   </div>
-                  <div style={{ fontSize: 12, color: "rgba(244,242,251,.45)" }}>
+                  <div style={{ fontSize: 12, color: "var(--text-faint)" }}>
                     {isPayer ? "their own share" : `owes ${e.payerName} for this`}
                   </div>
                 </div>
-                <span style={{ fontSize: 14, fontWeight: 700, fontVariantNumeric: "tabular-nums", color: isPayer ? "rgba(244,242,251,.7)" : "#F0A640" }}>
+                <span style={{ fontSize: 14, fontWeight: 700, fontVariantNumeric: "tabular-nums", color: isPayer ? "var(--text-soft)" : "#F0A640" }}>
                   {fmtMoney(m.amount, e.currency)}
                 </span>
               </div>
@@ -416,11 +416,11 @@ export function Expenses() {
       <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 18, flexWrap: "wrap" }}>
         {/* search */}
         <div style={{
-          background: "#16151F", border: "1px solid rgba(255,255,255,.08)",
+          background: "var(--surface)", border: "1px solid var(--hairline-2)",
           borderRadius: 11, padding: "10px 13px",
           display: "flex", alignItems: "center", gap: 10, maxWidth: 510, flex: "1 1 320px",
         }}>
-          <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="rgba(244,242,251,.4)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="var(--text-faint)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <circle cx="11" cy="11" r="7" /><path d="M21 21l-4-4" />
           </svg>
           <input
@@ -430,7 +430,7 @@ export function Expenses() {
             style={{ flex: 1, background: "none", border: "none", outline: "none", fontSize: 14, color: "var(--text)" }}
           />
           {search && (
-            <button onClick={() => setSearch("")} style={{ background: "none", border: "none", cursor: "pointer", color: "rgba(244,242,251,.4)", padding: 0 }}>
+            <button onClick={() => setSearch("")} style={{ background: "none", border: "none", cursor: "pointer", color: "var(--text-faint)", padding: 0 }}>
               <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round">
                 <path d="M18 6 6 18M6 6l12 12" />
               </svg>
@@ -449,9 +449,9 @@ export function Expenses() {
                 onClick={() => setKindFilter(key)}
                 style={{
                   fontSize: 13, fontWeight: 600,
-                  color: active ? "#fff" : "rgba(244,242,251,.6)",
+                  color: active ? "#fff" : "var(--text-dim)",
                   background: active ? "#6E59C7" : "transparent",
-                  border: active ? "none" : "1px solid rgba(255,255,255,.1)",
+                  border: active ? "none" : "1px solid var(--hairline-2)",
                   padding: "9px 14px", borderRadius: 9, cursor: "pointer",
                 }}
               >
@@ -468,16 +468,16 @@ export function Expenses() {
 
       {/* table */}
       <div style={{
-        background: "#16151F", border: "1px solid rgba(255,255,255,.07)",
+        background: "var(--surface)", border: "1px solid var(--hairline)",
         borderRadius: 16, overflow: "hidden",
       }}>
         <TableScroll min={960}>
         {/* header */}
         <div style={{
           display: "grid", gridTemplateColumns: COLS, gap: 12, padding: "13px 20px",
-          borderBottom: "1px solid rgba(255,255,255,.07)",
+          borderBottom: "1px solid var(--hairline)",
           fontFamily: "var(--font-mono)", fontSize: 10, letterSpacing: ".1em",
-          textTransform: "uppercase", color: "rgba(244,242,251,.4)",
+          textTransform: "uppercase", color: "var(--text-faint)",
         }}>
           <span>Entry</span>
           <span>Group</span>
@@ -506,7 +506,7 @@ export function Expenses() {
                 style={{
                   display: "grid", gridTemplateColumns: COLS, gap: 12,
                   padding: "13px 20px",
-                  borderBottom: i < rows.length - 1 ? "1px solid rgba(255,255,255,.04)" : "none",
+                  borderBottom: i < rows.length - 1 ? "1px solid var(--hairline-soft)" : "none",
                   alignItems: "center", cursor: "pointer",
                 }}
               >
@@ -521,7 +521,7 @@ export function Expenses() {
                   </div>
                   <div>
                     <div style={{ fontSize: 14, fontWeight: 600 }}>{e.description}</div>
-                    <div style={{ fontSize: 11, color: "rgba(244,242,251,.4)" }}>
+                    <div style={{ fontSize: 11, color: "var(--text-faint)" }}>
                       {cfg.label} · {e.source === "ai_confirmed" || e.source === "ai_edited" ? "AI parsed" : "manual"}
                     </div>
                   </div>
@@ -539,7 +539,7 @@ export function Expenses() {
                 </span>
 
                 {/* date */}
-                <span style={{ fontSize: 13, color: "rgba(244,242,251,.55)" }}>
+                <span style={{ fontSize: 13, color: "var(--text-dim)" }}>
                   {fmtDateShort(e.occurredAt)}
                 </span>
 

@@ -183,8 +183,8 @@ function MessageDialog({
           left: "50%",
           transform: "translate(-50%,-50%)",
           width: 520,
-          background: "#16151F",
-          border: "1px solid rgba(255,255,255,.1)",
+          background: "var(--surface)",
+          border: "1px solid var(--hairline-2)",
           borderRadius: 20,
           overflow: "hidden",
           zIndex: 1001,
@@ -198,7 +198,7 @@ function MessageDialog({
             alignItems: "center",
             justifyContent: "space-between",
             padding: "18px 22px",
-            borderBottom: "1px solid rgba(255,255,255,.07)",
+            borderBottom: "1px solid var(--hairline)",
           }}
         >
           <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
@@ -225,7 +225,7 @@ function MessageDialog({
             </div>
             <div>
               <div style={{ fontSize: 15, fontWeight: 700 }}>Message {user.displayName}</div>
-              <div style={{ fontSize: 12, color: "rgba(244,242,251,.45)", marginTop: 1 }}>
+              <div style={{ fontSize: 12, color: "var(--text-faint)", marginTop: 1 }}>
                 {user.username ? `@${user.username} · ` : ""}Direct via Telegram bot
               </div>
             </div>
@@ -236,9 +236,9 @@ function MessageDialog({
               width: 30,
               height: 30,
               borderRadius: 8,
-              background: "rgba(255,255,255,.06)",
+              background: "var(--hairline)",
               border: "none",
-              color: "rgba(244,242,251,.6)",
+              color: "var(--text-dim)",
               cursor: "pointer",
               display: "flex",
               alignItems: "center",
@@ -259,7 +259,7 @@ function MessageDialog({
                 fontSize: 11,
                 fontWeight: 700,
                 letterSpacing: ".05em",
-                color: "rgba(244,242,251,.45)",
+                color: "var(--text-faint)",
                 marginBottom: 6,
               }}
             >
@@ -272,7 +272,7 @@ function MessageDialog({
               style={{
                 width: "100%",
                 background: "#252333",
-                border: "1px solid rgba(255,255,255,.1)",
+                border: "1px solid var(--hairline-2)",
                 borderRadius: 10,
                 padding: "11px 13px",
                 fontSize: 14,
@@ -290,7 +290,7 @@ function MessageDialog({
                 fontSize: 11,
                 fontWeight: 700,
                 letterSpacing: ".05em",
-                color: "rgba(244,242,251,.45)",
+                color: "var(--text-faint)",
                 marginBottom: 6,
               }}
             >
@@ -298,7 +298,7 @@ function MessageDialog({
             </div>
             <div
               style={{
-                border: "1px solid rgba(255,255,255,.1)",
+                border: "1px solid var(--hairline-2)",
                 borderRadius: 11,
                 overflow: "hidden",
               }}
@@ -310,8 +310,8 @@ function MessageDialog({
                   alignItems: "center",
                   gap: 3,
                   padding: "8px 10px",
-                  background: "#1E1C2A",
-                  borderBottom: "1px solid rgba(255,255,255,.07)",
+                  background: "var(--track)",
+                  borderBottom: "1px solid var(--hairline)",
                 }}
               >
                 {[
@@ -348,7 +348,7 @@ function MessageDialog({
                       alignItems: "center",
                       justifyContent: "center",
                       fontSize: 14,
-                      color: "rgba(244,242,251,.7)",
+                      color: "var(--text-soft)",
                       background: "none",
                       border: "none",
                       cursor: "pointer",
@@ -362,7 +362,7 @@ function MessageDialog({
                   style={{
                     width: 1,
                     height: 18,
-                    background: "rgba(255,255,255,.1)",
+                    background: "var(--hairline-2)",
                     margin: "0 5px",
                   }}
                 />
@@ -370,7 +370,7 @@ function MessageDialog({
                 <span
                   style={{
                     fontSize: 11,
-                    color: "rgba(244,242,251,.4)",
+                    color: "var(--text-faint)",
                     marginLeft: "auto",
                   }}
                 >
@@ -391,8 +391,8 @@ function MessageDialog({
                   padding: 14,
                   fontSize: 14,
                   lineHeight: 1.6,
-                  color: "rgba(244,242,251,.85)",
-                  background: "#252333",
+                  color: "var(--text)",
+                  background: "var(--track)",
                   border: "none",
                   outline: "none",
                   resize: "vertical",
@@ -405,7 +405,7 @@ function MessageDialog({
               style={{
                 textAlign: "right",
                 fontSize: 11,
-                color: charCount > charMax * 0.9 ? "#E0B23C" : "rgba(244,242,251,.3)",
+                color: charCount > charMax * 0.9 ? "#E0B23C" : "var(--text-faint)",
                 marginTop: 4,
               }}
             >
@@ -420,8 +420,8 @@ function MessageDialog({
               style={{
                 fontSize: 13,
                 fontWeight: 600,
-                color: "rgba(244,242,251,.7)",
-                border: "1px solid rgba(255,255,255,.12)",
+                color: "var(--text-soft)",
+                border: "1px solid var(--hairline-2)",
                 background: "none",
                 padding: "10px 16px",
                 borderRadius: 10,
@@ -514,9 +514,9 @@ function GroupsDropdown({
           gap: 8,
           fontSize: 13,
           fontWeight: 600,
-          color: selectedGroupId ? "#fff" : "rgba(244,242,251,.7)",
-          background: selectedGroupId ? "#6E59C7" : "#16151F",
-          border: selectedGroupId ? "none" : "1px solid rgba(255,255,255,.1)",
+          color: selectedGroupId ? "#fff" : "var(--text-soft)",
+          background: selectedGroupId ? "#6E59C7" : "var(--surface)",
+          border: selectedGroupId ? "none" : "1px solid var(--hairline-2)",
           padding: "9px 13px",
           borderRadius: 9,
           cursor: "pointer",
@@ -529,7 +529,7 @@ function GroupsDropdown({
           <circle cx="18" cy="14" r="2.2" />
         </svg>
         {label}
-        <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="rgba(244,242,251,.5)" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"
+        <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="var(--text-dim)" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"
           style={{ transform: open ? "rotate(180deg)" : "none", transition: "transform .15s" }}>
           <polyline points="6 9 12 15 18 9" />
         </svg>
@@ -542,8 +542,8 @@ function GroupsDropdown({
             top: "calc(100% + 6px)",
             left: 0,
             minWidth: 200,
-            background: "#1E1C2A",
-            border: "1px solid rgba(255,255,255,.1)",
+            background: "var(--track)",
+            border: "1px solid var(--hairline-2)",
             borderRadius: 12,
             overflow: "hidden",
             zIndex: 100,
@@ -561,12 +561,12 @@ function GroupsDropdown({
               padding: "10px 14px",
               fontSize: 13,
               fontWeight: selectedGroupId === null ? 700 : 400,
-              color: selectedGroupId === null ? "#A99CE3" : "rgba(244,242,251,.8)",
+              color: selectedGroupId === null ? "#A99CE3" : "var(--text-soft)",
               background: selectedGroupId === null ? "rgba(110,89,199,.1)" : "none",
               border: "none",
               cursor: "pointer",
               textAlign: "left",
-              borderBottom: "1px solid rgba(255,255,255,.06)",
+              borderBottom: "1px solid var(--hairline)",
             }}
           >
             All groups
@@ -579,7 +579,7 @@ function GroupsDropdown({
 
           {/* group rows */}
           {groups.length === 0 ? (
-            <div style={{ padding: "10px 14px", fontSize: 13, color: "rgba(244,242,251,.4)" }}>
+            <div style={{ padding: "10px 14px", fontSize: 13, color: "var(--text-faint)" }}>
               No groups found
             </div>
           ) : (
@@ -596,10 +596,10 @@ function GroupsDropdown({
                     padding: "10px 14px",
                     fontSize: 13,
                     fontWeight: selectedGroupId === g.id ? 700 : 400,
-                    color: selectedGroupId === g.id ? "#A99CE3" : "rgba(244,242,251,.8)",
+                    color: selectedGroupId === g.id ? "#A99CE3" : "var(--text-soft)",
                     background: selectedGroupId === g.id ? "rgba(110,89,199,.1)" : "none",
                     border: "none",
-                    borderBottom: "1px solid rgba(255,255,255,.04)",
+                    borderBottom: "1px solid var(--hairline-soft)",
                     cursor: "pointer",
                     textAlign: "left",
                   }}
@@ -608,7 +608,7 @@ function GroupsDropdown({
                   <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                     {g.name}
                   </span>
-                  <span style={{ fontSize: 11, color: "rgba(244,242,251,.35)", flex: "none" }}>
+                  <span style={{ fontSize: 11, color: "var(--text-faint)", flex: "none" }}>
                     {g.memberCount}
                   </span>
                   {selectedGroupId === g.id && (
@@ -690,7 +690,7 @@ function UserDetail({
 
   const timeline = (detail?.recentExpenses ?? []).map((e) => ({
     id: e.id,
-    dot: e.voided ? "rgba(244,242,251,.3)" : e.kind === "loan" ? "#E0B23C" : "#8A78D6",
+    dot: e.voided ? "var(--text-faint)" : e.kind === "loan" ? "#E0B23C" : "#8A78D6",
     text:
       e.kind === "loan" ? (
         <>
@@ -718,8 +718,8 @@ function UserDetail({
         {/* header card */}
         <div
           style={{
-            background: "#16151F",
-            border: "1px solid rgba(255,255,255,.07)",
+            background: "var(--surface)",
+            border: "1px solid var(--hairline)",
             borderRadius: 18,
             padding: 22,
             display: "flex",
@@ -763,7 +763,7 @@ function UserDetail({
               </h2>
               <StatusPill status={user.status} />
             </div>
-            <div style={{ fontSize: 13, color: "rgba(244,242,251,.5)", marginTop: 3 }}>
+            <div style={{ fontSize: 13, color: "var(--text-dim)", marginTop: 3 }}>
               {user.isManual ? "Added by hand, no Telegram account · " : user.username ? `@${user.username} · ` : ""}
               {user.isManual ? "" : `ID ${user.telegramUserId}`}
               {user.lastActiveAt ? ` · Last active ${fmtDate(user.lastActiveAt)}` : ""}
@@ -776,8 +776,8 @@ function UserDetail({
               style={{
                 fontSize: 13,
                 fontWeight: 600,
-                color: "rgba(244,242,251,.7)",
-                border: "1px solid rgba(255,255,255,.12)",
+                color: "var(--text-soft)",
+                border: "1px solid var(--hairline-2)",
                 background: "none",
                 padding: "9px 14px",
                 borderRadius: 9,
@@ -824,8 +824,8 @@ function UserDetail({
             <div
               key={label}
               style={{
-                background: "#16151F",
-                border: "1px solid rgba(255,255,255,.07)",
+                background: "var(--surface)",
+                border: "1px solid var(--hairline)",
                 borderRadius: 14,
                 padding: 16,
               }}
@@ -842,7 +842,7 @@ function UserDetail({
               >
                 {value}
               </div>
-              <div style={{ fontSize: 12, color: "rgba(244,242,251,.5)", marginTop: 6 }}>{label}</div>
+              <div style={{ fontSize: 12, color: "var(--text-dim)", marginTop: 6 }}>{label}</div>
             </div>
           ))}
         </div>
@@ -852,8 +852,8 @@ function UserDetail({
           {/* group memberships */}
           <div
             style={{
-              background: "#16151F",
-              border: "1px solid rgba(255,255,255,.07)",
+              background: "var(--surface)",
+              border: "1px solid var(--hairline)",
               borderRadius: 16,
               overflow: "hidden",
             }}
@@ -861,7 +861,7 @@ function UserDetail({
             <div
               style={{
                 padding: "15px 20px",
-                borderBottom: "1px solid rgba(255,255,255,.07)",
+                borderBottom: "1px solid var(--hairline)",
                 fontSize: 15,
                 fontWeight: 700,
               }}
@@ -871,7 +871,7 @@ function UserDetail({
             {detailLoading ? (
               <SkeletonList count={3} height={44} />
             ) : memberships.length === 0 ? (
-              <div style={{ padding: "16px 20px", fontSize: 13, color: "rgba(244,242,251,.4)" }}>
+              <div style={{ padding: "16px 20px", fontSize: 13, color: "var(--text-faint)" }}>
                 Not in any group.
               </div>
             ) : (
@@ -886,7 +886,7 @@ function UserDetail({
                     alignItems: "center",
                     gap: 11,
                     padding: "13px 20px",
-                    borderBottom: i < memberships.length - 1 ? "1px solid rgba(255,255,255,.04)" : "none",
+                    borderBottom: i < memberships.length - 1 ? "1px solid var(--hairline-soft)" : "none",
                     cursor: "pointer",
                     opacity: g.isActive ? 1 : 0.5,
                   }}
@@ -904,7 +904,7 @@ function UserDetail({
                     >
                       {g.groupName}
                     </div>
-                    <div style={{ fontSize: 11, color: "rgba(244,242,251,.45)" }}>
+                    <div style={{ fontSize: 11, color: "var(--text-faint)" }}>
                       {g.isActive ? (g.role === "admin" ? "Admin" : "Member") : "Removed"}
                       {g.displayName !== user.displayName ? ` as ${g.displayName}` : ""} · paid{" "}
                       {fmtMoney(g.paid, g.currency)} over {g.expenseCount}{" "}
@@ -915,7 +915,7 @@ function UserDetail({
                     style={{
                       fontSize: 13,
                       fontWeight: 700,
-                      color: Number(g.net) > 0 ? "#2DD4A7" : Number(g.net) < 0 ? "#F0A640" : "rgba(244,242,251,.55)",
+                      color: Number(g.net) > 0 ? "#2DD4A7" : Number(g.net) < 0 ? "#F0A640" : "var(--text-dim)",
                       fontVariantNumeric: "tabular-nums",
                       flex: "none",
                     }}
@@ -931,8 +931,8 @@ function UserDetail({
           {/* recent activity timeline */}
           <div
             style={{
-              background: "#16151F",
-              border: "1px solid rgba(255,255,255,.07)",
+              background: "var(--surface)",
+              border: "1px solid var(--hairline)",
               borderRadius: 16,
               padding: 20,
             }}
@@ -940,13 +940,13 @@ function UserDetail({
             <div style={{ fontSize: 15, fontWeight: 700, marginBottom: 16 }}>
               Recent activity
               {timeline.length > 0 && (
-                <span style={{ fontWeight: 500, fontSize: 12, color: "rgba(244,242,251,.45)" }}> · last {timeline.length}</span>
+                <span style={{ fontWeight: 500, fontSize: 12, color: "var(--text-faint)" }}> · last {timeline.length}</span>
               )}
             </div>
             {detailLoading ? (
               <SkeletonList count={4} height={34} padding={0} />
             ) : timeline.length === 0 ? (
-              <div style={{ fontSize: 13, color: "rgba(244,242,251,.4)" }}>
+              <div style={{ fontSize: 13, color: "var(--text-faint)" }}>
                 Has not paid for anything yet.
               </div>
             ) : (
@@ -973,7 +973,7 @@ function UserDetail({
                           style={{
                             flex: 1,
                             width: 2,
-                            background: "rgba(255,255,255,.08)",
+                            background: "var(--hairline-2)",
                             marginTop: 4,
                           }}
                         />
@@ -984,7 +984,7 @@ function UserDetail({
                       <div
                         style={{
                           fontSize: 11,
-                          color: "rgba(244,242,251,.4)",
+                          color: "var(--text-faint)",
                           marginTop: 2,
                           fontVariantNumeric: "tabular-nums",
                         }}
@@ -1110,8 +1110,8 @@ export function Users() {
         {/* search */}
         <div
           style={{
-            background: "#16151F",
-            border: "1px solid rgba(255,255,255,.08)",
+            background: "var(--surface)",
+            border: "1px solid var(--hairline-2)",
             borderRadius: 11,
             padding: "10px 13px",
             display: "flex",
@@ -1122,7 +1122,7 @@ export function Users() {
             maxWidth: 300,
           }}
         >
-          <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="rgba(244,242,251,.4)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="var(--text-faint)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <circle cx="11" cy="11" r="7" />
             <path d="M21 21l-4-4" />
           </svg>
@@ -1142,7 +1142,7 @@ export function Users() {
           {search && (
             <button
               onClick={() => { setSearch(""); setOffset(0); }}
-              style={{ background: "none", border: "none", cursor: "pointer", color: "rgba(244,242,251,.4)", padding: 0 }}
+              style={{ background: "none", border: "none", cursor: "pointer", color: "var(--text-faint)", padding: 0 }}
             >
               <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round">
                 <path d="M18 6 6 18M6 6l12 12" />
@@ -1162,9 +1162,9 @@ export function Users() {
                 style={{
                   fontSize: 13,
                   fontWeight: 600,
-                  color: isActive ? "#fff" : "rgba(244,242,251,.6)",
+                  color: isActive ? "#fff" : "var(--text-dim)",
                   background: isActive ? "#6E59C7" : "transparent",
-                  border: isActive ? "none" : "1px solid rgba(255,255,255,.1)",
+                  border: isActive ? "none" : "1px solid var(--hairline-2)",
                   padding: "9px 14px",
                   borderRadius: 9,
                   cursor: "pointer",
@@ -1195,9 +1195,9 @@ export function Users() {
             gap: 8,
             fontSize: 13,
             fontWeight: 700,
-            color: "#fff",
-            background: "#16151F",
-            border: "1px solid rgba(255,255,255,.1)",
+            color: "var(--text)",
+            background: "var(--surface)",
+            border: "1px solid var(--hairline-2)",
             padding: "9px 14px",
             borderRadius: 9,
             cursor: "pointer",
@@ -1215,8 +1215,8 @@ export function Users() {
       {/* table */}
       <div
         style={{
-          background: "#16151F",
-          border: "1px solid rgba(255,255,255,.07)",
+          background: "var(--surface)",
+          border: "1px solid var(--hairline)",
           borderRadius: 16,
           overflow: "hidden",
         }}
@@ -1229,12 +1229,12 @@ export function Users() {
             gridTemplateColumns: COLS,
             gap: 12,
             padding: "13px 20px",
-            borderBottom: "1px solid rgba(255,255,255,.07)",
+            borderBottom: "1px solid var(--hairline)",
             fontFamily: "var(--font-mono)",
             fontSize: 10,
             letterSpacing: ".1em",
             textTransform: "uppercase",
-            color: "rgba(244,242,251,.4)",
+            color: "var(--text-faint)",
           }}
         >
           <span>User</span>
@@ -1265,7 +1265,7 @@ export function Users() {
                   gridTemplateColumns: COLS,
                   gap: 12,
                   padding: "13px 20px",
-                  borderBottom: i < rows.length - 1 ? "1px solid rgba(255,255,255,.04)" : "none",
+                  borderBottom: i < rows.length - 1 ? "1px solid var(--hairline-soft)" : "none",
                   alignItems: "center",
                   cursor: "pointer",
                 }}
@@ -1293,7 +1293,7 @@ export function Users() {
                   </div>
                   <div>
                     <div style={{ fontSize: 14, fontWeight: 600 }}>{titleCase(u.displayName)}</div>
-                    <div style={{ fontSize: 11, color: "rgba(244,242,251,.4)", fontVariantNumeric: "tabular-nums" }}>
+                    <div style={{ fontSize: 11, color: "var(--text-faint)", fontVariantNumeric: "tabular-nums" }}>
                       ID {u.telegramUserId}
                     </div>
                   </div>
@@ -1309,7 +1309,7 @@ export function Users() {
 
                 <StatusPill status={u.status} />
 
-                <span style={{ fontSize: 13, color: "rgba(244,242,251,.55)" }}>
+                <span style={{ fontSize: 13, color: "var(--text-dim)" }}>
                   {relativeTime(u.lastActiveAt)}
                 </span>
 
@@ -1318,7 +1318,7 @@ export function Users() {
                   width="18"
                   height="18"
                   fill="none"
-                  stroke="rgba(244,242,251,.4)"
+                  stroke="var(--text-faint)"
                   strokeWidth="2"
                   strokeLinecap="round"
                   onClick={(e) => e.stopPropagation()}

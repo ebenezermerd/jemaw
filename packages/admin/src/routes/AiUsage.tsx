@@ -133,7 +133,7 @@ export function AiUsageCard() {
           { v: fmtCompact(u.today.outputTokens), l: "Tokens written" },
           { v: String(u.today.errors), l: "Failed calls", warn: u.today.errors > 0 },
         ].map((x) => (
-          <div key={x.l} style={{ background: "#1E1C2A", borderRadius: 11, padding: 11 }}>
+          <div key={x.l} style={{ background: "var(--track)", borderRadius: 11, padding: 11 }}>
             <div style={{ fontFamily: "var(--font-display)", fontWeight: 800, fontSize: 19, color: x.warn ? "var(--danger)" : "var(--text)" }}>{x.v}</div>
             <div style={{ fontSize: 11, color: "var(--text-dim)", marginTop: 2 }}>{x.l}</div>
           </div>
