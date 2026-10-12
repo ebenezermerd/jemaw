@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { NavLink, useLocation } from "react-router-dom";
 import { AccountMenu } from "./AccountMenu.js";
+import { useIsCompactShell, useIsPhone } from "../lib/responsive.js";
 
 // ─── Nav icons ────────────────────────────────────────────────────────────────
 
@@ -304,23 +305,68 @@ export function AppShell({ children }: { children: ReactNode }) {
   const section = "/" + (location.pathname.split("/")[1] ?? "");
   const title = TITLES[section] ?? "Jemaw Admin";
   const subtitle = SUBTITLES[section];
-  const [collapsed, toggle] = useSidebarCollapsed();
+  const [storedCollapsed, toggle] = useSidebarCollapsed();
+  const compact = useIsCompactShell();
+  const phone = useIsPhone();
+  const [drawerOpen, setDrawerOpen] = useState(false);
+
+  // In the drawer the sidebar is always full width; collapsing is a desktop idea.
+  const collapsed = compact ? false : storedCollapsed;
+
+  useEffect(() => setDrawerOpen(false), [location.pathname]);
+  useEffect(() => {
+    if (!compact) setDrawerOpen(false);
+  }, [compact]);
+  useEffect(() => {
+    if (!drawerOpen) return;
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && setDrawerOpen(false);
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [drawerOpen]);
 
   return (
-    <div style={{ display: "flex", height: "100vh", minHeight: 760, overflow: "hidden" }}>
+    <div
+      style={{
+        display: "flex",
+        height: "100dvh",
+        minHeight: compact ? undefined : 760,
+        overflow: "hidden",
+      }}
+    >
+
+      {/* Backdrop behind the drawer */}
+      {compact && drawerOpen && (
+        <div
+          onClick={() => setDrawerOpen(false)}
+          style={{ position: "fixed", inset: 0, background: "rgba(7,7,11,.6)", backdropFilter: "blur(3px)", zIndex: 90 }}
+        />
+      )}
 
       {/* Sidebar */}
       <aside
         data-collapsed={collapsed}
+        aria-hidden={compact && !drawerOpen}
         style={{
           width: collapsed ? COLLAPSED_W : EXPANDED_W,
+          maxWidth: "85vw",
           flex: "none",
           background: "var(--sidebar)",
           borderRight: "1px solid var(--hairline)",
           display: "flex",
           flexDirection: "column",
           padding: collapsed ? "18px 10px" : "18px 14px",
-          transition: "width .18s ease, padding .18s ease",
+          transition: "width .18s ease, padding .18s ease, transform .22s ease",
+          ...(compact
+            ? {
+                position: "fixed",
+                top: 0,
+                bottom: 0,
+                left: 0,
+                zIndex: 95,
+                transform: drawerOpen ? "translateX(0)" : "translateX(-100%)",
+                boxShadow: drawerOpen ? "0 0 60px rgba(0,0,0,.6)" : undefined,
+              }
+            : null),
         }}
       >
         {/* Logo + collapse */}
@@ -355,7 +401,31 @@ export function AppShell({ children }: { children: ReactNode }) {
               </div>
             </div>
           )}
-          <CollapseButton collapsed={collapsed} onClick={toggle} />
+          {compact ? (
+            <button
+              onClick={() => setDrawerOpen(false)}
+              aria-label="Close menu"
+              className="jx-navitem"
+              style={{
+                width: 30,
+                height: 30,
+                flex: "none",
+                display: "grid",
+                placeItems: "center",
+                borderRadius: 8,
+                border: "1px solid var(--hairline-2)",
+                background: "transparent",
+                color: "var(--text-dim)",
+                cursor: "pointer",
+              }}
+            >
+              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+                <path d="M18 6 6 18M6 6l12 12" />
+              </svg>
+            </button>
+          ) : (
+            <CollapseButton collapsed={collapsed} onClick={toggle} />
+          )}
         </div>
 
         <nav aria-label="Main navigation" className="jx-scroll" style={{ display: "flex", flexDirection: "column", gap: 2, overflowY: collapsed ? "visible" : "auto", flex: 1, minHeight: 0 }}>
@@ -400,27 +470,55 @@ export function AppShell({ children }: { children: ReactNode }) {
         {/* Top bar */}
         <div
           style={{
-            height: 66,
+            minHeight: compact ? 56 : 66,
             flex: "none",
             borderBottom: "1px solid var(--hairline)",
             display: "flex",
             alignItems: "center",
-            padding: "0 28px",
+            gap: 12,
+            padding: compact ? "0 14px" : "0 28px",
           }}
         >
-          <div>
+          {compact && (
+            <button
+              onClick={() => setDrawerOpen(true)}
+              aria-label="Open menu"
+              aria-expanded={drawerOpen}
+              className="jx-navitem"
+              style={{
+                width: 36,
+                height: 36,
+                flex: "none",
+                display: "grid",
+                placeItems: "center",
+                borderRadius: 10,
+                border: "1px solid var(--hairline-2)",
+                background: "transparent",
+                color: "var(--text)",
+                cursor: "pointer",
+              }}
+            >
+              <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+                <path d="M3 6h18M3 12h18M3 18h18" />
+              </svg>
+            </button>
+          )}
+          <div style={{ minWidth: 0 }}>
             <div
               style={{
                 fontFamily: "var(--font-display)",
                 fontWeight: 700,
-                fontSize: 20,
+                fontSize: phone ? 17 : 20,
                 letterSpacing: "-.02em",
                 lineHeight: 1.1,
+                whiteSpace: "nowrap",
+                overflow: "hidden",
+                textOverflow: "ellipsis",
               }}
             >
               {title}
             </div>
-            {subtitle && (
+            {subtitle && !phone && (
               <div style={{ fontSize: 11.5, color: "var(--text-faint)", marginTop: 1 }}>{subtitle}</div>
             )}
           </div>
@@ -429,7 +527,7 @@ export function AppShell({ children }: { children: ReactNode }) {
         {/* Content */}
         <div
           className="jx-scroll"
-          style={{ flex: 1, overflowY: "auto", overflowX: "hidden", padding: "24px 26px" }}
+          style={{ flex: 1, overflowY: "auto", overflowX: "hidden", padding: phone ? "16px 13px" : compact ? "20px 18px" : "24px 26px" }}
         >
           {children}
         </div>
