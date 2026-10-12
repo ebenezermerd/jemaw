@@ -37,14 +37,14 @@ export function Dialog({
           width: `min(${width}px, calc(100vw - 32px))`,
           maxHeight: "calc(100vh - 48px)",
           overflow: "auto",
-          background: "#16151F",
-          border: `1px solid ${tone === "danger" ? "rgba(242,104,95,.35)" : "rgba(255,255,255,.1)"}`,
+          background: "var(--surface)",
+          border: `1px solid ${tone === "danger" ? "rgba(242,104,95,.35)" : "var(--hairline-2)"}`,
           borderRadius: 20,
           zIndex: 1001,
           boxShadow: "0 32px 80px -16px rgba(0,0,0,.7)",
         }}
       >
-        <div style={{ padding: "18px 22px", borderBottom: "1px solid rgba(255,255,255,.07)", display: "flex", alignItems: "flex-start", gap: 12 }}>
+        <div style={{ padding: "18px 22px", borderBottom: "1px solid var(--hairline)", display: "flex", alignItems: "flex-start", gap: 12 }}>
           <div style={{ flex: 1 }}>
             <div style={{ fontSize: 16, fontWeight: 700, color: tone === "danger" ? "var(--danger)" : "var(--text)" }}>{title}</div>
             {subtitle && <div style={{ fontSize: 12.5, color: "var(--text-dim)", marginTop: 3 }}>{subtitle}</div>}
@@ -54,7 +54,7 @@ export function Dialog({
           </button>
         </div>
         <div style={{ padding: 22, display: "flex", flexDirection: "column", gap: 12 }}>{children}</div>
-        {footer && <div style={{ padding: "14px 22px", borderTop: "1px solid rgba(255,255,255,.07)", display: "flex", justifyContent: "flex-end", gap: 10 }}>{footer}</div>}
+        {footer && <div style={{ padding: "14px 22px", borderTop: "1px solid var(--hairline)", display: "flex", justifyContent: "flex-end", gap: 10 }}>{footer}</div>}
       </div>
     </>
   );
@@ -82,6 +82,28 @@ export function GhostButton({ children, onClick, disabled, tone = "default" }: {
     </button>
   );
 }
+
+/**
+ * A native select pins its own arrow to the border edge whatever the padding
+ * is, so the console draws the chevron itself and leaves room for it.
+ */
+export const selectStyle = {
+  width: "100%",
+  backgroundColor: "var(--bg-panel)",
+  backgroundImage: "var(--select-chevron)",
+  backgroundRepeat: "no-repeat",
+  backgroundPosition: "right 11px center",
+  backgroundSize: "15px 15px",
+  appearance: "none",
+  WebkitAppearance: "none",
+  border: "1px solid var(--hairline-2)",
+  borderRadius: 10,
+  padding: "10px 34px 10px 12px",
+  fontSize: 14,
+  color: "var(--text)",
+  outline: "none",
+  cursor: "pointer",
+} as const;
 
 export const fieldStyle = {
   width: "100%",

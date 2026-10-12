@@ -14,7 +14,7 @@ import type {
   UpdateGroupResultDto,
   UpdateMemberInput,
 } from "@jemaw/shared/types";
-import { Dialog, GhostButton, fieldStyle } from "../ui/Dialog.js";
+import { Dialog, GhostButton, fieldStyle, selectStyle } from "../ui/Dialog.js";
 import { Loader } from "../ui/Loader.js";
 import { PrimaryButton } from "../ui/primitives.js";
 import { autoFit } from "../lib/responsive.js";
@@ -125,8 +125,8 @@ export function GroupBotCard({ detail }: { detail: AdminGroupDetailDto }) {
   };
   const muted = h.mutedUntil && Date.parse(h.mutedUntil) > Date.now();
   return (
-    <div style={{ background: "#16151F", border: "1px solid rgba(255,255,255,.07)", borderRadius: 16, overflow: "hidden" }}>
-      <div style={{ padding: "15px 20px", borderBottom: "1px solid rgba(255,255,255,.07)", display: "flex", alignItems: "center", gap: 10 }}>
+    <div style={{ background: "var(--surface)", border: "1px solid var(--hairline)", borderRadius: 16, overflow: "hidden" }}>
+      <div style={{ padding: "15px 20px", borderBottom: "1px solid var(--hairline)", display: "flex", alignItems: "center", gap: 10 }}>
         <span style={{ fontSize: 15, fontWeight: 700, flex: 1 }}>Bot &amp; AI in this group</span>
         {patch.isPending && <Loader size={18} />}
       </div>
@@ -246,7 +246,7 @@ export function MemberActions({ groupId, member }: { groupId: string; member: Ad
       <button
         aria-label={`Actions for ${member.displayName}`}
         onClick={() => setOpen((o) => !o)}
-        style={{ background: "transparent", border: "none", cursor: "pointer", padding: 4, borderRadius: 7, color: "rgba(244,242,251,.5)", display: "flex" }}
+        style={{ background: "transparent", border: "none", cursor: "pointer", padding: 4, borderRadius: 7, color: "var(--text-dim)", display: "flex" }}
       >
         {update.isPending ? (
           <Loader size={18} />
@@ -261,7 +261,7 @@ export function MemberActions({ groupId, member }: { groupId: string; member: Ad
       {open && (
         <>
           <div onClick={() => setOpen(false)} style={{ position: "fixed", inset: 0, zIndex: 50 }} />
-          <div style={{ position: "absolute", right: 0, top: "calc(100% + 4px)", zIndex: 51, minWidth: 190, background: "#1E1C2A", border: "1px solid rgba(255,255,255,.1)", borderRadius: 12, padding: 6, boxShadow: "0 16px 40px -12px rgba(0,0,0,.6)" }}>
+          <div style={{ position: "absolute", right: 0, top: "calc(100% + 4px)", zIndex: 51, minWidth: 190, background: "var(--track)", border: "1px solid var(--hairline-2)", borderRadius: 12, padding: 6, boxShadow: "0 16px 40px -12px rgba(0,0,0,.6)" }}>
             {member.role === "admin" ? item("Make member", { role: "member" }) : item("Make group admin", { role: "admin" })}
             <button onClick={() => { setRenaming(true); setOpen(false); }} style={menuItem}>
               Rename in this group
@@ -340,11 +340,11 @@ export function GroupAccessCard({ detail }: { detail: AdminGroupDetailDto }) {
   const tone = a.status === "suspended" ? "var(--danger)" : a.status === "ai_paused" ? "var(--warn)" : "var(--success)";
 
   return (
-    <div style={{ background: "#16151F", border: "1px solid rgba(255,255,255,.07)", borderRadius: 16, overflow: "hidden" }}>
-      <div style={{ padding: "15px 20px", borderBottom: "1px solid rgba(255,255,255,.07)", display: "flex", alignItems: "center", gap: 10 }}>
+    <div style={{ background: "var(--surface)", border: "1px solid var(--hairline)", borderRadius: 16, overflow: "hidden" }}>
+      <div style={{ padding: "15px 20px", borderBottom: "1px solid var(--hairline)", display: "flex", alignItems: "center", gap: 10 }}>
         <span style={{ fontSize: 15, fontWeight: 700, flex: 1 }}>Group access</span>
         {save.isPending && <Loader size={18} />}
-        <span style={{ fontSize: 11, fontWeight: 700, color: tone, background: "rgba(255,255,255,.05)", padding: "3px 9px", borderRadius: 7 }}>
+        <span style={{ fontSize: 11, fontWeight: 700, color: tone, background: "var(--hairline-soft)", padding: "3px 9px", borderRadius: 7 }}>
           {ACCESS.find((x) => x.key === a.status)?.label}
           {a.until ? ` · until ${fmtUntil(a.until)}` : ""}
         </span>
@@ -383,7 +383,7 @@ export function GroupAccessCard({ detail }: { detail: AdminGroupDetailDto }) {
                 aria-label="Duration"
                 value={hours ?? ""}
                 onChange={(e) => setHours(e.target.value === "" ? null : Number(e.target.value))}
-                style={{ ...fieldStyle, width: 170 }}
+                style={{ ...selectStyle, width: 170 }}
               >
                 {DURATIONS.map((d) => (
                   <option key={d.label} value={d.hours ?? ""}>
@@ -413,7 +413,7 @@ export function GroupAccessCard({ detail }: { detail: AdminGroupDetailDto }) {
           </PrimaryButton>
         </div>
 
-        <div style={{ height: 1, background: "rgba(255,255,255,.06)" }} />
+        <div style={{ height: 1, background: "var(--hairline)" }} />
 
         <div>
           <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
@@ -464,7 +464,7 @@ export function GroupAccessCard({ detail }: { detail: AdminGroupDetailDto }) {
 export function DangerZone({ detail }: { detail: AdminGroupDetailDto }) {
   const [confirm, setConfirm] = useState(false);
   return (
-    <div style={{ background: "#16151F", border: "1px solid rgba(242,104,95,.25)", borderRadius: 16, padding: 20 }}>
+    <div style={{ background: "var(--surface)", border: "1px solid rgba(242,104,95,.25)", borderRadius: 16, padding: 20 }}>
       <div style={{ fontSize: 15, fontWeight: 700, color: "var(--danger)", marginBottom: 14 }}>Clean up</div>
       <DangerRow
         title="Clear expenses"
@@ -598,7 +598,7 @@ export function ToggleRow({
           border: "none",
           padding: 3,
           cursor: disabled ? "default" : "pointer",
-          background: on ? "var(--accent)" : "#2a2838",
+          background: on ? "var(--accent)" : "var(--track)",
           display: "flex",
           justifyContent: on ? "flex-end" : "flex-start",
           transition: "background .15s",

@@ -19,7 +19,7 @@ import type {
   CreateAnnouncementInput,
 } from "@jemaw/shared/types";
 import { titleCase } from "../lib/format.js";
-import { GhostButton, fieldStyle } from "../ui/Dialog.js";
+import { GhostButton, fieldStyle, selectStyle } from "../ui/Dialog.js";
 import { Loader, SkeletonList } from "../ui/Loader.js";
 import { Card, CenteredMessage, PrimaryButton, StatusPill } from "../ui/primitives.js";
 import { useBotStatus } from "../ui/BotStatus.js";
@@ -218,9 +218,9 @@ export function Announcements() {
                   padding: "9px 10px",
                   borderRadius: 9,
                   cursor: "pointer",
-                  color: audience === key ? "#fff" : "rgba(244,242,251,.6)",
+                  color: audience === key ? "#fff" : "var(--text-dim)",
                   background: audience === key ? "#6E59C7" : "transparent",
-                  border: audience === key ? "none" : "1px solid rgba(255,255,255,.1)",
+                  border: audience === key ? "none" : "1px solid var(--hairline-2)",
                 }}
               >
                 {label}
@@ -228,7 +228,7 @@ export function Announcements() {
             ))}
           </div>
           {audience === "group" && (
-            <select aria-label="Group" value={targetId} onChange={(e) => setTargetId(e.target.value)} style={fieldStyle}>
+            <select aria-label="Group" value={targetId} onChange={(e) => setTargetId(e.target.value)} style={selectStyle}>
               <option value="">Choose a group…</option>
               {groups.map((g) => (
                 <option key={g.id} value={g.id}>
@@ -255,7 +255,7 @@ export function Announcements() {
                         alignItems: "center",
                         padding: "9px 12px",
                         border: "none",
-                        borderBottom: "1px solid rgba(255,255,255,.04)",
+                        borderBottom: "1px solid var(--hairline-soft)",
                         background: targetId === u.telegramUserId ? "rgba(110,89,199,.2)" : "transparent",
                         color: "var(--text)",
                         fontSize: 13,
@@ -313,7 +313,7 @@ export function Announcements() {
                   : `Person · ${a.targetId}`;
             const busy = (send.isPending && send.variables === a.id) || (remove.isPending && remove.variables === a.id);
             return (
-              <div key={a.id} style={{ padding: "13px 20px", borderTop: "1px solid rgba(255,255,255,.05)" }}>
+              <div key={a.id} style={{ padding: "13px 20px", borderTop: "1px solid var(--hairline-soft)" }}>
                 <div style={{ display: "flex", alignItems: "flex-start", gap: 12 }}>
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ fontSize: 14, fontWeight: 600 }}>
