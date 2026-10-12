@@ -5,7 +5,8 @@ import type { AdminExpenseDto, AdminExpensePageDto, AdminGroupDto } from "@jemaw
 import { fmtMoney } from "../lib/format.js";
 import { Busy, SkeletonRows } from "../ui/Loader.js";
 import { DEFAULT_PAGE_SIZE, TableFooter } from "../ui/Pager.js";
-import { CenteredMessage } from "../ui/primitives.js";
+import { CenteredMessage, TableScroll } from "../ui/primitives.js";
+import { autoFit } from "../lib/responsive.js";
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
 
@@ -270,7 +271,7 @@ function ExpenseDetail({ e, onBack }: { e: AdminExpenseDto; onBack: () => void }
 
         {/* meta 4-grid */}
         <div style={{
-          display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 12,
+          display: "grid", gridTemplateColumns: autoFit(170), gap: 12,
           marginTop: 20, paddingTop: 18, borderTop: "1px solid rgba(255,255,255,.06)",
         }}>
           {[
@@ -470,6 +471,7 @@ export function Expenses() {
         background: "#16151F", border: "1px solid rgba(255,255,255,.07)",
         borderRadius: 16, overflow: "hidden",
       }}>
+        <TableScroll min={960}>
         {/* header */}
         <div style={{
           display: "grid", gridTemplateColumns: COLS, gap: 12, padding: "13px 20px",
@@ -548,6 +550,7 @@ export function Expenses() {
           })
         )}
         </Busy>
+        </TableScroll>
         {!isLoading && (
           <TableFooter offset={offset} limit={limit} total={total} onPage={setOffset} onLimit={setLimit} busy={busy} />
         )}

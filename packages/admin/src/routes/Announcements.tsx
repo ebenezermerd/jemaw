@@ -23,6 +23,7 @@ import { GhostButton, fieldStyle } from "../ui/Dialog.js";
 import { Loader, SkeletonList } from "../ui/Loader.js";
 import { Card, CenteredMessage, PrimaryButton, StatusPill } from "../ui/primitives.js";
 import { useBotStatus } from "../ui/BotStatus.js";
+import { cols, useIsNarrow } from "../lib/responsive.js";
 
 interface Stats {
   delivered?: number;
@@ -38,6 +39,7 @@ const EMPTY_NOTES = { version: "", added: "", improved: "", fixed: "" };
 
 export function Announcements() {
   const qc = useQueryClient();
+  const narrow = useIsNarrow();
   const [kind, setKind] = useState<AnnouncementKind>("announcement");
   const [title, setTitle] = useState("");
   const [body, setBody] = useState("");
@@ -131,7 +133,7 @@ export function Announcements() {
   const sendingOff = status && !status.configured;
 
   return (
-    <div style={{ display: "grid", gridTemplateColumns: "1fr 1.2fr", gap: 16, alignItems: "start" }}>
+    <div style={{ display: "grid", gridTemplateColumns: cols("1fr 1.2fr", narrow), gap: 16, alignItems: "start" }}>
       <Card>
         <div style={{ fontSize: 15, fontWeight: 700, marginBottom: 16 }}>Compose broadcast</div>
         <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>

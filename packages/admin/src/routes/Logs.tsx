@@ -15,7 +15,7 @@ import type {
 } from "@jemaw/shared/types";
 import { Busy, Loader, SkeletonRows } from "../ui/Loader.js";
 import { DEFAULT_PAGE_SIZE, TableFooter } from "../ui/Pager.js";
-import { CenteredMessage } from "../ui/primitives.js";
+import { CenteredMessage, TableScroll } from "../ui/primitives.js";
 
 function fmtTimestamp(iso: string): string {
   const d = new Date(iso);
@@ -158,6 +158,7 @@ export function Logs() {
       </div>
 
       <div style={{ background: "#16151F", border: "1px solid rgba(255,255,255,.07)", borderRadius: 16, overflow: "hidden" }}>
+        <TableScroll min={960}>
         <div
           style={{
             display: "grid",
@@ -197,6 +198,7 @@ export function Logs() {
             ))
           )}
         </Busy>
+        </TableScroll>
         {!isLoading && <TableFooter offset={offset} limit={limit} total={total} onPage={setOffset} onLimit={setLimit} busy={busy} noun="events" />}
       </div>
     </div>

@@ -2,6 +2,7 @@ import { useState, type FormEvent } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "../lib/auth.js";
 import { api } from "../lib/api.js";
+import { useIsNarrow, useIsPhone } from "../lib/responsive.js";
 import type { AdminPublicStatsDto } from "@jemaw/shared/types";
 
 /** Compact a number for the brand panel: 1248 → "1,248", 8_420_000 → "8.4M". */
@@ -13,6 +14,8 @@ function compact(n: number): string {
 
 export function Login() {
   const { signIn, signInWithGoogle } = useAuth();
+  const narrow = useIsNarrow();
+  const phone = useIsPhone();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
@@ -52,23 +55,24 @@ export function Login() {
   }
 
   return (
-    <div style={{ minHeight: "100vh", display: "flex" }}>
+    <div style={{ minHeight: "100dvh", display: "flex", flexDirection: narrow ? "column" : "row" }}>
       {/* Brand panel */}
       <div
         style={{
-          flex: 1.1,
+          flex: narrow ? "none" : 1.1,
           position: "relative",
           overflow: "hidden",
           background: "linear-gradient(160deg,#2A1F5C 0%,#463494 52%,#6E59C7 100%)",
           display: "flex",
           flexDirection: "column",
           justifyContent: "space-between",
-          padding: 56,
+          gap: narrow ? 20 : 0,
+          padding: phone ? "28px 20px 24px" : narrow ? "34px 32px 30px" : 56,
         }}
       >
         {/* background flourishes */}
         <div style={{ position: "absolute", inset: 0, background: "radial-gradient(60% 50% at 80% 8%, rgba(255,255,255,.18), transparent 60%)" }} />
-        <svg viewBox="0 0 100 100" style={{ position: "absolute", right: -120, bottom: -140, width: 560, height: 560, opacity: 0.13 }}>
+        <svg viewBox="0 0 100 100" style={{ position: "absolute", right: narrow ? -80 : -120, bottom: narrow ? -90 : -140, width: narrow ? 320 : 560, height: narrow ? 320 : 560, opacity: 0.13 }}>
           <circle cx="50" cy="40" r="23" fill="#fff" style={{ mixBlendMode: "overlay" }} />
           <circle cx="37" cy="62" r="23" fill="#fff" style={{ mixBlendMode: "overlay" }} />
           <circle cx="63" cy="62" r="23" fill="#fff" style={{ mixBlendMode: "overlay" }} />
@@ -92,27 +96,29 @@ export function Login() {
         </div>
 
         <div style={{ position: "relative" }}>
-          <h1 style={{ fontFamily: "var(--font-display)", fontWeight: 800, fontSize: 46, lineHeight: 1.02, letterSpacing: "-.03em", margin: "0 0 18px", maxWidth: 440 }}>
+          <h1 style={{ fontFamily: "var(--font-display)", fontWeight: 800, fontSize: "clamp(27px, 5vw, 46px)", lineHeight: 1.05, letterSpacing: "-.03em", margin: phone ? "0 0 10px" : "0 0 18px", maxWidth: 440 }}>
             The control room for the quiet bookkeeper.
           </h1>
-          <p style={{ fontSize: 17, lineHeight: 1.55, color: "rgba(255,255,255,.78)", maxWidth: 430, margin: 0 }}>
-            Manage users, groups, expenses and the bot itself — everything Jemaw tracks across every Telegram community, in one place.
-          </p>
-          <div style={{ display: "flex", gap: 26, marginTop: 34 }}>
+          {!phone && (
+            <p style={{ fontSize: narrow ? 15 : 17, lineHeight: 1.55, color: "rgba(255,255,255,.78)", maxWidth: 430, margin: 0 }}>
+              Manage users, groups, expenses and the bot itself — everything Jemaw tracks across every Telegram community, in one place.
+            </p>
+          )}
+          <div style={{ display: "flex", flexWrap: "wrap", gap: phone ? 18 : 26, marginTop: phone ? 18 : narrow ? 24 : 34 }}>
             <div>
-              <div style={{ fontFamily: "var(--font-display)", fontWeight: 800, fontSize: 26 }}>
+              <div style={{ fontFamily: "var(--font-display)", fontWeight: 800, fontSize: phone ? 21 : 26 }}>
                 {stats ? compact(stats.totalUsers) : "—"}
               </div>
               <div style={{ fontSize: 12, color: "rgba(255,255,255,.6)" }}>users</div>
             </div>
             <div>
-              <div style={{ fontFamily: "var(--font-display)", fontWeight: 800, fontSize: 26 }}>
+              <div style={{ fontFamily: "var(--font-display)", fontWeight: 800, fontSize: phone ? 21 : 26 }}>
                 {stats ? compact(stats.activeGroups) : "—"}
               </div>
               <div style={{ fontSize: 12, color: "rgba(255,255,255,.6)" }}>groups</div>
             </div>
             <div>
-              <div style={{ fontFamily: "var(--font-display)", fontWeight: 800, fontSize: 26 }}>
+              <div style={{ fontFamily: "var(--font-display)", fontWeight: 800, fontSize: phone ? 21 : 26 }}>
                 {stats ? compact(Math.round(Number(stats.expensesTracked))) : "—"}
               </div>
               <div style={{ fontSize: 12, color: "rgba(255,255,255,.6)" }}>Br tracked</div>
@@ -120,21 +126,32 @@ export function Login() {
           </div>
         </div>
 
-        <div style={{ position: "relative", fontFamily: "var(--font-brand)", fontSize: 20, color: "rgba(255,255,255,.55)" }}>
-          ጀማው · crowd, managed
-        </div>
+        {!phone && (
+          <div style={{ position: "relative", fontFamily: "var(--font-brand)", fontSize: 20, color: "rgba(255,255,255,.55)" }}>
+            ጀማው · crowd, managed
+          </div>
+        )}
       </div>
 
       {/* Form panel */}
-      <div style={{ flex: 1, background: "var(--bg-panel)", display: "flex", alignItems: "center", justifyContent: "center", padding: 40 }}>
+      <div
+        style={{
+          flex: 1,
+          background: "var(--bg-panel)",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          padding: phone ? "28px 18px 36px" : narrow ? "32px 24px 40px" : 40,
+        }}
+      >
         <form onSubmit={onSubmit} style={{ width: "100%", maxWidth: 400 }}>
           <div style={{ fontFamily: "var(--font-mono)", fontSize: 12, letterSpacing: ".14em", textTransform: "uppercase", color: "var(--accent-soft)", marginBottom: 12 }}>
             Secure sign-in
           </div>
-          <h2 style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: 30, letterSpacing: "-.02em", margin: "0 0 8px" }}>
+          <h2 style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: phone ? 24 : 30, letterSpacing: "-.02em", margin: "0 0 8px" }}>
             Welcome back, admin
           </h2>
-          <p style={{ fontSize: 14, color: "rgba(244,242,251,.55)", margin: "0 0 30px" }}>
+          <p style={{ fontSize: 14, color: "rgba(244,242,251,.55)", margin: phone ? "0 0 22px" : "0 0 30px" }}>
             Authorized personnel only. Sessions are logged.
           </p>
 
@@ -274,7 +291,8 @@ const inputStyle = {
   border: "1px solid var(--hairline-2)",
   borderRadius: 12,
   padding: "14px 15px",
-  fontSize: 15,
+  // 16px keeps iOS Safari from zooming in when the field takes focus.
+  fontSize: 16,
   color: "var(--text)",
   outline: "none",
 } as const;

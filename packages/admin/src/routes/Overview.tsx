@@ -15,6 +15,7 @@ import { api } from "../lib/api.js";
 import type { AdminOverviewDto } from "@jemaw/shared/types";
 import { Card, CenteredMessage } from "../ui/primitives.js";
 import { Skeleton } from "../ui/Loader.js";
+import { cols, statGrid, useIsNarrow, useIsPhone } from "../lib/responsive.js";
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
 
@@ -244,19 +245,21 @@ function ChartTip({ active, payload, label }: { active?: boolean; payload?: { co
 // ─── Main ─────────────────────────────────────────────────────────────────────
 
 export function Overview() {
+  const narrow = useIsNarrow();
+  const phone = useIsPhone();
   const { data, isLoading, error } = useQuery({
     queryKey: ["overview"],
     queryFn: () => api.get<AdminOverviewDto>("/api/admin/overview"),
   });
 
-  if (isLoading) return <OverviewSkeleton />;
+  if (isLoading) return <OverviewSkeleton narrow={narrow} phone={phone} />;
   if (error || !data) return <CenteredMessage>Could not load the overview.</CenteredMessage>;
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
 
       {/* KPI row */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 14 }}>
+      <div style={{ display: "grid", gridTemplateColumns: statGrid(narrow, phone), gap: 14 }}>
         {KPI_CONFIG.map(({ key, label, accent, Icon }) => {
           const raw = data.kpis[key as keyof typeof data.kpis];
           const delta = data.kpis.deltas[key as keyof typeof data.kpis.deltas] as number | undefined;
@@ -271,7 +274,7 @@ export function Overview() {
       </div>
 
       {/* Activity chart + Status breakdown */}
-      <div style={{ display: "grid", gridTemplateColumns: "1.75fr 1fr", gap: 14 }}>
+      <div style={{ display: "grid", gridTemplateColumns: cols("1.75fr 1fr", narrow), gap: 14 }}>
         <Card>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 4 }}>
             <div>
@@ -349,7 +352,7 @@ export function Overview() {
       </div>
 
       {/* Recent activity + Top groups */}
-      <div style={{ display: "grid", gridTemplateColumns: "1.4fr 1fr", gap: 14 }}>
+      <div style={{ display: "grid", gridTemplateColumns: cols("1.4fr 1fr", narrow), gap: 14 }}>
         <Card>
           <div style={{ fontSize: 14, fontWeight: 700, letterSpacing: "-.01em", marginBottom: 16 }}>Recent activity</div>
           {data.recent.length === 0 && (
@@ -430,19 +433,19 @@ export function Overview() {
   );
 }
 
-function OverviewSkeleton() {
+function OverviewSkeleton({ narrow, phone }: { narrow: boolean; phone: boolean }) {
   return (
     <div role="status" aria-label="Loading" style={{ display: "flex", flexDirection: "column", gap: 18 }}>
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 14 }}>
+      <div style={{ display: "grid", gridTemplateColumns: statGrid(narrow, phone), gap: 14 }}>
         {[0, 1, 2, 3].map((i) => (
           <Skeleton key={i} height={112} radius={16} />
         ))}
       </div>
-      <div style={{ display: "grid", gridTemplateColumns: "1.6fr 1fr", gap: 14 }}>
+      <div style={{ display: "grid", gridTemplateColumns: cols("1.6fr 1fr", narrow), gap: 14 }}>
         <Skeleton height={300} radius={16} />
         <Skeleton height={300} radius={16} />
       </div>
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
+      <div style={{ display: "grid", gridTemplateColumns: cols("1fr 1fr", narrow), gap: 14 }}>
         <Skeleton height={240} radius={16} />
         <Skeleton height={240} radius={16} />
       </div>
