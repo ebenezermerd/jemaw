@@ -149,3 +149,15 @@ export function CenteredMessage({ children }: { children: ReactNode }) {
     </div>
   );
 }
+
+/**
+ * Keeps a grid table readable on small screens: the columns hold their widths
+ * and the table scrolls sideways instead of crushing every cell.
+ */
+export function TableScroll({ min, children }: { min: number; children: ReactNode }) {
+  return (
+    <div className="jx-scroll" style={{ overflowX: "auto", WebkitOverflowScrolling: "touch" }}>
+      <div style={{ minWidth: min }}>{children}</div>
+    </div>
+  );
+}
