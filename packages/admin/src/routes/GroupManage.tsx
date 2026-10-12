@@ -17,6 +17,7 @@ import type {
 import { Dialog, GhostButton, fieldStyle } from "../ui/Dialog.js";
 import { Loader } from "../ui/Loader.js";
 import { PrimaryButton } from "../ui/primitives.js";
+import { autoFit } from "../lib/responsive.js";
 
 const errText = (e: unknown) => (e instanceof Error ? e.message : "Something went wrong.");
 
@@ -132,7 +133,7 @@ export function GroupBotCard({ detail }: { detail: AdminGroupDetailDto }) {
       <div style={{ padding: 20, display: "flex", flexDirection: "column", gap: 18 }}>
         <div>
           <Label>Personality</Label>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 8 }}>
+          <div style={{ display: "grid", gridTemplateColumns: autoFit(100), gap: 8 }}>
             {MODES.map((m) => {
               const on = h.mode === m.key;
               return (
@@ -158,7 +159,7 @@ export function GroupBotCard({ detail }: { detail: AdminGroupDetailDto }) {
           </div>
         </div>
 
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "4px 18px" }}>
+        <div style={{ display: "grid", gridTemplateColumns: autoFit(220), gap: "4px 18px" }}>
           {TOGGLES.map((t) => (
             <ToggleRow
               key={t.key}
@@ -349,7 +350,7 @@ export function GroupAccessCard({ detail }: { detail: AdminGroupDetailDto }) {
         </span>
       </div>
       <div style={{ padding: 20, display: "flex", flexDirection: "column", gap: 16 }}>
-        <div role="radiogroup" aria-label="Access" style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 8 }}>
+        <div role="radiogroup" aria-label="Access" style={{ display: "grid", gridTemplateColumns: autoFit(110), gap: 8 }}>
           {ACCESS.map((x) => {
             const on = status === x.key;
             return (

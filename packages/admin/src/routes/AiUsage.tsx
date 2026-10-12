@@ -12,6 +12,7 @@ import { fmtCompact } from "../lib/format.js";
 import { GhostButton } from "../ui/Dialog.js";
 import { Loader, Skeleton } from "../ui/Loader.js";
 import { Card } from "../ui/primitives.js";
+import { autoFit, useIsPhone } from "../lib/responsive.js";
 import { ago } from "../ui/BotStatus.js";
 
 const errText = (e: unknown) => (e instanceof Error ? e.message : "Something went wrong.");
@@ -65,6 +66,7 @@ function Meter({ label, hint, w, at }: { label: string; hint: string; w: RateWin
 export function AiUsageCard() {
   const qc = useQueryClient();
   const navigate = useNavigate();
+  const phone = useIsPhone();
   const { data: u, isLoading } = useQuery({
     queryKey: ["ai-usage"],
     queryFn: () => api.get<AdminAiUsageDto>("/api/admin/ai/usage"),
@@ -124,7 +126,7 @@ export function AiUsageCard() {
       {check.isError && <div style={{ fontSize: 12, color: "var(--danger)", marginTop: 8 }}>{errText(check.error)}</div>}
 
       {/* today */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 10, marginTop: 20 }}>
+      <div style={{ display: "grid", gridTemplateColumns: autoFit(140), gap: 10, marginTop: 20 }}>
         {[
           { v: String(u.today.calls), l: `AI calls today · ${u.today.scans} scans, ${u.today.replies} replies` },
           { v: fmtCompact(u.today.inputTokens), l: "Tokens read" },
@@ -177,7 +179,7 @@ export function AiUsageCard() {
             <button
               key={g.groupId}
               onClick={() => navigate(`/groups/${g.groupId}`, { state: { from: { path: "/settings", label: "Bot & Settings" } } })}
-              style={{ display: "grid", gridTemplateColumns: "1fr 90px 150px 90px", gap: 12, alignItems: "center", background: "none", border: "none", color: "var(--text)", padding: 0, textAlign: "left", cursor: "pointer" }}
+              style={{ display: "grid", gridTemplateColumns: phone ? "1fr 78px 72px" : "1fr 90px 150px 90px", gap: phone ? 8 : 12, alignItems: "center", background: "none", border: "none", color: "var(--text)", padding: 0, textAlign: "left", cursor: "pointer" }}
             >
               <span style={{ fontSize: 13, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{g.groupName}</span>
               <span
@@ -192,7 +194,7 @@ export function AiUsageCard() {
               >
                 {state}
               </span>
-              <span style={{ height: 6, borderRadius: 99, background: "var(--track)", overflow: "hidden" }}>
+              <span style={{ height: 6, borderRadius: 99, background: "var(--track)", overflow: "hidden", display: phone ? "none" : undefined }}>
                 {!off && (
                   <span style={{ display: "block", height: "100%", width: `${Math.min(100, (g.repliesToday / g.maxPerDay) * 100)}%`, background: tone(left, g.maxPerDay), borderRadius: 99 }} />
                 )}

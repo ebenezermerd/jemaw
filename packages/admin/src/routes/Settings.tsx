@@ -14,12 +14,14 @@ import { ago, statusDetail, useBotStatus } from "../ui/BotStatus.js";
 import { NumberField, ToggleRow } from "./GroupManage.js";
 import { AiUsageCard } from "./AiUsage.js";
 import { BossModeCard } from "./BossMode.js";
+import { cols, useIsNarrow } from "../lib/responsive.js";
 
 const errText = (e: unknown) => (e instanceof Error ? e.message : "Something went wrong.");
 
 export function Settings() {
+  const narrow = useIsNarrow();
   return (
-    <div style={{ display: "grid", gridTemplateColumns: "1.2fr 1fr", gap: 16, alignItems: "start" }}>
+    <div style={{ display: "grid", gridTemplateColumns: cols("1.2fr 1fr", narrow), gap: 16, alignItems: "start" }}>
       <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
         <AiUsageCard />
         <BotSwitches />

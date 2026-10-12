@@ -30,6 +30,7 @@ import { Loader, SkeletonList } from "../ui/Loader.js";
 import { Card, PrimaryButton } from "../ui/primitives.js";
 import { PostPreview } from "../ui/PostPreview.js";
 import { ToggleRow } from "./GroupManage.js";
+import { cols, useIsNarrow } from "../lib/responsive.js";
 
 const errText = (e: unknown) => (e instanceof Error ? e.message : "Something went wrong.");
 
@@ -58,6 +59,7 @@ const lines = (s: string) => s.split("\n").map((l) => l.trim()).filter(Boolean);
 
 export function Designs() {
   const qc = useQueryClient();
+  const narrow = useIsNarrow();
   const [useCase, setUseCase] = useState<PostUseCase>("weekly");
   const [draft, setDraft] = useState<PostDesigns | null>(null);
   const [groupId, setGroupId] = useState("");
@@ -187,7 +189,7 @@ export function Designs() {
         </PrimaryButton>
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) minmax(0, 460px)", gap: 16, alignItems: "start" }}>
+      <div style={{ display: "grid", gridTemplateColumns: cols("minmax(0, 1fr) minmax(0, 460px)", narrow, "minmax(0, 1fr)"), gap: 16, alignItems: "start" }}>
         <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
           <Card>
             <Heading title="Layout" hint={meta.description} />
