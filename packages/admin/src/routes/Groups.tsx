@@ -8,7 +8,8 @@ import { BackLink, fromState, useBackTo } from "../ui/BackLink.js";
 import { PhotoFill } from "../ui/Photo.js";
 import { Busy, Skeleton, SkeletonList, SkeletonRows } from "../ui/Loader.js";
 import { DEFAULT_PAGE_SIZE, TableFooter, pageSlice } from "../ui/Pager.js";
-import { CenteredMessage } from "../ui/primitives.js";
+import { CenteredMessage, TableScroll } from "../ui/primitives.js";
+import { autoFit, cols, statGrid, useIsNarrow, useIsPhone } from "../lib/responsive.js";
 import { DangerZone, EditGroupDialog, GroupAccessCard, GroupBotCard, MemberActions } from "./GroupManage.js";
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
@@ -176,6 +177,8 @@ const LIST_ROW_H = 57;
 export function GroupDetailPage() {
   const { groupId = "" } = useParams();
   const navigate = useNavigate();
+  const narrow = useIsNarrow();
+  const phone = useIsPhone();
   const back = useBackTo({ path: "/groups", label: "All groups" });
   const [editing, setEditing] = useState(false);
   const [memOffset, setMemOffset] = useState(0);
@@ -277,7 +280,7 @@ export function GroupDetailPage() {
       </div>
 
       {/* stat strip */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 16, marginBottom: 18 }}>
+      <div style={{ display: "grid", gridTemplateColumns: statGrid(narrow, phone), gap: 16, marginBottom: 18 }}>
         {[
           { value: fmtMoney(stats.spend, cur), label: "Total spend (loans excluded)" },
           { value: String(group.memberCount), label: "Active members" },
@@ -303,6 +306,7 @@ export function GroupDetailPage() {
           Members &amp; balances
           <span style={{ fontWeight: 500, fontSize: 12, color: "rgba(244,242,251,.45)" }}> · {members.length}</span>
         </div>
+        <TableScroll min={980}>
         <div style={{ ...colHead, gridTemplateColumns: MEM_COLS }}>
           <span>Member</span>
           <span>Role</span>
@@ -374,6 +378,7 @@ export function GroupDetailPage() {
             })}
           </div>
         )}
+        </TableScroll>
         {members.length > 0 && (
           <TableFooter
             offset={memOffset < members.length ? memOffset : 0}
@@ -389,7 +394,7 @@ export function GroupDetailPage() {
         )}
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1.4fr", gap: 18, marginBottom: 18 }}>
+      <div style={{ display: "grid", gridTemplateColumns: cols("1fr 1.4fr", narrow), gap: 18, marginBottom: 18 }}>
         {/* settle plan */}
         <div style={card}>
           <div style={cardHead}>
@@ -483,7 +488,7 @@ export function GroupDetailPage() {
         </div>
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "1.5fr 1fr", gap: 18, alignItems: "start" }}>
+      <div style={{ display: "grid", gridTemplateColumns: cols("1.5fr 1fr", narrow), gap: 18, alignItems: "start" }}>
         <GroupBotCard detail={data} />
         <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
           <GroupAccessCard detail={data} />
@@ -504,7 +509,7 @@ function GroupDetailSkeleton() {
           <Skeleton height={12} width="45%" />
         </div>
       </div>
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 16 }}>
+      <div style={{ display: "grid", gridTemplateColumns: autoFit(180), gap: 16 }}>
         {[0, 1, 2, 3].map((i) => (
           <Skeleton key={i} height={74} radius={16} />
         ))}
@@ -603,7 +608,7 @@ export function Groups() {
       </div>
 
       {isLoading ? (
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(2,1fr)", gap: 16 }} role="status" aria-label="Loading">
+        <div style={{ display: "grid", gridTemplateColumns: autoFit(300), gap: 16 }} role="status" aria-label="Loading">
           {[0, 1, 2, 3].map((i) => (
             <Skeleton key={i} height={150} radius={16} />
           ))}
@@ -611,7 +616,7 @@ export function Groups() {
       ) : rows.length === 0 ? (
         <CenteredMessage>{q ? "No groups match." : "No groups yet."}</CenteredMessage>
       ) : (
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(2,1fr)", gap: 16 }}>
+        <div style={{ display: "grid", gridTemplateColumns: autoFit(300), gap: 16 }}>
           {rows.map((g) => {
             const isJemaw = g.name.toLowerCase() === "jemaw";
 
@@ -674,7 +679,7 @@ export function Groups() {
                 </div>
 
                 {/* 3-stat mini tiles */}
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 10 }}>
+                <div style={{ display: "grid", gridTemplateColumns: autoFit(84), gap: 10 }}>
                   {[
                     { value: String(g.memberCount), label: "Members" },
                     { value: String(g.expenseCount), label: "Expenses" },

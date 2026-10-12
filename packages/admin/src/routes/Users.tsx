@@ -8,7 +8,8 @@ import { BackLink, fromState, useBackTo } from "../ui/BackLink.js";
 import { PhotoFill } from "../ui/Photo.js";
 import { Busy, Loader, PageLoader, SkeletonList, SkeletonRows } from "../ui/Loader.js";
 import { DEFAULT_PAGE_SIZE, TableFooter } from "../ui/Pager.js";
-import { StatusPill, CenteredMessage } from "../ui/primitives.js";
+import { StatusPill, CenteredMessage, TableScroll } from "../ui/primitives.js";
+import { cols, statGrid, useIsNarrow, useIsPhone } from "../lib/responsive.js";
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
 
@@ -668,6 +669,8 @@ function UserDetail({
   isPending: boolean;
 }) {
   const navigate = useNavigate();
+  const narrow = useIsNarrow();
+  const phone = useIsPhone();
   const [showMessage, setShowMessage] = useState(false);
   const { bg, color } = getAvatarStyle(user.displayName);
   const { data: detail, isLoading: detailLoading } = useQuery({
@@ -804,7 +807,7 @@ function UserDetail({
         </div>
 
         {/* 4-stat grid */}
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 16, marginBottom: 18 }}>
+        <div style={{ display: "grid", gridTemplateColumns: statGrid(narrow, phone), gap: 16, marginBottom: 18 }}>
           {[
             { value: String(activeMemberships.length), label: "Groups" },
             {
@@ -845,7 +848,7 @@ function UserDetail({
         </div>
 
         {/* two-column */}
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
+        <div style={{ display: "grid", gridTemplateColumns: cols("1fr 1fr", narrow), gap: 16 }}>
           {/* group memberships */}
           <div
             style={{
@@ -1114,7 +1117,9 @@ export function Users() {
             display: "flex",
             alignItems: "center",
             gap: 10,
-            width: 300,
+            flex: "1 1 240px",
+            minWidth: 200,
+            maxWidth: 300,
           }}
         >
           <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="rgba(244,242,251,.4)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -1147,7 +1152,7 @@ export function Users() {
         </div>
 
         {/* status filter pills */}
-        <div style={{ display: "flex", gap: 7 }}>
+        <div style={{ display: "flex", gap: 7, flexWrap: "wrap" }}>
           {FILTERS.map(({ key, label }) => {
             const isActive = filter === key;
             return (
@@ -1216,6 +1221,7 @@ export function Users() {
           overflow: "hidden",
         }}
       >
+        <TableScroll min={900}>
         {/* header */}
         <div
           style={{
@@ -1326,6 +1332,7 @@ export function Users() {
           })
         )}
         </Busy>
+        </TableScroll>
         {!isLoading && (
           <TableFooter
             offset={safeOffset}
