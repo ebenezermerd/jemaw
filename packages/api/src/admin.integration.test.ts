@@ -28,6 +28,8 @@ const DATABASE_URL = process.env.DATABASE_URL;
 const d = DATABASE_URL ? describe : describe.skip;
 
 const ADMIN = "itest-admin@jemaw.test";
+/** Every image spec the routes asked to render, newest last. */
+const renderedSpecs: unknown[] = [];
 const calls: { method: string; params: Record<string, unknown> }[] = [];
 const telegram: TelegramClient = {
   configured: true,
@@ -127,6 +129,7 @@ d("admin management routes", () => {
     await db.insert(botReplies).values({ groupId, triggerEvent: "direct_chat", channel: "group", decision: "suppressed", suppressionReason: "cooldown" });
     await db.insert(messages).values({ groupId, telegramMessageId: 5n, senderTelegramUserId: 9_100_001n, text: "hi", sentAt: new Date() });
 
+    renderedSpecs.length = 0;
     app = await buildServer({
       api: {
         db,
@@ -134,7 +137,10 @@ d("admin management routes", () => {
         now: () => Date.now(),
         telegram,
         botToken: "123:itest",
-        renderImage: async () => Buffer.from("png"),
+        renderImage: async (spec) => {
+          renderedSpecs.push(spec);
+          return Buffer.from("png");
+        },
         openAppUrl: (id) => `https://t.me/jemawsbot/app?startapp=${id}`,
       },
       corsOrigin: undefined,
@@ -226,9 +232,12 @@ d("admin management routes", () => {
     const [row] = await db.select().from(announcements).where(eq(announcements.id, id));
     expect(row!.status).toBe("sent");
     expect(row!.stats).toMatchObject({ delivered: 1, failed: 0 });
-    // Sent in the saved announcement design: an article with the title as its heading.
+    // Sent in the saved announcement design: the banner picture, then an
+    // article with the title as its heading.
     const msg = calls.find((c) => c.method === "sendRichMessage" && c.params.chat_id === chatId.toString());
-    expect(msg?.params.rich_message).toMatchObject({ blocks: [{ type: "heading", text: "Hi <all>" }, { type: "paragraph", text: "News" }] });
+    expect(msg?.params.rich_message).toMatchObject({
+      blocks: [{ type: "photo" }, { type: "heading", text: "Hi <all>" }, { type: "paragraph", text: "News" }],
+    });
     expect(msg?.params.reply_markup).toMatchObject({ inline_keyboard: [[{ text: "Open Jemaw", url: `https://t.me/jemawsbot/app?startapp=${groupId}` }]] });
 
     calls.length = 0;
@@ -350,6 +359,17 @@ d("admin management routes", () => {
     expect(image.statusCode).toBe(200);
     expect(image.headers["content-type"]).toBe("image/png");
     expect((await inject("POST", "/api/admin/designs/image", { spec: { kind: "poster" } })).statusCode).toBe(400);
+
+    // The mascot has to survive validation, or the preview lies about the post.
+    renderedSpecs.length = 0;
+    const withMascot = await inject("POST", "/api/admin/designs/image", {
+      spec: { kind: "banner", eyebrow: "New", title: "Hi", subline: "x", mascot: "shades" },
+    });
+    expect(withMascot.statusCode).toBe(200);
+    expect(renderedSpecs.at(-1)).toMatchObject({ kind: "banner", mascot: "shades" });
+    expect((await inject("POST", "/api/admin/designs/image", {
+      spec: { kind: "banner", eyebrow: "New", title: "Hi", subline: "x", mascot: "dragon" },
+    })).statusCode).toBe(400);
 
     calls.length = 0;
     const sent = await inject("POST", "/api/admin/designs/test", {
