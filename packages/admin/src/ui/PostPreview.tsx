@@ -15,8 +15,8 @@ const TG = {
   text: "#f5f5f5",
   dim: "rgba(245,245,245,.6)",
   link: "#6ab3f3",
-  line: "rgba(255,255,255,.12)",
-  stripe: "rgba(255,255,255,.04)",
+  line: "var(--hairline-2)",
+  stripe: "var(--hairline-soft)",
   key: "rgba(43,82,120,.55)",
 };
 const BUTTON_BG: Record<NonNullable<KeyboardButton["style"]> | "default", string> = {

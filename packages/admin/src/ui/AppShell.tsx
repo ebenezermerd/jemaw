@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { NavLink, useLocation } from "react-router-dom";
 import { AccountMenu } from "./AccountMenu.js";
 import { useIsCompactShell, useIsPhone } from "../lib/responsive.js";
+import { ThemeToggle } from "./ThemeToggle.js";
 
 // ─── Nav icons ────────────────────────────────────────────────────────────────
 
@@ -102,7 +103,7 @@ function LogoMark({ size = 32 }: { size?: number }) {
         width: size,
         height: size,
         borderRadius: Math.round(size * 0.29),
-        background: "rgba(255,255,255,.08)",
+        background: "linear-gradient(140deg,#3B2C84,#6E59C7 60%,#8A78D6)",
         border: "1px solid rgba(255,255,255,.18)",
         position: "relative",
         overflow: "hidden",
@@ -222,7 +223,7 @@ function NavItem({ item, collapsed }: { item: NavEntry; collapsed: boolean }) {
           </span>
           {!collapsed && (
             <span style={{ display: "flex", flexDirection: "column", minWidth: 0 }}>
-              <span style={{ fontSize: 13, fontWeight: 600, lineHeight: "18px", color: isActive ? "var(--text)" : "rgba(244,242,251,.82)" }}>
+              <span style={{ fontSize: 13, fontWeight: 600, lineHeight: "18px", color: isActive ? "var(--text)" : "var(--text-soft)" }}>
                 {item.label}
               </span>
               <span
@@ -248,8 +249,8 @@ function NavItem({ item, collapsed }: { item: NavEntry; collapsed: boolean }) {
                 left: "calc(100% + 12px)",
                 top: "50%",
                 transform: "translateY(-50%)",
-                background: "#1E1C2A",
-                border: "1px solid rgba(255,255,255,.1)",
+                background: "var(--track)",
+                border: "1px solid var(--hairline-2)",
                 borderRadius: 9,
                 padding: "6px 10px",
                 whiteSpace: "nowrap",
@@ -440,7 +441,7 @@ export function AppShell({ children }: { children: ReactNode }) {
                     fontSize: 9.5,
                     letterSpacing: ".14em",
                     textTransform: "uppercase",
-                    color: "rgba(244,242,251,.28)",
+                    color: "var(--text-faint)",
                     padding: gi === 0 ? "4px 11px 7px" : "16px 11px 7px",
                   }}
                 >
@@ -521,6 +522,9 @@ export function AppShell({ children }: { children: ReactNode }) {
             {subtitle && !phone && (
               <div style={{ fontSize: 11.5, color: "var(--text-faint)", marginTop: 1 }}>{subtitle}</div>
             )}
+          </div>
+          <div style={{ marginLeft: "auto" }}>
+            <ThemeToggle />
           </div>
         </div>
 

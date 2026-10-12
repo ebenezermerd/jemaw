@@ -91,7 +91,7 @@ export function SkeletonRows({ count = 8, cols, rowPadding = "15px 20px" }: { co
   return (
     <div role="status" aria-label="Loading">
       {Array.from({ length: count }, (_, r) => (
-        <div key={r} style={{ display: "grid", gridTemplateColumns: cols, gap: 12, alignItems: "center", padding: rowPadding, borderTop: "1px solid rgba(255,255,255,.05)" }}>
+        <div key={r} style={{ display: "grid", gridTemplateColumns: cols, gap: 12, alignItems: "center", padding: rowPadding, borderTop: "1px solid var(--hairline-soft)" }}>
           {Array.from({ length: n }, (_, c) => (
             <Skeleton key={c} height={c === 0 ? 30 : 12} width={c === 0 ? "85%" : `${55 + ((r * 7 + c * 13) % 35)}%`} radius={c === 0 ? 9 : 6} />
           ))}

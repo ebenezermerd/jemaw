@@ -173,7 +173,7 @@ function StatusDonut({ data }: { data: { status: string; count: number }[] }) {
           >
             {hasData
               ? data.map((b) => <Cell key={b.status} fill={STATUS_COLORS[b.status] ?? "#333"} />)
-              : <Cell fill="rgba(255,255,255,.07)" />}
+              : <Cell fill="var(--hairline)" />}
           </Pie>
         </PieChart>
       </div>
@@ -306,7 +306,7 @@ export function Overview() {
                   <stop offset="1" stopColor="#2DC4B0" stopOpacity={0} />
                 </linearGradient>
               </defs>
-              <CartesianGrid vertical={false} strokeDasharray="0" stroke="rgba(255,255,255,.05)" />
+              <CartesianGrid vertical={false} strokeDasharray="0" stroke="var(--hairline-soft)" />
               <XAxis
                 dataKey="date"
                 tick={{ fontSize: 10, fill: "var(--text-faint)", fontFamily: "var(--font-mono)" }}
@@ -321,7 +321,7 @@ export function Overview() {
                 axisLine={false}
                 allowDecimals={false}
               />
-              <Tooltip content={<ChartTip />} cursor={{ stroke: "rgba(255,255,255,.1)", strokeWidth: 1 }} />
+              <Tooltip content={<ChartTip />} cursor={{ stroke: "var(--hairline-2)", strokeWidth: 1 }} />
               <Area
                 type="monotone"
                 dataKey="expenses"
@@ -367,7 +367,7 @@ export function Overview() {
                   alignItems: "center",
                   gap: 12,
                   padding: "11px 0",
-                  borderBottom: i < data.recent.length - 1 ? "1px solid rgba(255,255,255,.05)" : "none",
+                  borderBottom: i < data.recent.length - 1 ? "1px solid var(--hairline-soft)" : "none",
                 }}
               >
                 <KindDot kind={r.kind} />

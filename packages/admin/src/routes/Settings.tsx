@@ -245,7 +245,7 @@ function AdvancedConfig() {
           {isLoading && <SkeletonList count={4} height={30} />}
           <div className="jx-scroll" style={{ maxHeight: 360, overflowY: "auto" }}>
             {data?.map((c) => (
-              <div key={c.key} style={{ display: "flex", alignItems: "flex-start", gap: 12, padding: "11px 20px", borderTop: "1px solid rgba(255,255,255,.05)" }}>
+              <div key={c.key} style={{ display: "flex", alignItems: "flex-start", gap: 12, padding: "11px 20px", borderTop: "1px solid var(--hairline-soft)" }}>
                 <code style={{ fontFamily: "var(--font-mono)", fontSize: 12.5, color: "var(--accent-soft)", minWidth: 150 }}>{c.key}</code>
                 <code style={{ fontFamily: "var(--font-mono)", fontSize: 12, color: "var(--text-dim)", flex: 1, wordBreak: "break-all" }}>{JSON.stringify(c.value)}</code>
               </div>

@@ -111,14 +111,14 @@ function GroupAvatar({ name, size }: { name: string; size: number }) {
 
 const MEM_COLS = "2fr 0.9fr 1.1fr 1.1fr 1.2fr 0.6fr 32px";
 const card = {
-  background: "#16151F",
-  border: "1px solid rgba(255,255,255,.07)",
+  background: "var(--surface)",
+  border: "1px solid var(--hairline)",
   borderRadius: 16,
   overflow: "hidden",
 } as const;
 const cardHead = {
   padding: "15px 20px",
-  borderBottom: "1px solid rgba(255,255,255,.07)",
+  borderBottom: "1px solid var(--hairline)",
   fontSize: 15,
   fontWeight: 700,
 } as const;
@@ -126,12 +126,12 @@ const colHead = {
   display: "grid",
   gap: 12,
   padding: "11px 20px",
-  borderBottom: "1px solid rgba(255,255,255,.07)",
+  borderBottom: "1px solid var(--hairline)",
   fontFamily: "var(--font-mono)",
   fontSize: 10,
   letterSpacing: ".1em",
   textTransform: "uppercase",
-  color: "rgba(244,242,251,.4)",
+  color: "var(--text-faint)",
 } as const;
 
 function Pill({ text, color, bg }: { text: string; color: string; bg: string }) {
@@ -258,7 +258,7 @@ export function GroupDetailPage() {
               <span style={{ fontFamily: "var(--font-brand)", fontSize: 20, color: "#8A78D6" }}>ጀማው</span>
             )}
           </div>
-          <div style={{ fontSize: 13, color: "rgba(244,242,251,.45)", marginTop: 3, fontVariantNumeric: "tabular-nums" }}>
+          <div style={{ fontSize: 13, color: "var(--text-faint)", marginTop: 3, fontVariantNumeric: "tabular-nums" }}>
             {group.id.slice(0, 8).toUpperCase()} · chat {data.settings.telegramChatId} · {cur} · created {fmtDate(group.createdAt)}
           </div>
         </div>
@@ -295,7 +295,7 @@ export function GroupDetailPage() {
             <div style={{ fontFamily: "var(--font-display)", fontWeight: 800, fontSize: 22, fontVariantNumeric: "tabular-nums", color: accent ?? "var(--text)", lineHeight: 1 }}>
               {value}
             </div>
-            <div style={{ fontSize: 12, color: "rgba(244,242,251,.5)", marginTop: 6 }}>{label}</div>
+            <div style={{ fontSize: 12, color: "var(--text-dim)", marginTop: 6 }}>{label}</div>
           </div>
         ))}
       </div>
@@ -304,7 +304,7 @@ export function GroupDetailPage() {
       <div style={{ ...card, marginBottom: 18, overflow: "visible" }}>
         <div style={cardHead}>
           Members &amp; balances
-          <span style={{ fontWeight: 500, fontSize: 12, color: "rgba(244,242,251,.45)" }}> · {members.length}</span>
+          <span style={{ fontWeight: 500, fontSize: 12, color: "var(--text-faint)" }}> · {members.length}</span>
         </div>
         <TableScroll min={980}>
         <div style={{ ...colHead, gridTemplateColumns: MEM_COLS }}>
@@ -333,7 +333,7 @@ export function GroupDetailPage() {
                     gridTemplateColumns: MEM_COLS,
                     gap: 12,
                     padding: "13px 20px",
-                    borderBottom: i < pageMembers.length - 1 ? "1px solid rgba(255,255,255,.04)" : "none",
+                    borderBottom: i < pageMembers.length - 1 ? "1px solid var(--hairline-soft)" : "none",
                     alignItems: "center",
                     opacity: m.isActive ? 1 : 0.5,
                     cursor: "pointer",
@@ -346,7 +346,7 @@ export function GroupDetailPage() {
                         {titleCase(m.displayName)}
                         {!m.isActive && <Pill text="Removed" color="#F2685F" bg="rgba(242,104,95,.12)" />}
                       </div>
-                      <div style={{ fontSize: 12, color: "rgba(244,242,251,.45)" }}>
+                      <div style={{ fontSize: 12, color: "var(--text-faint)" }}>
                         {m.isManual ? "added by hand" : m.username ? `@${m.username}` : `id ${m.telegramUserId}`}
                         {!m.isPrimary && m.isActive ? " · not in default splits" : ""}
                       </div>
@@ -356,7 +356,7 @@ export function GroupDetailPage() {
                     {m.role === "admin" ? (
                       <Pill text="Admin" color="#A99CE3" bg="rgba(110,89,199,.16)" />
                     ) : (
-                      <Pill text="Member" color="rgba(244,242,251,.55)" bg="rgba(255,255,255,.06)" />
+                      <Pill text="Member" color="var(--text-dim)" bg="var(--hairline)" />
                     )}
                   </span>
                   <span style={{ fontSize: 13, fontVariantNumeric: "tabular-nums" }}>{fmtMoney(m.paid, cur)}</span>
@@ -366,7 +366,7 @@ export function GroupDetailPage() {
                       fontSize: 14,
                       fontWeight: 700,
                       fontVariantNumeric: "tabular-nums",
-                      color: net > 0 ? "#2DD4A7" : net < 0 ? "#F0A640" : "rgba(244,242,251,.55)",
+                      color: net > 0 ? "#2DD4A7" : net < 0 ? "#F0A640" : "var(--text-dim)",
                     }}
                   >
                     {fmtNet(m.net, cur)}
@@ -400,7 +400,7 @@ export function GroupDetailPage() {
           <div style={cardHead}>
             Who pays whom
             {transfers.length > 0 && (
-              <span style={{ fontWeight: 500, fontSize: 12, color: "rgba(244,242,251,.45)" }}> · {transfers.length}</span>
+              <span style={{ fontWeight: 500, fontSize: 12, color: "var(--text-faint)" }}> · {transfers.length}</span>
             )}
           </div>
           {transfers.length === 0 ? (
@@ -414,12 +414,12 @@ export function GroupDetailPage() {
                     display: "flex",
                     justifyContent: "space-between",
                     padding: "12px 20px",
-                    borderBottom: i < transfers.length - 1 ? "1px solid rgba(255,255,255,.04)" : "none",
+                    borderBottom: i < transfers.length - 1 ? "1px solid var(--hairline-soft)" : "none",
                     fontSize: 13,
                   }}
                 >
                   <span>
-                    <b>{titleCase(t.fromName)}</b> <span style={{ color: "rgba(244,242,251,.45)" }}>→</span> <b>{titleCase(t.toName)}</b>
+                    <b>{titleCase(t.fromName)}</b> <span style={{ color: "var(--text-faint)" }}>→</span> <b>{titleCase(t.toName)}</b>
                   </span>
                   <span style={{ fontWeight: 700, fontVariantNumeric: "tabular-nums", color: "#F0A640" }}>
                     {fmtMoney(t.amount, cur)}
@@ -449,7 +449,7 @@ export function GroupDetailPage() {
                         gridTemplateColumns: "1fr auto",
                         gap: 10,
                         padding: "11px 20px",
-                        borderBottom: i < recent.items.length - 1 ? "1px solid rgba(255,255,255,.04)" : "none",
+                        borderBottom: i < recent.items.length - 1 ? "1px solid var(--hairline-soft)" : "none",
                         fontSize: 13,
                         opacity: e.voided ? 0.45 : 1,
                       }}
@@ -458,7 +458,7 @@ export function GroupDetailPage() {
                         <div style={{ fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                           {e.kind === "loan" ? "Loan: " : ""}{e.description}
                         </div>
-                        <div style={{ fontSize: 12, color: "rgba(244,242,251,.45)" }}>
+                        <div style={{ fontSize: 12, color: "var(--text-faint)" }}>
                           {titleCase(e.payerName)} paid · split with {e.shares.length} · {fmtDate(e.occurredAt)}
                         </div>
                       </div>
@@ -527,9 +527,9 @@ const headerBtn = {
   gap: 7,
   fontSize: 13,
   fontWeight: 700,
-  color: "#fff",
+  color: "var(--text)",
   background: "transparent",
-  border: "1px solid rgba(255,255,255,.14)",
+  border: "1px solid var(--hairline-2)",
   padding: "9px 14px",
   borderRadius: 9,
   cursor: "pointer",
@@ -560,8 +560,8 @@ export function Groups() {
         <div
           style={{
             flex: 1,
-            background: "#16151F",
-            border: "1px solid rgba(255,255,255,.08)",
+            background: "var(--surface)",
+            border: "1px solid var(--hairline-2)",
             borderRadius: 11,
             padding: "10px 13px",
             display: "flex",
@@ -570,7 +570,7 @@ export function Groups() {
             maxWidth: 510,
           }}
         >
-          <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="rgba(244,242,251,.4)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="var(--text-faint)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <circle cx="11" cy="11" r="7" />
             <path d="M21 21l-4-4" />
           </svg>
@@ -590,7 +590,7 @@ export function Groups() {
           {search && (
             <button
               onClick={() => setSearch("")}
-              style={{ background: "none", border: "none", cursor: "pointer", color: "rgba(244,242,251,.4)", padding: 0 }}
+              style={{ background: "none", border: "none", cursor: "pointer", color: "var(--text-faint)", padding: 0 }}
             >
               <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round">
                 <path d="M18 6 6 18M6 6l12 12" />
@@ -601,7 +601,7 @@ export function Groups() {
 
         <div style={{ flex: 1 }} />
 
-        <span style={{ fontSize: 13, color: "rgba(244,242,251,.45)" }}>
+        <span style={{ fontSize: 13, color: "var(--text-faint)" }}>
           {groups.length.toLocaleString()} group{groups.length !== 1 ? "s" : ""}
           {rows.length < groups.length ? ` · ${rows.length} shown` : ""}
         </span>
@@ -626,8 +626,8 @@ export function Groups() {
                 className="jx-row"
                 onClick={() => navigate(`/groups/${g.id}`)}
                 style={{
-                  background: "#16151F",
-                  border: "1px solid rgba(255,255,255,.07)",
+                  background: "var(--surface)",
+                  border: "1px solid var(--hairline)",
                   borderRadius: 16,
                   padding: 18,
                   cursor: "pointer",
@@ -666,7 +666,7 @@ export function Groups() {
                     <div
                       style={{
                         fontSize: 12,
-                        color: "rgba(244,242,251,.45)",
+                        color: "var(--text-faint)",
                         fontVariantNumeric: "tabular-nums",
                         marginTop: 2,
                       }}
@@ -675,7 +675,7 @@ export function Groups() {
                     </div>
                   </div>
 
-                  <span style={{ fontSize: 12, color: "rgba(244,242,251,.45)", flex: "none" }}>{g.defaultCurrency}</span>
+                  <span style={{ fontSize: 12, color: "var(--text-faint)", flex: "none" }}>{g.defaultCurrency}</span>
                 </div>
 
                 {/* 3-stat mini tiles */}
@@ -687,7 +687,7 @@ export function Groups() {
                   ].map(({ value, label }) => (
                     <div
                       key={label}
-                      style={{ background: "#1E1C2A", borderRadius: 11, padding: 11 }}
+                      style={{ background: "var(--track)", borderRadius: 11, padding: 11 }}
                     >
                       <div
                         style={{
@@ -699,7 +699,7 @@ export function Groups() {
                       >
                         {value}
                       </div>
-                      <div style={{ fontSize: 11, color: "rgba(244,242,251,.45)", marginTop: 2 }}>
+                      <div style={{ fontSize: 11, color: "var(--text-faint)", marginTop: 2 }}>
                         {label}
                       </div>
                     </div>

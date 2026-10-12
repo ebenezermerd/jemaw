@@ -26,20 +26,20 @@ export function Card({
 }
 
 const STATUS_COLORS: Record<string, { fg: string; bg: string }> = {
-  active: { fg: "#2DD4A7", bg: "rgba(45,212,167,.12)" },
-  idle: { fg: "#E0B23C", bg: "rgba(224,178,60,.12)" },
-  new: { fg: "#A99CE3", bg: "rgba(110,89,199,.16)" },
-  suspended: { fg: "rgba(244,242,251,.55)", bg: "rgba(255,255,255,.06)" },
-  flagged: { fg: "#F2685F", bg: "rgba(242,104,95,.12)" },
-  sent: { fg: "#2DD4A7", bg: "rgba(45,212,167,.12)" },
-  queued: { fg: "#E0B23C", bg: "rgba(224,178,60,.12)" },
-  sending: { fg: "#5BA8E0", bg: "rgba(91,168,224,.12)" },
-  draft: { fg: "#A99CE3", bg: "rgba(110,89,199,.18)" },
-  failed: { fg: "#F2685F", bg: "rgba(242,104,95,.12)" },
+  active: { fg: "var(--on-success)", bg: "rgba(45,212,167,.12)" },
+  idle: { fg: "var(--on-warn)", bg: "rgba(224,178,60,.14)" },
+  new: { fg: "var(--on-accent)", bg: "rgba(110,89,199,.16)" },
+  suspended: { fg: "var(--text-dim)", bg: "var(--hairline)" },
+  flagged: { fg: "var(--on-danger)", bg: "rgba(242,104,95,.12)" },
+  sent: { fg: "var(--on-success)", bg: "rgba(45,212,167,.12)" },
+  queued: { fg: "var(--on-warn)", bg: "rgba(224,178,60,.14)" },
+  sending: { fg: "var(--on-info)", bg: "rgba(91,168,224,.12)" },
+  draft: { fg: "var(--on-accent)", bg: "rgba(110,89,199,.18)" },
+  failed: { fg: "var(--on-danger)", bg: "rgba(242,104,95,.12)" },
 };
 
 export function StatusPill({ status }: { status: string }) {
-  const c = STATUS_COLORS[status] ?? { fg: "var(--accent-soft)", bg: "rgba(110,89,199,.18)" };
+  const c = STATUS_COLORS[status] ?? { fg: "var(--on-accent)", bg: "rgba(110,89,199,.18)" };
   return (
     <span
       style={{
@@ -72,7 +72,7 @@ export function SectionLabel({ children }: { children: ReactNode }) {
         fontSize: 10,
         letterSpacing: ".14em",
         textTransform: "uppercase",
-        color: "rgba(244,242,251,.4)",
+        color: "var(--text-faint)",
       }}
     >
       {children}
@@ -106,7 +106,7 @@ export function PrimaryButton({
         color: "#fff",
         cursor: disabled ? "default" : "pointer",
         opacity: disabled ? 0.6 : 1,
-        boxShadow: "0 12px 30px -10px rgba(110,89,199,.7)",
+        boxShadow: "var(--accent-glow)",
       }}
     >
       {children}

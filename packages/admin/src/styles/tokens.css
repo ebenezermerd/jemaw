@@ -9,6 +9,8 @@
 }
 
 :root {
+  color-scheme: dark;
+
   --bg: #07070b;
   --bg-panel: #0b0a11;
   --sidebar: #0d0c14;
@@ -18,9 +20,11 @@
   --track: #1e1c2a;
 
   --text: #f4f2fb;
+  --text-soft: rgba(244, 242, 251, 0.7);
   --text-dim: rgba(244, 242, 251, 0.55);
   --text-faint: rgba(244, 242, 251, 0.4);
-  --hairline: rgba(255, 255, 255, 0.06);
+  --hairline: rgba(255, 255, 255, 0.07);
+  --hairline-soft: rgba(255, 255, 255, 0.04);
   --hairline-2: rgba(255, 255, 255, 0.1);
 
   --accent: #6e59c7;
@@ -32,6 +36,18 @@
   --danger: #f2685f;
   --info: #5ba8e0;
 
+  /* Pill and chip text, darkened in light mode where the bright hues wash out. */
+  --on-success: #2dd4a7;
+  --on-teal: #2dc4b0;
+  --on-warn: #e0b23c;
+  --on-danger: #f2685f;
+  --on-info: #5ba8e0;
+  --on-accent: #a99ce3;
+
+  --shadow-drawer: 0 0 60px rgba(0, 0, 0, 0.6);
+  --shadow-pop: 0 12px 30px -10px rgba(0, 0, 0, 0.6);
+  --accent-glow: 0 12px 30px -10px rgba(110, 89, 199, 0.7);
+
   --font-display: "Bricolage Grotesque", sans-serif;
   --font-body: "Hanken Grotesk", sans-serif;
   --font-mono: "Space Mono", monospace;
@@ -39,6 +55,47 @@
 
   --radius: 16px;
   --radius-sm: 11px;
+
+  --select-chevron: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23b4aec6' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+}
+
+/* Light theme: same brand hues, inverted ground. Applied when the console is
+   set to light, or when it follows a system that asks for light. */
+:root[data-theme="light"] {
+  color-scheme: light;
+
+  --bg: #f4f3f8;
+  --bg-panel: #faf9fc;
+  --sidebar: #ffffff;
+  --surface: #ffffff;
+  --surface-2: #f6f5fa;
+  --row-hover: #f1eff8;
+  --track: #ebe9f3;
+
+  --text: #15131f;
+  --text-soft: rgba(21, 19, 31, 0.72);
+  --text-dim: rgba(21, 19, 31, 0.58);
+  --text-faint: rgba(21, 19, 31, 0.45);
+  --hairline: rgba(21, 19, 31, 0.09);
+  --hairline-soft: rgba(21, 19, 31, 0.06);
+  --hairline-2: rgba(21, 19, 31, 0.14);
+
+  --accent: #5a45b5;
+  --accent-soft: #6b57c4;
+  --accent-2: #7a66cf;
+
+  --on-success: #11835f;
+  --on-teal: #0f7a68;
+  --on-warn: #8a6410;
+  --on-danger: #c03c33;
+  --on-info: #2c6ea6;
+  --on-accent: #5a45b5;
+
+  --shadow-drawer: 0 0 60px rgba(21, 19, 31, 0.18);
+  --shadow-pop: 0 12px 30px -12px rgba(21, 19, 31, 0.25);
+  --accent-glow: 0 10px 24px -12px rgba(90, 69, 181, 0.5);
+
+  --select-chevron: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%235d5873' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
 }
 
 * {
@@ -72,14 +129,14 @@ button {
   height: 9px;
 }
 .jx-scroll::-webkit-scrollbar-thumb {
-  background: #2a2838;
+  background: var(--track);
   border-radius: 9px;
 }
 .jx-scroll::-webkit-scrollbar-track {
   background: transparent;
 }
 .jx-navitem:hover {
-  background: rgba(255, 255, 255, 0.04) !important;
+  background: var(--row-hover) !important;
 }
 .jx-row:hover {
   background: var(--row-hover) !important;
@@ -87,10 +144,10 @@ button {
 
 /* Loading — same marks as the mini app (motion/Loader.tsx, motion/Skeleton.tsx). */
 :root {
-  --border-strong: rgba(255, 255, 255, 0.12);
+  --border-strong: var(--hairline-2);
   --violet-300: #a99ce3;
-  --skeleton-base: #1e1c2a;
-  --skeleton-hi: #2a2838;
+  --skeleton-base: var(--track);
+  --skeleton-hi: var(--row-hover);
 }
 @keyframes jemaw-spin { to { transform: rotate(360deg) } }
 @keyframes jemaw-spin-rev { to { transform: rotate(-360deg) } }
