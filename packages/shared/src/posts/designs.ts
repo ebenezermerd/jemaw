@@ -16,6 +16,16 @@ export type PostUseCase = (typeof POST_USE_CASES)[number];
 export const POST_LAYOUTS = ["classic", "article", "showcase", "checklist"] as const;
 export type PostLayout = (typeof POST_LAYOUTS)[number];
 
+/** Jemaw mascots that can ride along the right edge of a generated image. */
+export const MASCOTS = ["thumbs-up", "shades", "arms-crossed"] as const;
+export type Mascot = (typeof MASCOTS)[number];
+
+export const MASCOT_LABEL: Record<Mascot, string> = {
+  "thumbs-up": "Thumbs up",
+  shades: "Shades",
+  "arms-crossed": "Arms crossed",
+};
+
 export const POST_SECTIONS = ["stats", "expenses", "standings", "debts", "note"] as const;
 export type PostSection = (typeof POST_SECTIONS)[number];
 
@@ -34,6 +44,8 @@ export interface PostDesign {
   layout: PostLayout;
   /** Image above the post; "slideshow" swipes through the hero and expense cards. */
   hero: "none" | "image" | "slideshow";
+  /** Mascot drawn on the right of the image, with the words kept to the left. */
+  mascot: Mascot | "none";
   /** "below" uses Telegram's keyboard rows; "inside" puts them in the message body. */
   buttonsPlacement: "below" | "inside";
   /** Rows of buttons, at most 3 rows of 3. */
@@ -97,6 +109,7 @@ export const DEFAULT_POST_DESIGNS: PostDesigns = {
   weekly: {
     layout: "showcase",
     hero: "image",
+    mascot: "none",
     buttonsPlacement: "below",
     buttons: [[OPEN, { label: "Copy total", action: "copy_amount", style: "default" }]],
     checklistStyle: "checklist",
@@ -106,6 +119,7 @@ export const DEFAULT_POST_DESIGNS: PostDesigns = {
   ai_payments: {
     layout: "checklist",
     hero: "none",
+    mascot: "none",
     buttonsPlacement: "below",
     buttons: [[{ label: "Settle up", action: "open_app", style: "success" }]],
     checklistStyle: "checklist",
@@ -115,6 +129,7 @@ export const DEFAULT_POST_DESIGNS: PostDesigns = {
   ai_report: {
     layout: "article",
     hero: "none",
+    mascot: "none",
     buttonsPlacement: "below",
     buttons: [],
     checklistStyle: "checklist",
@@ -123,7 +138,8 @@ export const DEFAULT_POST_DESIGNS: PostDesigns = {
   },
   announcement: {
     layout: "article",
-    hero: "none",
+    hero: "image",
+    mascot: "thumbs-up",
     buttonsPlacement: "below",
     buttons: [[OPEN]],
     checklistStyle: "checklist",
@@ -133,6 +149,7 @@ export const DEFAULT_POST_DESIGNS: PostDesigns = {
   release: {
     layout: "article",
     hero: "none",
+    mascot: "none",
     buttonsPlacement: "below",
     buttons: [[OPEN]],
     checklistStyle: "checklist",
@@ -172,6 +189,7 @@ export function parsePostDesign(raw: unknown, d: PostDesign): PostDesign {
   return {
     layout: pick(r.layout, POST_LAYOUTS, d.layout),
     hero: pick(r.hero, ["none", "image", "slideshow"] as const, d.hero),
+    mascot: pick(r.mascot, ["none", ...MASCOTS] as const, d.mascot),
     buttonsPlacement: pick(r.buttonsPlacement, ["below", "inside"] as const, d.buttonsPlacement),
     buttons,
     checklistStyle: pick(r.checklistStyle, ["checklist", "table"] as const, d.checklistStyle),

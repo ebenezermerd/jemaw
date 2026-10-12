@@ -5,7 +5,7 @@
  * console preview and the bot produce the same post.
  */
 import { centsToDecimal } from "../types.js";
-import type { PostDesign, PostUseCase } from "./designs.js";
+import type { Mascot, PostDesign, PostUseCase } from "./designs.js";
 import {
   bold,
   htmlToRich,
@@ -95,7 +95,7 @@ export interface PostContext {
 export type ImageSpec =
   | { kind: "hero"; eyebrow: string; badge: string; amount: string; currency: string; subline: string }
   | { kind: "expense"; title: string; amount: string; currency: string; payer: string; date: string; subline: string }
-  | { kind: "banner"; eyebrow: string; title: string; subline: string };
+  | { kind: "banner"; eyebrow: string; title: string; subline: string; mascot?: Mascot };
 
 export const IMAGE_SIZE: Record<ImageSpec["kind"], { width: number; height: number }> = {
   hero: { width: 1280, height: 720 },
@@ -164,6 +164,7 @@ interface Doc {
 }
 
 const emptyDoc = (title: string): Doc => ({ title, lead: [], slides: [], stats: [], tables: [], lists: [] });
+const mascotOf = (design: PostDesign) => (design.mascot === "none" ? {} : { mascot: design.mascot });
 
 function weeklyDoc(d: WeeklyPostData, design: PostDesign): Doc {
   const doc = emptyDoc("Weekly report");
@@ -345,17 +346,17 @@ function reportDoc(d: ReportPostData, design: PostDesign): Doc {
   return doc;
 }
 
-function announcementDoc(d: AnnouncementPostData): Doc {
+function announcementDoc(d: AnnouncementPostData, design: PostDesign): Doc {
   const doc = emptyDoc(d.title);
-  doc.hero = { kind: "banner", eyebrow: "Announcement", title: d.title, subline: "From the Jemaw team" };
+  doc.hero = { kind: "banner", eyebrow: "Announcement", title: d.title, subline: "From the Jemaw team", ...mascotOf(design) };
   doc.lead = d.body.split(/\n\s*\n/).map((p) => p.trim()).filter(Boolean);
   return doc;
 }
 
-function releaseDoc(d: ReleasePostData): Doc {
+function releaseDoc(d: ReleasePostData, design: PostDesign): Doc {
   const doc = emptyDoc(d.title);
   if (d.version) doc.subtitle = `Version ${d.version}`;
-  doc.hero = { kind: "banner", eyebrow: d.version ? `What's new · ${d.version}` : "What's new", title: d.title, subline: "Jemaw release notes" };
+  doc.hero = { kind: "banner", eyebrow: d.version ? `What's new · ${d.version}` : "What's new", title: d.title, subline: "Jemaw release notes", ...mascotOf(design) };
   if (d.intro) doc.lead = d.intro.split(/\n\s*\n/).map((p) => p.trim()).filter(Boolean);
   const add = (title: string, items: string[]) => {
     const clean = items.map((x) => x.trim()).filter(Boolean);
@@ -376,9 +377,9 @@ function buildDoc(input: PostData, design: PostDesign): Doc {
     case "ai_report":
       return reportDoc(input.data, design);
     case "announcement":
-      return announcementDoc(input.data);
+      return announcementDoc(input.data, design);
     case "release":
-      return releaseDoc(input.data);
+      return releaseDoc(input.data, design);
   }
 }
 

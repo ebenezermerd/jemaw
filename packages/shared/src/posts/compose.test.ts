@@ -161,3 +161,23 @@ describe("parsePostDesigns", () => {
     expect(d.release).toEqual(DEFAULT_POST_DESIGNS.release);
   });
 });
+
+describe("announcement mascot", () => {
+  it("ships a picture with the chosen mascot, and drops it when set to none", () => {
+    const design = DEFAULT_POST_DESIGNS.announcement;
+    expect(design.hero).toBe("image");
+    const post = composePost(SAMPLE_POST_DATA.announcement, design, ctx);
+    expect(post.images[0]).toMatchObject({ kind: "banner", mascot: design.mascot });
+
+    const bare = composePost(SAMPLE_POST_DATA.announcement, { ...design, mascot: "none" }, ctx);
+    expect(bare.images[0]).toMatchObject({ kind: "banner" });
+    expect(bare.images[0]).not.toHaveProperty("mascot");
+  });
+
+  it("keeps an unknown mascot out of a stored design", () => {
+    expect(parsePostDesigns({ announcement: { mascot: "dragon" } }).announcement.mascot).toBe(
+      DEFAULT_POST_DESIGNS.announcement.mascot,
+    );
+    expect(parsePostDesigns({ announcement: { mascot: "shades" } }).announcement.mascot).toBe("shades");
+  });
+});
